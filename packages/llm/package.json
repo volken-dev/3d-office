@@ -8,7 +8,8 @@
     "./errors": "./src/errors.ts",
     "./adapter": "./src/adapter.ts",
     "./providers/anthropic": "./src/providers/anthropic.ts",
-    "./providers/openai": "./src/providers/openai.ts"
+    "./providers/openai": "./src/providers/openai.ts",
+    "./router": "./src/router.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p test",
