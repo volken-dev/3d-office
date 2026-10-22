@@ -1,9 +1,13 @@
 import type {
+  Effort,
   LlmProvider,
   MessagesRequest,
   MessagesResponse,
 } from "@the-delegation/shared/llm-messages"
 import type { ModelEntry } from "./registry"
+
+/** Effort used when a request names none, so every provider runs at the same depth by default. */
+export const DEFAULT_EFFORT: Effort = "high"
 
 export interface CompletionOptions {
   signal?: AbortSignal

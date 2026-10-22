@@ -10,14 +10,13 @@ import type {
 } from "@anthropic-ai/sdk/resources/beta/messages/messages"
 import type {
   ContentBlock,
-  Effort,
   Message,
   MessagesRequest,
   MessagesResponse,
   StopReason,
   ToolDefinition,
 } from "@the-delegation/shared/llm-messages"
-import type { CompletionOptions, ProviderAdapter } from "../adapter"
+import { type CompletionOptions, DEFAULT_EFFORT, type ProviderAdapter } from "../adapter"
 import { ProviderError, type ProviderErrorKind } from "../errors"
 import type { ModelEntry } from "../registry"
 
@@ -35,9 +34,6 @@ const BETAS = ["server-side-fallback-2026-07-01", "thinking-binding-controls-202
 
 /** Thinking and output share `max_tokens`, so the default leaves room for long agentic turns. */
 const DEFAULT_MAX_OUTPUT_TOKENS = 64_000
-
-/** Applied when a request names no effort; Opus 5.5 would otherwise default to `medium`. */
-const DEFAULT_EFFORT: Effort = "high"
 
 /** Assistant blocks other than text and tool use that must be replayed byte for byte on later turns. */
 const REPLAYABLE_BLOCK_TYPES: ReadonlySet<string> = new Set([

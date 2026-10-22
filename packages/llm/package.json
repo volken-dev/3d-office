@@ -7,7 +7,8 @@
     "./registry": "./src/registry.ts",
     "./errors": "./src/errors.ts",
     "./adapter": "./src/adapter.ts",
-    "./providers/anthropic": "./src/providers/anthropic.ts"
+    "./providers/anthropic": "./src/providers/anthropic.ts",
+    "./providers/openai": "./src/providers/openai.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p test",
@@ -17,7 +18,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.1.0",
-    "@the-delegation/shared": "workspace:*"
+    "@the-delegation/shared": "workspace:*",
+    "openai": "^7.43.0"
   },
   "devDependencies": {
     "@types/bun": "^1.4.3",
