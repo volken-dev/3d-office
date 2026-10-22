@@ -178,9 +178,10 @@ server persistence and a streaming event channel to the scene, which is a larger
    model for team agents? (Kept explicit per agent either way.)
 4. **Backup model mapping.** Which OpenAI model backs each Claude model; verified against OpenAI docs
    when the registry item is implemented.
-5. **Cross-origin cookies.** The web app is on `github.io` and the API on a Workers domain, so the
-   session cookie must be `SameSite=None; Secure` with credentialed CORS, or the API gets a custom
-   domain next to a custom web domain. Decide with item 13.
+5. **Web host and cookies.** GitHub Pages is gone (2026-10-23) and the web app's host is not chosen.
+   Serving the static export from the same Worker as the API (Workers static assets) would make the
+   session cookie first-party and remove credentialed CORS; a separate host needs
+   `SameSite=None; Secure` cookies. Decide with item 13.
 
 ## Security considerations
 
@@ -201,7 +202,7 @@ server persistence and a streaming event channel to the scene, which is a larger
 ## Work items
 
 Issues: #17 (test runner), #25 (LLM package), #26 (agent loop), #27 (sign-in and spend cap),
-#28 (Workers deploy); the PR closes #2, #15, #17, #25 to #28 and refs #11; #6 is closed as obsolete.
+#28 (API on Workers); the PR closes #2, #15, #17, #25 to #28 and refs #11; #6 is closed as obsolete.
 
 1. `config:` create `packages/llm` and `packages/agents` workspaces, `bun test` through turbo and CI,
    first tests (#17).
@@ -219,6 +220,7 @@ Issues: #17 (test runner), #25 (LLM package), #26 (agent loop), #27 (sign-in and
 11. `state:` history and team persist migrations; wipe the stored BYOK key (#26, #2).
 12. `ui:` gateway-backed `LLMClient`, remove BYOK UI, gateway error states, registry-driven model
     picker and pricing (#2, #15).
-13. `config:` Workers entry, `wrangler`, D1 migrations, rate-limiting binding, secrets, CI deploy (#28).
+13. `config:` Workers entry, `wrangler`, D1 migrations, rate-limiting binding, secrets; manual
+    `wrangler deploy`, no deploy pipeline (#28).
 14. `docs:` update `CLAUDE.md`, `RULES.md` (rule 1 provider location, rule 21 error copy, P3 layer
     names), `README.md`, and `AUDIT.md` statuses.
