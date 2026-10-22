@@ -1,4 +1,4 @@
-import { isLeadAgent } from "../../../data/agents"
+import { isLeadAgent } from "../../team"
 import { fail, readString, type ToolSpec } from "./types"
 
 export const deliverProject: ToolSpec<{ output: string }> = {

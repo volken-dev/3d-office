@@ -1,3 +1,4 @@
+import { USER_NAME } from "@the-delegation/agents/team"
 import { AlertTriangle, ChevronRight, GitPullRequest, Trash2 } from "lucide-react"
 import React, { useState } from "react"
 import { Badge } from "@/components/ui/badge"
@@ -6,7 +7,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { USER_NAME } from "../data/agents"
 import { type Task, type TaskStatus, useCoreStore } from "../integration/store/coreStore"
 import { useTeamRoster } from "../integration/store/teamStore"
 import { useUiStore } from "../integration/store/uiStore"

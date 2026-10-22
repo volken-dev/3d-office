@@ -11,12 +11,12 @@
     "start": "serve out -l 3000",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p test",
-    "clean": "rm -rf .next out",
-    "test": "bun test"
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf .next out"
   },
   "dependencies": {
     "@google/genai": "1.48.0",
+    "@the-delegation/agents": "workspace:*",
     "@the-delegation/shared": "workspace:*",
     "@xyflow/react": "^12.10.1",
     "class-variance-authority": "^0.7.1",
@@ -37,7 +37,6 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
-    "@types/bun": "^1.4.3",
     "@types/node": "^22.14.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

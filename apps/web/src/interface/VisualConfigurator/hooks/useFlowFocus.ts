@@ -1,6 +1,6 @@
+import { USER_ID } from "@the-delegation/agents/team"
 import type { Edge } from "@xyflow/react"
 import { useMemo } from "react"
-import { USER_ID } from "../../../data/agents"
 import type { VisualAgentNode } from "../teamFlowGraph"
 
 /** Dims the other subagents and their edges while a subagent is selected; the user-to-lead path stays visible. */

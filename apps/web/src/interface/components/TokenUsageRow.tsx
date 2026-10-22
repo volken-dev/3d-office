@@ -1,6 +1,6 @@
+import type { LLMTokenUsage } from "@the-delegation/agents/llm/types"
 import { formatTokens } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import type { LLMTokenUsage } from "../../core/llm/types"
 
 interface TokenUsageRowProps {
   usage: Pick<LLMTokenUsage, "promptTokens" | "completionTokens">

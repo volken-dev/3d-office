@@ -1,12 +1,12 @@
-import { toast } from "sonner"
-import { GeminiProvider } from "../../core/llm/providers/GeminiProvider"
-import type { LLMClient } from "../../core/llm/types"
+import type { LLMClient } from "@the-delegation/agents/llm/types"
 import type {
   OrchestrationDeps,
   ProjectSnapshot,
   ProjectStatePort,
-} from "../../core/orchestration/ports"
-import type { AutonomyPause } from "../../core/project/types"
+} from "@the-delegation/agents/orchestration/ports"
+import type { AutonomyPause } from "@the-delegation/agents/project/types"
+import { toast } from "sonner"
+import { GeminiProvider } from "../../core/llm/providers/GeminiProvider"
 import { useCoreStore } from "../store/coreStore"
 import { getActiveAgentSet } from "../store/teamStore"
 import { useUiStore } from "../store/uiStore"

@@ -1,4 +1,4 @@
-import { type AgenticSystem, getAllAgents } from "../../data/agents"
+import { type AgenticSystem, getAllAgents } from "@the-delegation/agents/team"
 import { useCoreStore } from "../../integration/store/coreStore"
 import { useUiStore } from "../../integration/store/uiStore"
 import { AgentHost } from "./AgentHost"

@@ -2,6 +2,9 @@ import type { LLMMessage, LLMTokenUsage, LLMToolCall, LLMToolDefinition } from "
 
 export type ProjectPhase = "idle" | "working" | "done"
 
+/** What an agent is doing in the project (distinct from the scene's physics behaviour). */
+export type AgentWorkStatus = "idle" | "working" | "on_hold"
+
 export type TaskStatus = "scheduled" | "on_hold" | "in_progress" | "done"
 
 export interface TaskRevision {

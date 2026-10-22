@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { readString } from "../../../../src/core/agent/tools/types"
+import { readString } from "../../../src/agent/tools/types"
 
 describe("readString", () => {
   test("returns the trimmed value", () => {

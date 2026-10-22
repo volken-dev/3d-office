@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import { completeTask } from "../../../../src/core/agent/tools/completeTask"
-import type { ToolContext } from "../../../../src/core/agent/tools/types"
-import { AGENTIC_SETS, type AgentNode } from "../../../../src/data/agents"
-import type { AgentWorkStatus } from "../../../../src/types"
-import { FakeProject } from "../../../support/fakeProject"
+import { completeTask } from "../../../src/agent/tools/completeTask"
+import type { ToolContext } from "../../../src/agent/tools/types"
+import type { AgentWorkStatus } from "../../../src/project/types"
+import type { AgentNode } from "../../../src/team"
+import { FakeProject } from "../../support/fakeProject"
+import { TEST_TEAM } from "../../support/team"
 
-const team = AGENTIC_SETS[0]
+const team = TEST_TEAM
 const reviewedAgent = team.leadAgent
 const autonomousAgent = team.leadAgent.subagents?.find((agent) => !agent.humanInTheLoop)
 

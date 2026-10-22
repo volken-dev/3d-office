@@ -1,6 +1,6 @@
-import type { LLMMessage } from "../../src/core/llm/types"
-import { LLM_CALL_BUDGET } from "../../src/core/orchestration/policy"
-import type { ProjectSnapshot, ProjectStatePort } from "../../src/core/orchestration/ports"
+import type { LLMMessage } from "../../src/llm/types"
+import { LLM_CALL_BUDGET } from "../../src/orchestration/policy"
+import type { ProjectSnapshot, ProjectStatePort } from "../../src/orchestration/ports"
 import type {
   ActionLogEntry,
   AutonomyPause,
@@ -9,7 +9,7 @@ import type {
   RequestDebugLogEntry,
   ResponseDebugLogEntry,
   Task,
-} from "../../src/core/project/types"
+} from "../../src/project/types"
 
 /** In-memory `ProjectStatePort` with the same observable behaviour as the Zustand adapter. */
 export class FakeProject implements ProjectStatePort {

@@ -1,5 +1,5 @@
+import { type AgenticSystem, type AgentNode, USER_ID, USER_NAME } from "@the-delegation/agents/team"
 import type { Edge, Node } from "@xyflow/react"
-import { type AgenticSystem, type AgentNode, USER_ID, USER_NAME } from "../../data/agents"
 import { USER_COLOR } from "../../theme/brand"
 
 /** One connector dot on a node; nodes render their handles in insertion order. */

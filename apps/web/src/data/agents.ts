@@ -1,36 +1,14 @@
+import {
+  type AgenticSystem,
+  type AgentNode,
+  getAllAgents,
+  USER_ID,
+  USER_NAME,
+} from "@the-delegation/agents/team"
 import { DEFAULT_MODEL } from "../core/llm/constants"
 import { USER_COLOR } from "../theme/brand"
 
-export const USER_ID = "user"
-export const USER_NAME = "User"
-export const MAX_AGENTS = 5
 export const DEFAULT_AGENTIC_SET_ID = "feature-squad"
-export interface AgentNode {
-  id: string
-  index: number
-  name: string
-  description: string
-  color: string
-  model: string
-  humanInTheLoop?: boolean
-  position?: { x: number; y: number }
-  subagents?: AgentNode[]
-}
-
-export interface AgenticSystem {
-  id: string
-  teamName: string
-  teamType: string
-  teamDescription: string
-  color: string
-  outputAutoApprove?: boolean
-  user: {
-    index: number
-    model: string
-    position?: { x: number; y: number }
-  }
-  leadAgent: AgentNode
-}
 
 export const AGENTIC_SETS: AgenticSystem[] = [
   {
@@ -276,17 +254,6 @@ export function getAgentSet(id: string, customSystems: AgenticSystem[] = []): Ag
   )
 }
 
-/** Every AI agent in the team, depth-first from the lead. */
-export function getAllAgents(system: AgenticSystem): AgentNode[] {
-  const agents: AgentNode[] = []
-  function traverse(node: AgentNode): void {
-    agents.push(node)
-    for (const subagent of node.subagents ?? []) traverse(subagent)
-  }
-  traverse(system.leadAgent)
-  return agents
-}
-
 /** The user followed by every agent: one entry per character in the scene. */
 export function getAllCharacters(system: AgenticSystem): AgentNode[] {
   const userNode: AgentNode = {
@@ -333,50 +300,4 @@ export function getTeamRoster(system: AgenticSystem): TeamRoster {
 /** Looks up an agent or the user by index; undefined when the index is not in this team. */
 export function getAgentByIndex(system: AgenticSystem, index: number): AgentNode | undefined {
   return getTeamRoster(system).byIndex.get(index)
-}
-
-/** Whether this index is the team's lead, which alone may set the brief and deliver the project. */
-export function isLeadAgent(system: AgenticSystem, index: number): boolean {
-  return system.leadAgent.index === index
-}
-
-/** Whether this index is the human user rather than an AI agent. */
-export function isUserIndex(system: AgenticSystem, index: number): boolean {
-  return system.user.index === index
-}
-
-/** Indices of an agent's whole subtree (excluding itself). */
-export function getSubtreeIndices(node: AgentNode): number[] {
-  return (node.subagents ?? []).flatMap((child) => [child.index, ...getSubtreeIndices(child)])
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
-}
-
-function isValidAgentNode(value: unknown, depth = 0): value is AgentNode {
-  if (!isRecord(value) || depth > MAX_AGENTS) return false
-  return (
-    typeof value.id === "string" &&
-    Number.isInteger(value.index) &&
-    typeof value.name === "string" &&
-    typeof value.description === "string" &&
-    typeof value.color === "string" &&
-    typeof value.model === "string" &&
-    (value.subagents === undefined ||
-      (Array.isArray(value.subagents) &&
-        value.subagents.every((subagent) => isValidAgentNode(subagent, depth + 1))))
-  )
-}
-
-/** Shape guard for teams read from storage, where hand edits or older versions may have left anything. */
-export function isValidAgenticSystem(value: unknown): value is AgenticSystem {
-  if (!isRecord(value)) return false
-  return (
-    typeof value.id === "string" &&
-    typeof value.teamName === "string" &&
-    isRecord(value.user) &&
-    Number.isInteger(value.user.index) &&
-    isValidAgentNode(value.leadAgent)
-  )
 }

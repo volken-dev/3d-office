@@ -1,8 +1,7 @@
-import type { AgenticSystem, AgentNode } from "../../../data/agents"
-import type { AgentWorkStatus } from "../../../types"
 import type { LLMMessage, LLMToolDefinition } from "../../llm/types"
 import type { ProjectStatePort } from "../../orchestration/ports"
-import type { ProjectPhase } from "../../project/types"
+import type { AgentWorkStatus, ProjectPhase } from "../../project/types"
+import type { AgenticSystem, AgentNode } from "../../team"
 
 export interface ToolContext {
   agent: AgentNode

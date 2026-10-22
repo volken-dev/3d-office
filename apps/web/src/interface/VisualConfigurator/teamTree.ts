@@ -1,4 +1,5 @@
-import { type AgenticSystem, type AgentNode, getAllCharacters, MAX_AGENTS } from "../../data/agents"
+import { type AgenticSystem, type AgentNode, MAX_AGENTS } from "@the-delegation/agents/team"
+import { getAllCharacters } from "../../data/agents"
 
 /** Colour for new teams and agents. */
 export const DEFAULT_AGENT_COLOR = "#A855F7"

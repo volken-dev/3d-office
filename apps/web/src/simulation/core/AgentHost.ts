@@ -1,10 +1,15 @@
-import { AgentBrain, type BrainHost, type ThinkOptions } from "../../core/agent/AgentBrain"
-import type { LLMMessage } from "../../core/llm/types"
-import { canChatWith } from "../../core/orchestration/policy"
-import { type AgentNode, isLeadAgent } from "../../data/agents"
+import {
+  AgentBrain,
+  type BrainHost,
+  type ThinkOptions,
+} from "@the-delegation/agents/agent/AgentBrain"
+import type { LLMMessage } from "@the-delegation/agents/llm/types"
+import { canChatWith } from "@the-delegation/agents/orchestration/policy"
+import type { AgentWorkStatus } from "@the-delegation/agents/project/types"
+import { type AgentNode, isLeadAgent } from "@the-delegation/agents/team"
+import { zustandOrchestrationDeps } from "../../integration/orchestration/zustandDeps"
 import { useCoreStore } from "../../integration/store/coreStore"
 import { useUiStore } from "../../integration/store/uiStore"
-import type { AgentWorkStatus } from "../../types"
 import type { AgentSimulation } from "./AgentSimulation"
 
 /** Runtime wrapper around one team member: its brain, task and status. */
@@ -19,7 +24,7 @@ export class AgentHost implements BrainHost {
     public data: AgentNode,
     public readonly simulation: AgentSimulation,
   ) {
-    this.brain = new AgentBrain(this)
+    this.brain = new AgentBrain(this, zustandOrchestrationDeps)
   }
 
   /** Same rule the chat UI applies (useChatAvailability), so an accepted message always gets a turn. */

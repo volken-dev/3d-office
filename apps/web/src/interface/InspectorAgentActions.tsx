@@ -1,7 +1,7 @@
+import type { AgenticSystem, AgentNode } from "@the-delegation/agents/team"
 import { FolderOpen, GitPullRequest, Lock, MessageSquare, MessageSquareWarning } from "lucide-react"
 import { useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import type { AgenticSystem, AgentNode } from "../data/agents"
 import { useChatAvailability } from "../integration/hooks/useChatAvailability"
 import { useCoreStore } from "../integration/store/coreStore"
 import { useUiStore } from "../integration/store/uiStore"

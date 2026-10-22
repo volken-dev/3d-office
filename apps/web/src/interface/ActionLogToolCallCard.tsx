@@ -1,4 +1,4 @@
-import type { LLMToolCall } from "../core/llm/types"
+import type { LLMToolCall } from "@the-delegation/agents/llm/types"
 
 function parseArguments(raw: string | undefined): Record<string, unknown> | string | null {
   if (!raw) return null

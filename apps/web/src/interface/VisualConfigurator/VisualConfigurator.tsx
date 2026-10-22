@@ -12,6 +12,12 @@ import {
   useReactFlow,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
+import {
+  type AgenticSystem,
+  type AgentNode,
+  MAX_AGENTS,
+  USER_ID,
+} from "@the-delegation/agents/team"
 import { Plus, Settings, User, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -20,14 +26,7 @@ import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { DEFAULT_MODEL } from "../../core/llm/constants"
-import {
-  type AgenticSystem,
-  type AgentNode,
-  getAgentSet,
-  getAllCharacters,
-  MAX_AGENTS,
-  USER_ID,
-} from "../../data/agents"
+import { getAgentSet, getAllCharacters } from "../../data/agents"
 import { useCoreStore } from "../../integration/store/coreStore"
 import { useTeamStore } from "../../integration/store/teamStore"
 import { AgentConfigPanel } from "./AgentConfigPanel"

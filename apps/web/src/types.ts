@@ -1,8 +1,5 @@
 import type * as THREE from "three/webgpu"
 
-/** What an agent is doing in the project (distinct from AgentBehavior, its physics mode on the GPU). */
-export type AgentWorkStatus = "idle" | "working" | "on_hold"
-
 export enum AnimationName {
   IDLE = "Idle",
   WALK = "Walk",

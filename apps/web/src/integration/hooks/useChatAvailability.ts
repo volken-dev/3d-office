@@ -1,5 +1,5 @@
-import { canChatWith } from "../../core/orchestration/policy"
-import { isLeadAgent } from "../../data/agents"
+import { canChatWith } from "@the-delegation/agents/orchestration/policy"
+import { isLeadAgent } from "@the-delegation/agents/team"
 import { useCoreStore } from "../store/coreStore"
 import { useActiveTeam } from "../store/teamStore"
 import { useUiStore } from "../store/uiStore"

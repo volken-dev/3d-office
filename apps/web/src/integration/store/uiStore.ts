@@ -1,6 +1,6 @@
+import type { LLMConfig } from "@the-delegation/agents/llm/types"
+import type { AgentWorkStatus } from "@the-delegation/agents/project/types"
 import { create } from "zustand"
-import type { LLMConfig } from "../../core/llm/types"
-import type { AgentWorkStatus } from "../../types"
 import { loadLlmConfig, saveLlmConfig } from "../settings/llmConfigStorage"
 
 export interface UiState {

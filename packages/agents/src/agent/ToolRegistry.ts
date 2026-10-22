@@ -1,6 +1,6 @@
-import type { AgenticSystem, AgentNode } from "../../data/agents"
 import type { LLMToolCall, LLMToolDefinition } from "../llm/types"
 import type { ProjectPhase } from "../project/types"
+import type { AgenticSystem, AgentNode } from "../team"
 import { completeTask } from "./tools/completeTask"
 import { deliverProject } from "./tools/deliverProject"
 import { proposeTask } from "./tools/proposeTask"

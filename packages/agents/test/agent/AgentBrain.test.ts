@@ -1,14 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { AgentBrain, type BrainHost } from "../../../src/core/agent/AgentBrain"
-import { LLMError } from "../../../src/core/llm/errors"
-import type { LLMCallOptions, LLMClient, LLMResponse } from "../../../src/core/llm/types"
-import { MAX_INTENT_ATTEMPTS } from "../../../src/core/orchestration/policy"
-import type { LLMErrorEvent, OrchestrationDeps } from "../../../src/core/orchestration/ports"
-import { AGENTIC_SETS, type AgentNode } from "../../../src/data/agents"
-import type { AgentWorkStatus } from "../../../src/types"
-import { FakeProject } from "../../support/fakeProject"
+import { AgentBrain, type BrainHost } from "../../src/agent/AgentBrain"
+import { LLMError } from "../../src/llm/errors"
+import type { LLMCallOptions, LLMClient, LLMResponse } from "../../src/llm/types"
+import { MAX_INTENT_ATTEMPTS } from "../../src/orchestration/policy"
+import type { LLMErrorEvent, OrchestrationDeps } from "../../src/orchestration/ports"
+import type { AgentWorkStatus } from "../../src/project/types"
+import type { AgentNode } from "../../src/team"
+import { FakeProject } from "../support/fakeProject"
+import { TEST_TEAM } from "../support/team"
 
-const team = AGENTIC_SETS[0]
+const team = TEST_TEAM
 const worker = team.leadAgent.subagents?.find((agent) => !agent.humanInTheLoop)
 
 type Reply = LLMResponse | LLMError | "hang"

@@ -1,6 +1,5 @@
 import type { Content, FunctionDeclaration, GoogleGenAI, Part, Schema, Type } from "@google/genai"
-import { DEFAULT_MODEL } from "../constants"
-import { LLMError } from "../errors"
+import { LLMError } from "@the-delegation/agents/llm/errors"
 import type {
   JsonSchema,
   LLMCallOptions,
@@ -9,7 +8,8 @@ import type {
   LLMResponse,
   LLMToolCall,
   LLMToolDefinition,
-} from "../types"
+} from "@the-delegation/agents/llm/types"
+import { DEFAULT_MODEL } from "../constants"
 
 const DEFAULT_TIMEOUT_MS = 60_000
 

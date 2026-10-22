@@ -1,5 +1,5 @@
+import type { AgenticSystem } from "@the-delegation/agents/team"
 import * as THREE from "three/webgpu"
-import type { AgenticSystem } from "../data/agents"
 import {
   AgentBehavior,
   type AnimationName,

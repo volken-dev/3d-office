@@ -1,8 +1,8 @@
+import type { AgenticSystem, AgentNode } from "@the-delegation/agents/team"
 import { MessageSquareWarning, PartyPopper, Siren } from "lucide-react"
 import type React from "react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import type { AgenticSystem, AgentNode } from "../data/agents"
 import { useAgentAnchor } from "../integration/screenPositions"
 import type { ProjectPhase, Task } from "../integration/store/coreStore"
 

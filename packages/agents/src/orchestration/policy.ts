@@ -1,5 +1,4 @@
-import type { AgentWorkStatus } from "../../types"
-import type { ProjectPhase } from "../project/types"
+import type { AgentWorkStatus, ProjectPhase } from "../project/types"
 
 /** Messages of each agent's history sent to the model per call. */
 export const HISTORY_WINDOW = 10

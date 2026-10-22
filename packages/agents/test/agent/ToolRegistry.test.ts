@@ -1,17 +1,14 @@
 import { describe, expect, test } from "bun:test"
-import {
-  getToolDefinitions,
-  parseToolCall,
-  runToolCall,
-} from "../../../src/core/agent/ToolRegistry"
-import type { ToolContext } from "../../../src/core/agent/tools/types"
-import { AGENTIC_SETS, getAgentByIndex } from "../../../src/data/agents"
-import { FakeProject } from "../../support/fakeProject"
+import { getToolDefinitions, parseToolCall, runToolCall } from "../../src/agent/ToolRegistry"
+import type { ToolContext } from "../../src/agent/tools/types"
+import { getAgentRoster } from "../../src/team"
+import { FakeProject } from "../support/fakeProject"
+import { TEST_TEAM } from "../support/team"
 
-const team = AGENTIC_SETS[0]
+const team = TEST_TEAM
 
 function agentAt(index: number) {
-  const agent = getAgentByIndex(team, index)
+  const agent = getAgentRoster(team).byIndex.get(index)
   if (!agent) throw new Error(`No agent at index ${index} in ${team.id}`)
   return agent
 }

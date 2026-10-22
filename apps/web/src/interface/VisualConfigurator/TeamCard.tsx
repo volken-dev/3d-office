@@ -1,3 +1,4 @@
+import { type AgenticSystem, getAllAgents } from "@the-delegation/agents/team"
 import { Edit2, RotateCcw, Trash2, Users, X } from "lucide-react"
 import type React from "react"
 import { useEffect, useId, useMemo, useState } from "react"
@@ -11,12 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
-import {
-  AGENTIC_SETS,
-  type AgenticSystem,
-  DEFAULT_AGENTIC_SET_ID,
-  getAllAgents,
-} from "../../data/agents"
+import { AGENTIC_SETS, DEFAULT_AGENTIC_SET_ID } from "../../data/agents"
 import { useCoreStore } from "../../integration/store/coreStore"
 import { useTeamStore } from "../../integration/store/teamStore"
 import { useSceneManager } from "../../simulation/SceneContext"

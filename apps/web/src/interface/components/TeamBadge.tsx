@@ -1,5 +1,6 @@
+import type { AgenticSystem } from "@the-delegation/agents/team"
 import { Users } from "lucide-react"
-import { type AgenticSystem, getTeamRoster } from "../../data/agents"
+import { getTeamRoster } from "../../data/agents"
 
 interface TeamBadgeProps {
   system: AgenticSystem

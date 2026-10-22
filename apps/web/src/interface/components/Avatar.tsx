@@ -1,4 +1,4 @@
-import type { AgenticSystem } from "../../data/agents"
+import type { AgenticSystem } from "@the-delegation/agents/team"
 import { USER_COLOR } from "../../theme/brand"
 
 /** Which portrait to draw: the human user, the team lead or a subagent. */

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { backoffDelayMs, canChatWith } from "../../../src/core/orchestration/policy"
+import { backoffDelayMs, canChatWith } from "../../src/orchestration/policy"
 
 describe("backoffDelayMs", () => {
   test("is zero before any failure, then doubles from 2 s and caps at 60 s", () => {

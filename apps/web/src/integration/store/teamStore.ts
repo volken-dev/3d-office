@@ -1,13 +1,12 @@
+import { type AgenticSystem, isValidAgenticSystem } from "@the-delegation/agents/team"
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import { useShallow } from "zustand/react/shallow"
 import {
   AGENTIC_SETS,
-  type AgenticSystem,
   DEFAULT_AGENTIC_SET_ID,
   getAgentSet,
   getTeamRoster,
-  isValidAgenticSystem,
   type TeamRoster,
 } from "../../data/agents"
 import { safeJSONStorage } from "../../lib/storage"

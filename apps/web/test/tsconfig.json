@@ -1,8 +1,0 @@
-{
-  "extends": "../tsconfig.json",
-  "compilerOptions": {
-    "types": ["bun"],
-    "incremental": false
-  },
-  "include": ["**/*.ts", "../src/**/*.ts", "../next-env.d.ts"]
-}

@@ -1,4 +1,3 @@
-import type { AgenticSystem, AgentNode } from "../../data/agents"
 import type { LLMErrorKind } from "../llm/errors"
 import type { LLMClient, LLMConfig, LLMMessage } from "../llm/types"
 import type {
@@ -11,6 +10,7 @@ import type {
   ResponseDebugLogEntry,
   Task,
 } from "../project/types"
+import type { AgenticSystem, AgentNode } from "../team"
 
 /** The parts of project state the orchestration reacts to. */
 export interface ProjectSnapshot {

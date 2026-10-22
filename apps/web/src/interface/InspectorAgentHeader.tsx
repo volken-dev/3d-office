@@ -1,8 +1,8 @@
+import type { AgenticSystem, AgentNode } from "@the-delegation/agents/team"
 import { ArrowLeft } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import type { AgenticSystem, AgentNode } from "../data/agents"
 import { Avatar, avatarTypeFor } from "./components/Avatar"
 import { selectAgent } from "./components/selectAgent"
 

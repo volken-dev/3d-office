@@ -1,5 +1,5 @@
+import { MAX_AGENTS } from "@the-delegation/agents/team"
 import * as THREE from "three/webgpu"
-import { MAX_AGENTS } from "../../data/agents"
 import type { CharacterStateKey, IAgentDriver } from "../../types"
 import type { CharacterController } from "../CharacterController"
 

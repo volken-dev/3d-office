@@ -1,5 +1,6 @@
 import { Background, type Edge, ReactFlow, ReactFlowProvider, useReactFlow } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
+import type { AgenticSystem } from "@the-delegation/agents/team"
 import { useEffect, useMemo } from "react"
 import {
   Dialog,
@@ -9,7 +10,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import type { AgenticSystem } from "../data/agents"
 import { TeamBadge } from "./components/TeamBadge"
 import { TeamOutputBadge } from "./components/TeamOutputBadge"
 import { flowEdgeTypes, flowNodeTypes } from "./VisualConfigurator/flowTypes"

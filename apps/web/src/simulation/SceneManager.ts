@@ -1,5 +1,5 @@
+import { type AgenticSystem, getAllAgents } from "@the-delegation/agents/team"
 import * as THREE from "three/webgpu"
-import { type AgenticSystem, getAllAgents } from "../data/agents"
 import {
   clearScreenPositions,
   notifyScreenPositions,

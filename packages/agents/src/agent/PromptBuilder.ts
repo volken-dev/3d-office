@@ -1,6 +1,6 @@
-import { type AgenticSystem, type AgentNode, getTeamRoster, isLeadAgent } from "../../data/agents"
 import type { LLMMessage } from "../llm/types"
 import type { ProjectPhase, Task } from "../project/types"
+import { type AgenticSystem, type AgentNode, getAgentRoster, isLeadAgent } from "../team"
 
 /** Full outputs are shown to the lead (who synthesizes the deliverable) and to agents whose task builds on them. */
 const FULL_OUTPUT_CHARS = 6_000
@@ -39,7 +39,7 @@ export function buildSystemPrompt(
   team: AgenticSystem,
 ): string {
   const isLead = isLeadAgent(team, agent.index)
-  const roster = getTeamRoster(team)
+  const roster = getAgentRoster(team)
     .agents.map((member) => `[${member.index}] ${member.name}`)
     .join(", ")
   const objective = OBJECTIVES[phase][isLead ? "lead" : "other"]
@@ -64,7 +64,7 @@ export function buildContextMessage(
   team: AgenticSystem,
 ): LLMMessage {
   const isLead = isLeadAgent(team, agent.index)
-  const { byIndex } = getTeamRoster(team)
+  const { byIndex } = getAgentRoster(team)
   const dependencyIds = new Set(
     tasks
       .filter((task) => task.assignedAgentId === agent.index && task.parentTaskId)

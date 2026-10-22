@@ -1,3 +1,4 @@
+import { type AgenticSystem, getAllAgents } from "@the-delegation/agents/team"
 import type { GLTF } from "three/addons/loaders/GLTFLoader.js"
 import {
   atan,
@@ -20,7 +21,7 @@ import {
   vec4,
 } from "three/tsl"
 import * as THREE from "three/webgpu"
-import { type AgenticSystem, getAllAgents, getAllCharacters } from "../../data/agents"
+import { getAllCharacters } from "../../data/agents"
 import { AgentBehavior, AnimationName, type ExpressionKey, type PoiDef } from "../../types"
 import { AgentStateBuffer } from "../behavior/AgentStateBuffer"
 import { ExpressionBuffer } from "../behavior/ExpressionBuffer"

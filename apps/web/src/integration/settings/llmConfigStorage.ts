@@ -1,5 +1,5 @@
+import type { LLMConfig } from "@the-delegation/agents/llm/types"
 import { DEFAULT_MODEL, isKnownModel } from "../../core/llm/constants"
-import type { LLMConfig } from "../../core/llm/types"
 import { getBrowserStorage, readStoredJson } from "../../lib/storage"
 
 /** Where the BYOK key is persisted; only uiStore.setLlmConfig writes it. */

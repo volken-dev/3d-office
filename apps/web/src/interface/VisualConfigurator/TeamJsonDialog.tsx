@@ -1,3 +1,4 @@
+import type { AgenticSystem } from "@the-delegation/agents/team"
 import { Braces, Copy } from "lucide-react"
 import { useMemo } from "react"
 import { Button } from "@/components/ui/button"
@@ -12,7 +13,6 @@ import {
 } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { copyToClipboard } from "@/lib/clipboard"
-import type { AgenticSystem } from "../../data/agents"
 
 /** Shows the saved team definition as JSON, with a copy button, so a team can be shared or backed up. */
 export function TeamJsonDialog({ system }: { system: AgenticSystem }) {

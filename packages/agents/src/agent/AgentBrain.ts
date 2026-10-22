@@ -1,7 +1,3 @@
-import type { AgentNode } from "../../data/agents"
-// TODO(#11): the last src/core -> src/integration import; delete once the orchestrator injects deps.
-import { zustandOrchestrationDeps } from "../../integration/orchestration/zustandDeps"
-import type { AgentWorkStatus } from "../../types"
 import { LLMError, toLLMError } from "../llm/errors"
 import type { LLMMessage } from "../llm/types"
 import {
@@ -12,6 +8,8 @@ import {
   MAX_INTENT_ATTEMPTS,
 } from "../orchestration/policy"
 import type { OrchestrationDeps, ProjectSnapshot } from "../orchestration/ports"
+import type { AgentWorkStatus } from "../project/types"
+import type { AgentNode } from "../team"
 import { buildContextMessage, buildSystemPrompt } from "./PromptBuilder"
 import { getToolDefinitions, type ParsedToolCall, parseToolCall, runToolCall } from "./ToolRegistry"
 import type { ToolContext } from "./tools/types"
@@ -57,10 +55,9 @@ export class AgentBrain {
   private readonly waiters = new Set<() => void>()
   private readonly unsubscribe: () => void
 
-  /** `dependencies` defaults to the Zustand wiring so AgentHost can keep calling `new AgentBrain(this)`. */
   constructor(
     private readonly host: BrainHost,
-    private readonly dependencies: OrchestrationDeps = zustandOrchestrationDeps,
+    private readonly dependencies: OrchestrationDeps,
   ) {
     this.unsubscribe = dependencies.project.subscribe((next, previous) =>
       this.onProjectChange(next, previous),

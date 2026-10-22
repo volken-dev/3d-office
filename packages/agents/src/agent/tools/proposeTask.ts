@@ -1,5 +1,5 @@
-import { getSubtreeIndices, getTeamRoster, isLeadAgent, isUserIndex } from "../../../data/agents"
 import { MAX_TASKS_PER_PROJECT } from "../../orchestration/policy"
+import { getAgentRoster, getSubtreeIndices, isLeadAgent, isUserIndex } from "../../team"
 import { fail, readString, type ToolSpec } from "./types"
 
 interface ProposeTaskArgs {
@@ -64,7 +64,7 @@ export const proposeTask: ToolSpec<ProposeTaskArgs> = {
     }
 
     const assignee = args.agentId ?? agent.index
-    const { agents } = getTeamRoster(team)
+    const { agents } = getAgentRoster(team)
     if (isUserIndex(team, assignee)) return fail("Tasks cannot be assigned to the user.")
     if (!agents.some((candidate) => candidate.index === assignee)) {
       return fail(
