@@ -27,9 +27,13 @@ export const ApiErrorSchema = z.object({
 })
 export type ApiError = z.infer<typeof ApiErrorSchema>
 
-/** Body of `GET /api/health`, the liveness probe. */
+/**
+ * Body of `GET /api/health`, the liveness probe. `llm` says which providers have server keys (never the keys), so the
+ * web app can tell "unreachable" from "not configured" without spending a model call.
+ */
 export const HealthResponseSchema = z.object({
   status: z.literal("ok"),
   time: z.string(),
+  llm: z.object({ configured: z.boolean(), fallback: z.boolean() }),
 })
 export type HealthResponse = z.infer<typeof HealthResponseSchema>

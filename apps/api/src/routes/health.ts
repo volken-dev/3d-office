@@ -4,5 +4,12 @@ import type { AppEnv } from "../env"
 
 /** Liveness probe: unauthenticated and unthrottled, so it must never touch the model provider. */
 export const health = new Hono<AppEnv>().get("/", (context) =>
-  context.json<HealthResponse>({ status: "ok", time: new Date().toISOString() }),
+  context.json<HealthResponse>({
+    status: "ok",
+    time: new Date().toISOString(),
+    llm: {
+      configured: Boolean(context.env?.ANTHROPIC_API_KEY),
+      fallback: Boolean(context.env?.OPENAI_API_KEY),
+    },
+  }),
 )
