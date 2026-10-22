@@ -15,6 +15,7 @@ import { VisualFlowNode } from './nodes/VisualFlowNode';
 import { DirectionalEdge } from './edges/DirectionalEdge';
 import { useFlowFocus } from './hooks/useFlowFocus';
 import { SystemDebugOverlay } from './SystemDebugOverlay';
+import { useShallow } from 'zustand/react/shallow';
 
 const nodeTypes: NodeTypes = {
   agent: VisualFlowNode,
@@ -62,8 +63,8 @@ const AgentPlaceholder = () => (
 // --- Main Content ---
 
 const VisualConfiguratorContent: React.FC = () => {
-  const { selectedAgentSetId, customSystems } = useTeamStore();
-  const { setViewMode, viewMode } = useCoreStore();
+  const { selectedAgentSetId, customSystems } = useTeamStore(useShallow((s) => ({ selectedAgentSetId: s.selectedAgentSetId, customSystems: s.customSystems })));
+  const { setViewMode, viewMode } = useCoreStore(useShallow((s) => ({ setViewMode: s.setViewMode, viewMode: s.viewMode })));
   const { fitView } = useReactFlow();
 
   const [configMode, setConfigMode] = useState<'view' | 'edit'>('view');

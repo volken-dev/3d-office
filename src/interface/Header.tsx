@@ -5,12 +5,13 @@ import { useCoreStore } from '../integration/store/coreStore';
 import { useUiStore } from '../integration/store/uiStore';
 import BYOKModal from './BYOKModal';
 import InfoModal from './InfoModal';
+import { useShallow } from 'zustand/react/shallow';
 
 const version = packageJson.version;
 
 const Header: React.FC = () => {
-  const { llmConfig, isBYOKOpen, setBYOKOpen } = useUiStore();
-  const { setViewMode } = useCoreStore();
+  const { llmConfig, isBYOKOpen, setBYOKOpen } = useUiStore(useShallow((s) => ({ llmConfig: s.llmConfig, isBYOKOpen: s.isBYOKOpen, setBYOKOpen: s.setBYOKOpen })));
+  const setViewMode = useCoreStore((s) => s.setViewMode);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const hasKey = !!llmConfig.apiKey;
 

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { useCoreStore } from './integration/store/coreStore';
 import { ActionLogPanel } from './interface/ActionLogPanel';
 import { FinalOutputModal } from './interface/FinalOutputModal';
@@ -12,16 +12,21 @@ import InspectorPanel from './interface/InspectorPanel';
 import { KanbanPanel } from './interface/KanbanPanel';
 import { OutputReviewModal } from './interface/OutputReviewModal';
 import SimulationView from './interface/SimulationView';
-import { VisualConfigurator } from './interface/VisualConfigurator/VisualConfigurator';
 import { SceneContext } from './simulation/SceneContext';
 import { SceneManager } from './simulation/SceneManager';
+
+// React Flow is only needed in design mode, so keep it out of the initial bundle
+const VisualConfigurator = lazy(() =>
+  import('./interface/VisualConfigurator/VisualConfigurator').then((m) => ({ default: m.VisualConfigurator }))
+);
+import { useShallow } from 'zustand/react/shallow';
 
 
 const App: React.FC = () => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const managerRef = useRef<SceneManager | null>(null);
   const [sceneManager, setSceneManager] = useState<SceneManager | null>(null);
-  const { isLogOpen, isKanbanOpen, setIsResizing, viewMode, setViewMode } = useCoreStore();
+  const { isLogOpen, isKanbanOpen, setIsResizing, viewMode, setViewMode, isResizing } = useCoreStore(useShallow((s) => ({ isLogOpen: s.isLogOpen, isKanbanOpen: s.isKanbanOpen, setIsResizing: s.setIsResizing, viewMode: s.viewMode, setViewMode: s.setViewMode, isResizing: s.isResizing })));
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [kanbanHeight, setKanbanHeight] = useState(220);
@@ -94,7 +99,7 @@ const App: React.FC = () => {
               {/* Resize Bar */}
               {isKanbanOpen && !isFullscreen && (
                 <div
-                  className={`h-2 hover:h-2 bg-transparent hover:bg-zinc-200 border-t border-black/5 transition-colors cursor-row-resize z-30 flex items-center justify-center group shrink-0 ${useCoreStore.getState().isResizing ? 'bg-zinc-300' : ''}`}
+                  className={`h-2 hover:h-2 bg-transparent hover:bg-zinc-200 border-t border-black/5 transition-colors cursor-row-resize z-30 flex items-center justify-center group shrink-0 ${isResizing ? 'bg-zinc-300' : ''}`}
                   onMouseDown={startResizing}
                 >
                   <div className="w-12 h-1 bg-zinc-300 rounded-full group-hover:bg-zinc-400" />
@@ -118,7 +123,9 @@ const App: React.FC = () => {
               className="w-full h-full bg-white rounded-2xl shadow-2xl border border-zinc-200/50 overflow-hidden flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-              <VisualConfigurator />
+              <Suspense fallback={null}>
+                <VisualConfigurator />
+              </Suspense>
             </div>
           </div>
         )}

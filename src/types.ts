@@ -15,12 +15,10 @@ export interface CharacterState {
   isThinking: boolean;
   instanceCount: number;
   selectedNpcIndex: number | null;
-  selectedPosition: { x: number; y: number } | null;
   hoveredNpcIndex: number | null;
   hoveredPoiId: string | null;
   hoveredPoiLabel: string | null;
   hoverPosition: { x: number; y: number } | null;
-  npcScreenPositions: Record<number, { x: number; y: number }>;
   isChatting: boolean;
   isTyping: boolean;
   chatMessages: ChatMessage[];
@@ -45,8 +43,7 @@ export interface CharacterState {
   setInspectorTab: (tab: 'info' | 'chat') => void;
   setInstanceCount: (count: number) => void;
   setSelectedNpc: (index: number | null) => void;
-  setSelectedPosition: (pos: { x: number; y: number } | null) => void;
-  setHoveredNpc: (index: number | null, pos: { x: number; y: number } | null) => void;
+  setHoveredNpc: (index: number | null) => void;
   setHoveredPoi: (id: string | null, label: string | null, pos: { x: number; y: number } | null) => void;
   setLlmConfig: (config: Partial<LLMConfig>) => void;
   setChatting: (isChatting: boolean) => void;

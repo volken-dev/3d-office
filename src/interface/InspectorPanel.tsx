@@ -11,15 +11,16 @@ import { Avatar } from './components/Avatar';
 import AgentStatusPanel from './AgentStatusPanel';
 import ChatPanel from './ChatPanel';
 import ProjectView from './ProjectView';
+import { useShallow } from 'zustand/react/shallow';
 
 interface InspectorPanelProps {
   isFloating?: boolean;
 }
 
 const InspectorPanel: React.FC<InspectorPanelProps> = ({ isFloating }) => {
-  const { selectedNpcIndex, isChatting } = useUiStore();
+  const { selectedNpcIndex, isChatting } = useUiStore(useShallow((s) => ({ selectedNpcIndex: s.selectedNpcIndex, isChatting: s.isChatting })));
   const scene = useSceneManager();
-  const { phase, setFinalOutputOpen, tasks } = useCoreStore();
+  const { phase, setFinalOutputOpen, tasks } = useCoreStore(useShallow((s) => ({ phase: s.phase, setFinalOutputOpen: s.setFinalOutputOpen, tasks: s.tasks })));
   const system = useActiveTeam();
   const agents = getAllCharacters(system);
   const { canChat, reason } = useChatAvailability(selectedNpcIndex);

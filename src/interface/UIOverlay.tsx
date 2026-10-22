@@ -3,33 +3,30 @@ import React, { useState } from 'react';
 import { getAgentSet, getAllAgents, getAllCharacters } from '../data/agents';
 import { useUiStore } from '../integration/store/uiStore';
 import InfoModal from './InfoModal';
+import { useAgentAnchor } from '../integration/screenPositions';
 
 import { MessageSquareWarning, PartyPopper, Siren } from 'lucide-react';
 import { Task, useCoreStore } from '../integration/store/coreStore';
 import { useTeamStore, useActiveTeam } from '../integration/store/teamStore';
 import { USER_COLOR, USER_COLOR_LIGHT, USER_COLOR_SOFT } from '../theme/brand';
+import { useShallow } from 'zustand/react/shallow';
 
 
 
 interface AlertBubbleProps {
   icon: React.ReactNode;
-  position: { x: number; y: number };
-  visible: boolean;
+  agentIndex: number;
   color?: string;
   onClick?: () => void;
 }
 
-const AlertBubble: React.FC<AlertBubbleProps> = ({ icon, position, visible, color = '#facc15', onClick }) => {
-  if (!visible) return null;
+const AlertBubble: React.FC<AlertBubbleProps> = ({ icon, agentIndex, color = '#facc15', onClick }) => {
+  const anchorRef = useAgentAnchor<HTMLDivElement>(agentIndex);
 
   return (
     <div
-      className={`absolute z-20 ${onClick ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'}`}
-      style={{
-        left: position.x,
-        top: position.y,
-        transform: 'translate(-50%, -100%) translateY(-10px)'
-      }}
+      ref={anchorRef}
+      className={`absolute left-0 top-0 z-20 will-change-transform ${onClick ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'}`}
       onClick={(e) => {
         if (onClick) {
           e.stopPropagation();
@@ -74,21 +71,56 @@ function getAgentPhaseLabel(
   return { text: fallback, className: 'text-white/70' };
 }
 
+interface AgentLabelBubbleProps {
+  agent: { index: number; name: string; color: string };
+  isUser: boolean;
+  isProjectReady: boolean;
+  label: PhaseLabel;
+}
+
+/** Name + status pill that follows a character around the scene. */
+const AgentLabelBubble: React.FC<AgentLabelBubbleProps> = ({ agent, isUser, isProjectReady, label }) => {
+  const anchorRef = useAgentAnchor<HTMLDivElement>(agent.index);
+
+  return (
+    <div ref={anchorRef} className="absolute left-0 top-0 z-25 pointer-events-none will-change-transform">
+      <div className="bg-darkDelegation/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 shadow-xl flex items-center gap-2 whitespace-nowrap animate-in fade-in zoom-in-95 duration-200">
+        <div
+          className="w-2 h-2 rounded-full shrink-0"
+          style={{ backgroundColor: agent.color }}
+        />
+        <div className="flex items-center gap-1.5">
+          {isUser ? (
+            <span className="text-[10px] font-black uppercase tracking-widest text-white">{agent.name} (You)</span>
+          ) : isProjectReady ? (
+            <span className={`text-[10px] font-black uppercase tracking-widest ${label.className}`}>
+              {label.text}
+            </span>
+          ) : (
+            <>
+              <span className="text-[10px] font-black uppercase tracking-widest text-white">
+                {agent.name}
+              </span>
+              {label.text && (
+                <>
+                  <span className="text-[10px] font-medium uppercase tracking-widest text-white/40">·</span>
+                  <span className={`text-[10px] font-bold uppercase tracking-widest ${label.className}`}>
+                    {label.text}
+                  </span>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const UIOverlay: React.FC = () => {
-  const {
-    selectedNpcIndex,
-    selectedPosition,
-    hoveredNpcIndex,
-    hoveredPoiLabel,
-    hoverPosition,
-    npcScreenPositions,
-    setSelectedNpc,
-  } = useUiStore();
+  const { selectedNpcIndex, hoveredNpcIndex, hoveredPoiLabel, hoverPosition, setSelectedNpc } = useUiStore(useShallow((s) => ({ selectedNpcIndex: s.selectedNpcIndex, hoveredNpcIndex: s.hoveredNpcIndex, hoveredPoiLabel: s.hoveredPoiLabel, hoverPosition: s.hoverPosition, setSelectedNpc: s.setSelectedNpc })));
   const [isHelpOpen, setHelpOpen] = useState(false);
-  const {
-    tasks,
-    phase,
-  } = useCoreStore();
+  const { tasks, phase } = useCoreStore(useShallow((s) => ({ tasks: s.tasks, phase: s.phase })));
   const system = useActiveTeam();
   const npcAgents = getAllAgents(system);
   const allPossibleAgents = getAllCharacters(system);
@@ -101,9 +133,6 @@ const UIOverlay: React.FC = () => {
     <div className="absolute inset-0 pointer-events-none z-10 overflow-hidden select-none">
       {/* 1. Parallel Alert Bubbles System */}
       {npcAgents.map((agent) => {
-        const pos = npcScreenPositions[agent.index];
-        if (!pos) return null;
-
         // Condition: Alert disappears when hovered
         const isCurrentlyHovered = hoveredNpcIndex === agent.index || selectedNpcIndex === agent.index;
         if (isCurrentlyHovered) return null;
@@ -140,8 +169,7 @@ const UIOverlay: React.FC = () => {
           <AlertBubble
             key={`alert-${agent.index}`}
             icon={alertIcon}
-            position={pos}
-            visible={true}
+            agentIndex={agent.index}
             color={alertColor}
             onClick={() => setSelectedNpc(agent.index)}
           />
@@ -150,103 +178,18 @@ const UIOverlay: React.FC = () => {
 
       {/* 2. Selection/Hover/Project Ready Bubble (Detailed) */}
       {(() => {
-        // Priority 1: Selected Agent
-        if (selectedAgent && selectedPosition) {
-          const isLeadAgentProjectReady = selectedAgent.index === system.leadAgent.index && phase === 'done';
-          const label = getAgentPhaseLabel(selectedAgent.index, system.leadAgent.index, tasks, phase, '');
-
-          return (
-            <div
-              className="absolute z-25 pointer-events-none transition-all duration-75 ease-out"
-              style={{
-                left: selectedPosition.x,
-                top: selectedPosition.y,
-                transform: 'translate(-50%, -100%) translateY(-10px)'
-              }}
-            >
-              <div className="bg-darkDelegation/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 shadow-xl flex items-center gap-2 whitespace-nowrap animate-in fade-in zoom-in-95 duration-200">
-                <div
-                  className="w-2 h-2 rounded-full shrink-0"
-                  style={{ backgroundColor: selectedAgent.color }}
-                />
-                <div className="flex items-center gap-1.5">
-                  {selectedAgent.index === system.user.index ? (
-
-                    <span className="text-[10px] font-black uppercase tracking-widest text-white">{selectedAgent.name} (You)</span>
-                  ) : isLeadAgentProjectReady ? (
-                    <span className={`text-[10px] font-black uppercase tracking-widest ${label.className}`}>
-                      {label.text}
-                    </span>
-                  ) : (
-                    <>
-                      <span className="text-[10px] font-black uppercase tracking-widest text-white">
-                        {selectedAgent.name}
-                      </span>
-                      {label.text && (
-                        <>
-                          <span className="text-[10px] font-medium uppercase tracking-widest text-white/40">·</span>
-                          <span className={`text-[10px] font-bold uppercase tracking-widest ${label.className}`}>
-                            {label.text}
-                          </span>
-                        </>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        }
-
-        // Priority 2: Hovered Agent with dynamic phase label (only if not selected)
-        if (hoveredAgent && hoverPosition && hoveredNpcIndex !== selectedNpcIndex) {
-          const isLeadAgentProjectReady = hoveredAgent.index === system.leadAgent.index && phase === 'done';
-          const label = getAgentPhaseLabel(hoveredAgent.index, system.leadAgent.index, tasks, phase, '');
-
-          return (
-            <div
-              className="absolute z-25 pointer-events-none transition-all duration-75 ease-out"
-              style={{
-                left: hoverPosition.x,
-                top: hoverPosition.y,
-                transform: 'translate(-50%, -100%) translateY(-10px)'
-              }}
-            >
-              <div className="bg-darkDelegation/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 shadow-xl flex items-center gap-2 whitespace-nowrap animate-in fade-in zoom-in-95 duration-200">
-                <div
-                  className="w-2 h-2 rounded-full shrink-0"
-                  style={{ backgroundColor: hoveredAgent.color }}
-                />
-                <div className="flex items-center gap-1.5">
-                  {hoveredAgent.index === system.user.index ? (
-
-                    <span className="text-[10px] font-black uppercase tracking-widest text-white">{hoveredAgent.name} (You)</span>
-                  ) : isLeadAgentProjectReady ? (
-                    <span className={`text-[10px] font-black uppercase tracking-widest ${label.className}`}>
-                      {label.text}
-                    </span>
-                  ) : (
-                    <>
-                      <span className="text-[10px] font-black uppercase tracking-widest text-white">
-                        {hoveredAgent.name}
-                      </span>
-                      {label.text && (
-                        <>
-                          <span className="text-[10px] font-medium uppercase tracking-widest text-white/40">·</span>
-                          <span className={`text-[10px] font-bold uppercase tracking-widest ${label.className}`}>
-                            {label.text}
-                          </span>
-                        </>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        }
-
-        return null;
+        // Selected agent takes priority over hovered agent
+        const agent = selectedAgent ?? (hoveredNpcIndex !== selectedNpcIndex ? hoveredAgent : null);
+        if (!agent) return null;
+        return (
+          <AgentLabelBubble
+            key={agent.index}
+            agent={agent}
+            isUser={agent.index === system.user.index}
+            isProjectReady={agent.index === system.leadAgent.index && phase === 'done'}
+            label={getAgentPhaseLabel(agent.index, system.leadAgent.index, tasks, phase, '')}
+          />
+        );
       })()}
 
       {/* POI Hover Bubble */}

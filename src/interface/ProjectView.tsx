@@ -9,6 +9,7 @@ import { useSceneManager } from '../simulation/SceneContext';
 import { USER_COLOR } from '../theme/brand';
 import ResetModal from './ResetModal';
 import PricingModal from './PricingModal';
+import { useShallow } from 'zustand/react/shallow';
 
 export function formatTokens(num: number): string {
   if (num >= 1000000) {
@@ -21,18 +22,20 @@ export function formatTokens(num: number): string {
 }
 
 const ProjectView: React.FC = () => {
-  const {
-    userBrief,
-    phase,
-    actionLog,
-    resetProject,
-  } = useCoreStore();
+  const { userBrief, phase, hasLogs, resetProject, totalEstimatedCost, totalTokenUsage, agentTokenUsage, agentEstimatedCost } = useCoreStore(useShallow((s) => ({
+    userBrief: s.userBrief,
+    phase: s.phase,
+    hasLogs: s.actionLog.length > 0,
+    resetProject: s.resetProject,
+    totalEstimatedCost: s.totalEstimatedCost,
+    totalTokenUsage: s.totalTokenUsage,
+    agentTokenUsage: s.agentTokenUsage,
+    agentEstimatedCost: s.agentEstimatedCost,
+  })));
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
   const activeTeam = useActiveTeam();
   const scene = useSceneManager();
-
-  const hasLogs = actionLog.length > 0;
 
   const handleResetConfirm = () => {
     // 1. Reset the 3D scene (teleport agents, clear chat)
@@ -112,7 +115,7 @@ const ProjectView: React.FC = () => {
             className="flex items-center gap-2 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 hover:border-emerald-200 rounded-lg transition-all active:scale-95 group ml-4 cursor-pointer"
           >
             <span className="text-[10px] font-black uppercase tracking-tight text-emerald-600">
-              Total Est. ${useCoreStore.getState().totalEstimatedCost.toFixed(3)}
+              Total Est. ${totalEstimatedCost.toFixed(3)}
             </span>
             <Info size={11} className="text-emerald-500 group-hover:text-emerald-600" />
           </button>
@@ -121,18 +124,18 @@ const ProjectView: React.FC = () => {
         <div className="bg-zinc-50 rounded-xl p-5 border border-zinc-100 mb-6">
           <div className="flex flex-col gap-1 mb-6">
             <span className="text-4xl font-mono font-black text-darkDelegation tracking-tighter">
-              {formatTokens(useCoreStore.getState().totalTokenUsage.totalTokens)}
+              {formatTokens(totalTokenUsage.totalTokens)}
             </span>
           </div>
           <div className="flex items-center gap-1.5 text-[11px] font-bold font-mono">
-            <span className="text-zinc-700">{formatTokens(useCoreStore.getState().totalTokenUsage.promptTokens)} <span className="text-zinc-400 font-medium">input</span></span>
+            <span className="text-zinc-700">{formatTokens(totalTokenUsage.promptTokens)} <span className="text-zinc-400 font-medium">input</span></span>
             <span className="text-zinc-300">+</span>
-            <span className="text-zinc-700">{formatTokens(useCoreStore.getState().totalTokenUsage.completionTokens)} <span className="text-zinc-400 font-medium">output</span></span>
+            <span className="text-zinc-700">{formatTokens(totalTokenUsage.completionTokens)} <span className="text-zinc-400 font-medium">output</span></span>
           </div>
         </div>
 
         <div className="space-y-1">
-          {Object.entries(useCoreStore.getState().agentTokenUsage)
+          {Object.entries(agentTokenUsage)
             .sort(([, a], [, b]) => b.totalTokens - a.totalTokens)
             .map(([idx, usage]) => {
               const agentIndex = parseInt(idx);
@@ -153,9 +156,9 @@ const ProjectView: React.FC = () => {
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <div className="flex items-center gap-2">
-                      {useCoreStore.getState().agentEstimatedCost[agentIndex] > 0 && (
+                      {agentEstimatedCost[agentIndex] > 0 && (
                         <span className="text-[9px] font-mono font-bold text-emerald-600/70">
-                          ${useCoreStore.getState().agentEstimatedCost[agentIndex].toFixed(4)}
+                          ${agentEstimatedCost[agentIndex].toFixed(4)}
                         </span>
                       )}
                       <span className="text-[11px] font-mono font-black text-darkDelegation">

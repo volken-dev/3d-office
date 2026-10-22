@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { AGENTIC_SETS, AgenticSystem, DEFAULT_AGENTIC_SET_ID, getAgentSet } from '../../data/agents';
+import { useShallow } from 'zustand/react/shallow';
 
 /** Built-in team ids from before the switch to software-development teams. */
 const LEGACY_TEAM_IDS = ['unboring-net', 'photo-studio', 'music-studio', 'film-studio', 'strategy-coach', 'pr-agency'];
@@ -93,6 +94,6 @@ export function getActiveAgentSet(): AgentSet {
 
 /** React hook for accessing the currently active team. */
 export function useActiveTeam(): AgentSet {
-  const { selectedAgentSetId, customSystems } = useTeamStore();
+  const { selectedAgentSetId, customSystems } = useTeamStore(useShallow((s) => ({ selectedAgentSetId: s.selectedAgentSetId, customSystems: s.customSystems })));
   return getAgentSet(selectedAgentSetId, customSystems);
 }

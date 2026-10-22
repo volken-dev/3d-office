@@ -8,6 +8,7 @@ import { getBrightness, getDarkenedColor } from './colorUtils';
 import { ColorPicker } from './ColorPicker';
 import { InfoBubble } from '../components/InfoBubble';
 import { TeamOutputBadge } from '../components/TeamOutputBadge';
+import { useShallow } from 'zustand/react/shallow';
 
 interface TeamCardProps {
   system: AgenticSystem;
@@ -28,7 +29,7 @@ export const TeamCard: React.FC<TeamCardProps> = ({
   onSelectTeam,
   onModeChange,
 }) => {
-  const { setActiveTeam, updateSystem, deleteCustomSystem, selectedAgentSetId } = useTeamStore();
+  const { setActiveTeam, updateSystem, deleteCustomSystem, selectedAgentSetId } = useTeamStore(useShallow((s) => ({ setActiveTeam: s.setActiveTeam, updateSystem: s.updateSystem, deleteCustomSystem: s.deleteCustomSystem, selectedAgentSetId: s.selectedAgentSetId })));
   const scene = useSceneManager();
   const colorInputRef = useRef<HTMLInputElement>(null);
 

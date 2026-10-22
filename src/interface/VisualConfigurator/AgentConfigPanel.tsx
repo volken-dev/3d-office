@@ -27,7 +27,7 @@ export const AgentConfigPanel: React.FC<AgentConfigPanelProps> = ({
   mode = 'edit'
 }) => {
   const isView = mode === 'view';
-  const { saveCustomSystem } = useTeamStore();
+  const saveCustomSystem = useTeamStore((s) => s.saveCustomSystem);
 
   const [editData, setEditData] = useState<AgentNode>(agent);
   const isUser = agent.index === 0;

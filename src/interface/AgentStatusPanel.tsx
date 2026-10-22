@@ -11,7 +11,8 @@ interface AgentStatusPanelProps {
 }
 
 const AgentStatusPanel: React.FC<AgentStatusPanelProps> = ({ agentIndex }) => {
-  const { tasks } = useCoreStore();
+  const tasks = useCoreStore((s) => s.tasks);
+  const agentUsage = useCoreStore((s) => s.agentTokenUsage[agentIndex]);
   const system = useActiveTeam();
   const agents = getAllAgents(system);
 
@@ -22,7 +23,7 @@ const AgentStatusPanel: React.FC<AgentStatusPanelProps> = ({ agentIndex }) => {
     (t) => t.assignedAgentId === agentIndex && t.status === 'in_progress'
   ) ?? null;
 
-  const usage = useCoreStore.getState().agentTokenUsage[agentIndex] || { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  const usage = agentUsage || { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
   return (
     <div className="flex flex-col h-full p-6">

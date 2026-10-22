@@ -6,6 +6,7 @@ import { useCoreStore, type Task, type TaskStatus } from '../integration/store/c
 import { getActiveAgentSet, useTeamStore } from '../integration/store/teamStore'
 import { useUiStore } from '../integration/store/uiStore'
 import DeleteTaskModal from './DeleteTaskModal'
+import { useShallow } from 'zustand/react/shallow'
 
 const COLUMNS: { status: TaskStatus; label: string }[] = [
   { status: 'scheduled', label: 'Scheduled' },
@@ -47,8 +48,8 @@ function renderAgentTag(agentIndex: number) {
 function TaskCard({ task }: { task: Task; key?: string }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
-  const { removeTask } = useCoreStore()
-  const { setSelectedNpc, setActiveAuditTaskId } = useUiStore()
+  const removeTask = useCoreStore((s) => s.removeTask)
+  const { setSelectedNpc, setActiveAuditTaskId } = useUiStore(useShallow((s) => ({ setSelectedNpc: s.setSelectedNpc, setActiveAuditTaskId: s.setActiveAuditTaskId })))
 
   // For visual representation, we show both the owner and any consultation target
   const effectiveAgentIds = [task.assignedAgentId];
@@ -145,7 +146,7 @@ function TaskCard({ task }: { task: Task; key?: string }) {
 }
 
 export function KanbanPanel({ height = 320 }: KanbanPanelProps) {
-  const { tasks } = useCoreStore()
+  const tasks = useCoreStore((s) => s.tasks)
 
   return (
     <div

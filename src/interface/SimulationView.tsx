@@ -1,14 +1,16 @@
 import { Maximize2, Minimize2, Eye } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import { useCoreStore } from '../integration/store/coreStore';
 import { useTeamStore, useActiveTeam } from '../integration/store/teamStore';
 import { useUiStore } from '../integration/store/uiStore';
 import InspectorPanel from './InspectorPanel';
 import UIOverlay from './UIOverlay';
-import TeamFlowModal from './TeamFlowModal';
 import { AuditModal } from './AuditModal';
 import { TeamBadge } from './components/TeamBadge';
 import { TeamOutputBadge } from './components/TeamOutputBadge';
+import { useShallow } from 'zustand/react/shallow';
+
+const TeamFlowModal = lazy(() => import('./TeamFlowModal'));
 
 interface SimulationViewProps {
   canvasRef: React.RefObject<HTMLDivElement>;
@@ -17,7 +19,7 @@ interface SimulationViewProps {
 }
 
 const SimulationView: React.FC<SimulationViewProps> = ({ canvasRef, isFullscreen, setIsFullscreen }) => {
-  const { selectedNpcIndex, activeAuditTaskId, setActiveAuditTaskId } = useUiStore();
+  const { selectedNpcIndex, activeAuditTaskId, setActiveAuditTaskId } = useUiStore(useShallow((s) => ({ selectedNpcIndex: s.selectedNpcIndex, activeAuditTaskId: s.activeAuditTaskId, setActiveAuditTaskId: s.setActiveAuditTaskId })));
   const activeSet = useActiveTeam();
   const [isFlowModalOpen, setIsFlowModalOpen] = useState(false);
 
@@ -69,11 +71,13 @@ const SimulationView: React.FC<SimulationViewProps> = ({ canvasRef, isFullscreen
       </div>
 
       {isFlowModalOpen && (
-        <TeamFlowModal
-          isOpen={isFlowModalOpen}
-          onClose={() => setIsFlowModalOpen(false)}
-          system={activeSet}
-        />
+        <Suspense fallback={null}>
+          <TeamFlowModal
+            isOpen={isFlowModalOpen}
+            onClose={() => setIsFlowModalOpen(false)}
+            system={activeSet}
+          />
+        </Suspense>
       )}
 
       {activeAuditTaskId && (

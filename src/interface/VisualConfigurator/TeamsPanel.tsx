@@ -4,6 +4,7 @@ import { AGENTIC_SETS, AgenticSystem } from '../../data/agents';
 import { DEFAULT_MODEL } from '../../core/llm/constants';
 import { useTeamStore } from '../../integration/store/teamStore';
 import { TeamCard } from './TeamCard';
+import { useShallow } from 'zustand/react/shallow';
 
 interface TeamsPanelProps {
   onSelectTeam: (id: string) => void;
@@ -13,7 +14,7 @@ interface TeamsPanelProps {
 }
 
 export const TeamsPanel: React.FC<TeamsPanelProps> = ({ onSelectTeam, selectedTeamId, onModeChange, mode }) => {
-  const { customSystems, selectedAgentSetId, saveCustomSystem } = useTeamStore();
+  const { customSystems, selectedAgentSetId, saveCustomSystem } = useTeamStore(useShallow((s) => ({ customSystems: s.customSystems, selectedAgentSetId: s.selectedAgentSetId, saveCustomSystem: s.saveCustomSystem })));
 
   const allSystems = useMemo(() => {
     const combined = [...customSystems, ...AGENTIC_SETS];

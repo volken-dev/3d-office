@@ -11,15 +11,10 @@ import { useSceneManager } from '../simulation/SceneContext';
 import { Avatar } from './components/Avatar';
 import { AuditModal } from './AuditModal';
 import { FileSearch } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 
 const ChatPanel: React.FC = () => {
-  const {
-    isChatting,
-    isThinking,
-    selectedNpcIndex,
-    setIsTyping,
-    setActiveAuditTaskId
-  } = useUiStore();
+  const { isChatting, isThinking, selectedNpcIndex, setIsTyping, setActiveAuditTaskId } = useUiStore(useShallow((s) => ({ isChatting: s.isChatting, isThinking: s.isThinking, selectedNpcIndex: s.selectedNpcIndex, setIsTyping: s.setIsTyping, setActiveAuditTaskId: s.setActiveAuditTaskId })));
   const scene = useSceneManager();
   const activeTeam = useActiveTeam();
   const agents = getAllAgents(activeTeam);
@@ -34,10 +29,9 @@ const ChatPanel: React.FC = () => {
 
   // Combine store messages with project histories if needed,
   // but unified useCoreStore is the source of truth for history.
-  const coreStore = useCoreStore();
-  const chatMessages = selectedNpcIndex !== null
-    ? (coreStore.agentHistories[selectedNpcIndex] || [])
-    : [];
+  const agentHistory = useCoreStore((s) => selectedNpcIndex !== null ? s.agentHistories[selectedNpcIndex] : undefined);
+  const tasks = useCoreStore((s) => s.tasks);
+  const chatMessages = agentHistory || [];
 
 
   useEffect(() => {
@@ -154,13 +148,13 @@ const ChatPanel: React.FC = () => {
                               <FileSearch size={18} />
                             </div>
                             <span className="text-[10px] font-black uppercase tracking-widest text-zinc-600">
-                              {coreStore.tasks.find(t => t.id === msg.metadata.reviewTaskId)?.status === 'on_hold'
+                              {tasks.find(t => t.id === msg.metadata.reviewTaskId)?.status === 'on_hold'
                                 ? 'Review Requested'
                                 : 'Review Processed'}
                             </span>
                           </div>
 
-                          {coreStore.tasks.find(t => t.id === msg.metadata.reviewTaskId)?.status === 'on_hold' && (
+                          {tasks.find(t => t.id === msg.metadata.reviewTaskId)?.status === 'on_hold' && (
                             <button
                               onClick={() => setActiveAuditTaskId(msg.metadata.reviewTaskId)}
                               className="flex-1 min-w-[120px] px-4 py-2 bg-darkDelegation text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-black active:scale-95 transition-all shadow-sm whitespace-nowrap"

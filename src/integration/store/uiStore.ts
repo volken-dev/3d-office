@@ -10,12 +10,10 @@ export const useUiStore = create<CharacterState>()(
     instanceCount: getAllAgents(getActiveAgentSet()).length + 1, // +1 for user
 
     selectedNpcIndex: null,
-    selectedPosition: null,
     hoveredNpcIndex: null,
     hoveredPoiId: null,
     hoveredPoiLabel: null,
     hoverPosition: null,
-    npcScreenPositions: {},
     isChatting: false,
     isTyping: false,
     chatMessages: [],
@@ -49,23 +47,17 @@ export const useUiStore = create<CharacterState>()(
     setInspectorTab: (tab: 'info' | 'chat') => set({ inspectorTab: tab }),
     setInstanceCount: (count: number) => set({ instanceCount: count }),
 
-    setSelectedNpc: (index: number | null) => set({
-      selectedNpcIndex: index,
-      selectedPosition: null,
-    }),
-    setSelectedPosition: (pos: { x: number; y: number } | null) => set({ selectedPosition: pos }),
-    setHoveredNpc: (index: number | null, pos: { x: number; y: number } | null) => set({
-      hoveredNpcIndex: index,
-      hoverPosition: pos,
-      hoveredPoiId: null,
-      hoveredPoiLabel: null,
-    }),
-    setHoveredPoi: (id: string | null, label: string | null, pos: { x: number; y: number } | null) => set({
-      hoveredPoiId: id,
-      hoveredPoiLabel: label,
-      hoverPosition: pos,
-      hoveredNpcIndex: null,
-    }),
+    setSelectedNpc: (index: number | null) => set({ selectedNpcIndex: index }),
+    // Hover handlers fire on every pointer move; skip no-op updates so subscribers don't re-render.
+    // Agent bubbles track the character via screenPositions, so only POIs need a stored position.
+    setHoveredNpc: (index: number | null) => set((s) =>
+      s.hoveredNpcIndex === index && s.hoveredPoiId === null
+        ? s
+        : { hoveredNpcIndex: index, hoverPosition: null, hoveredPoiId: null, hoveredPoiLabel: null }),
+    setHoveredPoi: (id: string | null, label: string | null, pos: { x: number; y: number } | null) => set((s) =>
+      s.hoveredPoiId === id && s.hoveredNpcIndex === null
+        ? s
+        : { hoveredPoiId: id, hoveredPoiLabel: label, hoverPosition: pos, hoveredNpcIndex: null }),
     setLlmConfig: (config) => set((s) => ({ llmConfig: { ...s.llmConfig, ...config } })),
     setChatting: (isChatting: boolean) => set((s) => ({ 
       isChatting, 

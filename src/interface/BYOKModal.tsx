@@ -2,6 +2,7 @@ import { Eye, EyeOff, Trash2, X } from 'lucide-react';
 import React, { useState } from 'react';
 import { useUiStore } from '../integration/store/uiStore';
 import { DEFAULT_MODEL } from '../core/llm/constants';
+import { useShallow } from 'zustand/react/shallow';
 
 interface BYOKModalProps {
   onClose: () => void;
@@ -10,7 +11,7 @@ interface BYOKModalProps {
 const STORAGE_KEY = 'byok-config';
 
 const BYOKModal: React.FC<BYOKModalProps> = ({ onClose }) => {
-  const { llmConfig, setLlmConfig, byokError } = useUiStore();
+  const { llmConfig, setLlmConfig, byokError } = useUiStore(useShallow((s) => ({ llmConfig: s.llmConfig, setLlmConfig: s.setLlmConfig, byokError: s.byokError })));
 
   const [apiKey, setApiKey] = useState<string>(llmConfig.apiKey || '');
   const [showKey, setShowKey] = useState(false);

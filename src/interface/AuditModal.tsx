@@ -9,6 +9,7 @@ import { useActiveTeam } from '../integration/store/teamStore';
 import { Avatar } from './components/Avatar';
 import { InfoBubble } from './components/InfoBubble';
 import { USER_COLOR, USER_COLOR_LIGHT, USER_COLOR_SOFT } from '../theme/brand';
+import { useShallow } from 'zustand/react/shallow';
 
 interface AuditModalProps {
   taskId: string;
@@ -18,8 +19,8 @@ interface AuditModalProps {
 }
 
 export const AuditModal: React.FC<AuditModalProps> = ({ taskId, isOpen, onClose, viewOnly }) => {
-  const { tasks, approveTask, rejectTask } = useCoreStore();
-  const { setSelectedNpc, setChatting } = useUiStore();
+  const { tasks, approveTask, rejectTask } = useCoreStore(useShallow((s) => ({ tasks: s.tasks, approveTask: s.approveTask, rejectTask: s.rejectTask })));
+  const { setSelectedNpc, setChatting } = useUiStore(useShallow((s) => ({ setSelectedNpc: s.setSelectedNpc, setChatting: s.setChatting })));
   const activeTeam = useActiveTeam();
   const agents = getAllAgents(activeTeam);
   const [feedback, setFeedback] = useState('');

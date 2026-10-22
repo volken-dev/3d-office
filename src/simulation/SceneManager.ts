@@ -16,6 +16,9 @@ import { getActiveAgentSet, useTeamStore } from '../integration/store/teamStore'
 import { useUiStore } from '../integration/store/uiStore';
 import { AgentBehavior, ChatMessage } from '../types';
 import { BUBBLE_Y_OFFSET } from './constants';
+import { clearScreenPositions, notifyScreenPositions, setScreenPosition } from '../integration/screenPositions';
+
+const MAX_FRAME_DELTA = 0.1;
 
 /**
  * SceneManager — Visual Integration Layer.
@@ -44,9 +47,15 @@ export class SceneManager {
   private isDisposed = false;
   private container: HTMLElement;
   private resizeObserver: ResizeObserver;
+  private viewportWidth: number;
+  private viewportHeight: number;
+  private isSyncing = false;
+  private pendingSyncDelta = 0;
 
   constructor(container: HTMLElement) {
     this.container = container;
+    this.viewportWidth = container.clientWidth;
+    this.viewportHeight = container.clientHeight;
     this.engine = new Engine(container);
     this.stage = new Stage(this.engine.renderer.domElement);
     this.characterManager = new CharacterManager(this.stage.scene);
@@ -123,7 +132,7 @@ export class SceneManager {
       () => this.controller!.getCPUPositions(), () => this.controller!.getCount(),
       (idx) => { if (useUiStore.getState().isChatting) useUiStore.getState().setChatting(false); this.selectedIndex = idx !== activeSet.user.index ? idx : null; useUiStore.getState().setSelectedNpc(this.selectedIndex); },
       (x, z) => this.driverManager?.getPlayerDriver().onFloorClick(x, z),
-      (idx, pos) => useUiStore.getState().setHoveredNpc(idx, pos),
+      (idx) => useUiStore.getState().setHoveredNpc(idx),
       () => this.poiManager.getAllPois(),
       (id, label, pos) => useUiStore.getState().setHoveredPoi(id, label, pos),
       (id) => this.driverManager?.getPlayerDriver().onPoiClick(id),
@@ -318,37 +327,45 @@ export class SceneManager {
   private onResize() { 
     const w = this.container.clientWidth, h = this.container.clientHeight;
     if (w === 0 || h === 0) return;
+    this.viewportWidth = w; this.viewportHeight = h;
     this.stage.onResize(w, h);
     if (!useCoreStore.getState().isResizing) this.engine.onResize(w, h);
   }
 
   private animate() {
-    this.engine.timer.update(); const delta = this.engine.timer.getDelta();
+    this.engine.timer.update();
+    // Clamp so a long pause (hidden tab, design mode) doesn't teleport characters through walls
+    const delta = Math.min(this.engine.timer.getDelta(), MAX_FRAME_DELTA);
+    if (useCoreStore.getState().viewMode === 'design') return; // canvas is hidden behind the editor
+
+    this.engine.trackFrame(delta);
     this.stage.update(); this.controller?.update(delta, this.engine.renderer);
-    this.controller?.syncFromGPU(this.engine.renderer).then((pos) => {
-      if (!pos || !this.controller) return;
-      this.controller.updatePaths(pos); this.driverManager?.update(pos, delta);
-      this.updateTransparency(pos, delta);
-    });
+
+    // GPU→CPU readback is async; never queue a new one while the previous is still in flight
+    this.pendingSyncDelta += delta;
+    if (this.controller && !this.isSyncing) {
+      this.isSyncing = true;
+      const syncDelta = this.pendingSyncDelta;
+      this.pendingSyncDelta = 0;
+      this.controller.syncFromGPU(this.engine.renderer).then((pos) => {
+        if (!pos || !this.controller) return;
+        this.controller.updatePaths(pos); this.driverManager?.update(pos, syncDelta);
+        this.updateTransparency(pos, syncDelta);
+      }).finally(() => { this.isSyncing = false; });
+    }
+
     const player = getActiveAgentSet().user.index;
     this.stage.setFollowTarget(this.controller?.getCPUPosition(this.selectedIndex ?? player) ?? null);
-    const { selectedNpcIndex, setSelectedPosition, selectedPosition } = useUiStore.getState();
-    const npcScreenPositions: Record<number, { x: number; y: number }> = {};
-    const rect = this.container.getBoundingClientRect();
     if (this.controller) {
+      const camera = this.stage.camera;
       for (let i = 0; i < this.controller.getCount(); i++) {
         const p = this.controller.getCPUPosition(i);
-        if (p) {
-          const s = p.clone(); s.y += BUBBLE_Y_OFFSET; s.project(this.stage.camera);
-          npcScreenPositions[i] = { x: (s.x * 0.5 + 0.5) * rect.width, y: (s.y * -0.5 + 0.5) * rect.height };
-        }
+        if (!p) continue;
+        p.y += BUBBLE_Y_OFFSET; p.project(camera);
+        setScreenPosition(i, (p.x * 0.5 + 0.5) * this.viewportWidth, (p.y * -0.5 + 0.5) * this.viewportHeight);
       }
-      useUiStore.setState({ npcScreenPositions });
+      notifyScreenPositions();
     }
-    if (selectedNpcIndex !== null && npcScreenPositions[selectedNpcIndex]) {
-      const p = npcScreenPositions[selectedNpcIndex];
-      if (Math.abs(p.x - (selectedPosition?.x ?? 0)) > 0.5 || Math.abs(p.y - (selectedPosition?.y ?? 0)) > 0.5) setSelectedPosition(p);
-    } else if (selectedPosition !== null) setSelectedPosition(null);
     this.stage.setChatMode(useUiStore.getState().isChatting, this.controller?.getAgentState(player) === AgentBehavior.GOTO);
     this.engine.render(this.stage.scene, this.stage.camera);
   }
@@ -378,5 +395,5 @@ export class SceneManager {
     this.stage.setChatMode(false, false);
   }
 
-  public dispose() { this.isDisposed = true; this.resizeObserver.disconnect(); this.unsubs.forEach(u => u()); this.driverManager?.dispose(); this.engine.dispose(); }
+  public dispose() { this.isDisposed = true; clearScreenPositions(); this.resizeObserver.disconnect(); this.unsubs.forEach(u => u()); this.driverManager?.dispose(); this.engine.dispose(); }
 }

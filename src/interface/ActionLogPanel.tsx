@@ -5,6 +5,7 @@ import { USER_COLOR, USER_COLOR_LIGHT } from '../theme/brand'
 import { DebugLogEntry, useCoreStore } from '../integration/store/coreStore'
 import { useTeamStore, useActiveTeam } from '../integration/store/teamStore'
 import { formatTokens } from './ProjectView'
+import { useShallow } from 'zustand/react/shallow'
 
 function formatTime(ts: number): string {
     return new Date(ts).toLocaleTimeString('en-GB', {
@@ -325,7 +326,7 @@ ${JSON.stringify(entry.raw, null, 2)}
 };
 
 export function ActionLogPanel() {
-    const { setLogOpen, actionLog, debugLog, logFilterAgentIndex } = useCoreStore()
+    const { setLogOpen, actionLog, debugLog, logFilterAgentIndex } = useCoreStore(useShallow((s) => ({ setLogOpen: s.setLogOpen, actionLog: s.actionLog, debugLog: s.debugLog, logFilterAgentIndex: s.logFilterAgentIndex })))
     const activeTeam = useActiveTeam();
     const agents = getAllAgents(activeTeam);
     const [activeTab, setActiveTab] = useState<'activity' | 'technical'>('technical')
