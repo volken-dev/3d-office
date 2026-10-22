@@ -5,17 +5,20 @@
   "type": "module",
   "exports": {
     "./api": "./src/api.ts",
-    "./llm": "./src/llm.ts"
+    "./llm": "./src/llm.ts",
+    "./llm-messages": "./src/llm-messages.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test",
     "lint": "biome check .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "test": "bun test"
   },
   "dependencies": {
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@types/bun": "^1.4.3",
     "typescript": "~5.9.3"
   }
 }
