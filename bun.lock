@@ -13,8 +13,8 @@
       "name": "api",
       "version": "0.2.0",
       "dependencies": {
-        "@google/genai": "1.48.0",
         "@hono/zod-validator": "^0.9.1",
+        "@the-delegation/llm": "workspace:*",
         "@the-delegation/shared": "workspace:*",
         "hono": "^4.13.13",
         "zod": "^4.6.7",

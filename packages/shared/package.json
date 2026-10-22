@@ -5,7 +5,6 @@
   "type": "module",
   "exports": {
     "./api": "./src/api.ts",
-    "./llm": "./src/llm.ts",
     "./llm-messages": "./src/llm-messages.ts"
   },
   "scripts": {

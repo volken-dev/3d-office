@@ -222,6 +222,11 @@ export function openAISendFor(client: OpenAI): OpenAISend {
   return (params, signal) => client.responses.create(params, { signal })
 }
 
+/** Production transport for a server-held key. */
+export function openAISendForKey(apiKey: string): OpenAISend {
+  return openAISendFor(new OpenAI({ apiKey }))
+}
+
 /** The OpenAI adapter, used as the outage backup. `send` is injectable so tests run without the network. */
 export function createOpenAIAdapter(send: OpenAISend): ProviderAdapter {
   return {

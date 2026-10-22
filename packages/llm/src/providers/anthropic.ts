@@ -195,6 +195,11 @@ export function anthropicSendFor(client: Anthropic): AnthropicSend {
   return (params, signal) => client.beta.messages.stream(params, { signal }).finalMessage()
 }
 
+/** Production transport for a server-held key. */
+export function anthropicSendForKey(apiKey: string): AnthropicSend {
+  return anthropicSendFor(new Anthropic({ apiKey }))
+}
+
 /** The Claude adapter. `send` is injectable so tests can run without the network. */
 export function createAnthropicAdapter(send: AnthropicSend): ProviderAdapter {
   return {
