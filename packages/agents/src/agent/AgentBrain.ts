@@ -1,8 +1,14 @@
-import { LLMError, toLLMError } from "../llm/errors"
-import type { LLMMessage } from "../llm/types"
+import type {
+  MessagesRequest,
+  StopReason,
+  ToolCallBlock,
+  ToolDefinition,
+  ToolResultBlock,
+} from "@the-delegation/shared/llm-messages"
+import { type LLMError, toLLMError } from "../llm/errors"
+import type { AgentMessage } from "../llm/types"
 import {
   backoffDelayMs,
-  HISTORY_WINDOW,
   LLM_CALL_BUDGET,
   LLM_TIMEOUT_MS,
   MAX_INTENT_ATTEMPTS,
@@ -10,7 +16,8 @@ import {
 import type { OrchestrationDeps, ProjectSnapshot } from "../orchestration/ports"
 import type { AgentWorkStatus } from "../project/types"
 import type { AgentNode } from "../team"
-import { buildContextMessage, buildSystemPrompt } from "./PromptBuilder"
+import { lastContextText, toRequestMessages } from "./history"
+import { buildContextText, buildSystemPrompt } from "./PromptBuilder"
 import { getToolDefinitions, type ParsedToolCall, parseToolCall, runToolCall } from "./ToolRegistry"
 import type { ToolContext } from "./tools/types"
 
@@ -34,6 +41,8 @@ export interface ThinkOptions {
 export interface ThinkResult {
   text: string
   toolCalls: ParsedToolCall[]
+  /** The model declined; the turn made no progress. */
+  refused?: boolean
   error?: LLMError
 }
 
@@ -107,7 +116,7 @@ export class AgentBrain {
     )
   }
 
-  public appendHistory(message: LLMMessage): void {
+  public appendHistory(message: AgentMessage): void {
     this.dependencies.project.appendHistory(this.host.data.index, message)
   }
 
@@ -132,12 +141,13 @@ export class AgentBrain {
   }
 
   /**
-   * One request to the model, then its tool calls. A failed tool call is fed back to the model as an
-   * internal message so it can correct itself on its next turn. A response that arrives after the
-   * run was reset or this agent's task was removed is discarded.
+   * One request to the model, then its tool calls. History is append-only: the current project context is added
+   * as a new internal turn only when it changed, the model's reply is stored exactly as returned, and every tool
+   * call is answered by a tool result (failures included) in one user turn, so the next request is valid for
+   * Claude. A response that arrives after the run was reset or this agent's task was removed is discarded.
    */
   private async callModel(prompt: string, options: ThinkOptions): Promise<ThinkResult> {
-    const { project, team, settings, events } = this.dependencies
+    const { project, team, events } = this.dependencies
     const agent = this.host.data
     const runId = project.snapshot().runId
     const taskId = this.host.getCurrentTaskId() ?? undefined
@@ -145,95 +155,79 @@ export class AgentBrain {
     this.controller = controller
 
     try {
-      const config = settings.getLlmConfig()
-      if (!config.apiKey) throw new LLMError("missing_key", "A Gemini API key is required.")
-      const llm = this.dependencies.createLLMClient(config.apiKey)
-      const model = agent.model || config.model
+      const llm = this.dependencies.createLLMClient()
       const system = team.getTeam()
       const { phase, tasks } = project.snapshot()
 
+      this.appendContextIfChanged(buildContextText(agent, phase, project.getBrief(), tasks, system))
       if (!options.isChat) {
         project.appendHistory(agent.index, {
           role: "user",
-          content: prompt,
+          content: [{ type: "text", text: prompt }],
           metadata: options.silent ? { internal: true } : undefined,
         })
       }
 
-      const messages = [
-        buildContextMessage(agent, project.getBrief(), tasks, system),
-        ...project.getHistory(agent.index).slice(-HISTORY_WINDOW),
-      ]
-      const systemPrompt = buildSystemPrompt(agent, phase, system)
       const toolDefinitions = getToolDefinitions(agent, system, phase)
+      const request: MessagesRequest = {
+        model: agent.model,
+        system: buildSystemPrompt(agent, system),
+        messages: toRequestMessages(project.getHistory(agent.index)),
+        ...(toolDefinitions.length > 0 ? { tools: toolDefinitions } : {}),
+      }
 
       project.logRequest({
         agentIndex: agent.index,
         agentName: agent.name,
-        systemInstruction: systemPrompt,
-        contents: messages,
+        systemInstruction: request.system,
+        contents: request.messages,
         systemTools: toolDefinitions,
         taskId,
       })
 
-      const response = await llm.generateCompletion(
-        messages,
-        toolDefinitions,
-        systemPrompt,
-        model,
-        {
-          signal: controller.signal,
-          timeoutMs: LLM_TIMEOUT_MS,
-        },
-      )
+      const response = await llm.complete(request, {
+        signal: controller.signal,
+        timeoutMs: LLM_TIMEOUT_MS,
+      })
       if (controller.signal.aborted || project.snapshot().runId !== runId) return SKIPPED
 
       project.logResponse({
         agentIndex: agent.index,
         agentName: agent.name,
         content: response.content,
-        tool_calls: response.tool_calls,
         usage: response.usage,
-        raw: {
-          model,
-          modelVersion: response.modelVersion,
-          responseId: response.responseId,
-          finishReason: response.finishReason,
-        },
+        raw: { model: agent.model, servedBy: response.servedBy, stopReason: response.stopReason },
         taskId,
       })
 
-      const text = response.content ?? ""
-      const toolCalls = (response.tool_calls ?? []).map(parseToolCall)
-      project.appendHistory(agent.index, {
-        role: "assistant",
-        content: this.displayText(text, toolCalls, response.finishReason, options),
-        tool_calls: response.tool_calls,
-        metadata: options.silent ? { internal: true } : undefined,
-      })
-
-      const offered = new Set(toolDefinitions.map((definition) => definition.function.name))
-      const toolContext: ToolContext = {
-        agent,
-        team: system,
-        project,
-        setStatus: (status) => this.host.setState(status),
-        appendHistory: (message) => project.appendHistory(agent.index, message),
-      }
-      for (const call of toolCalls) {
-        const result = runToolCall(toolContext, call, offered)
-        if (!result.ok) {
-          project.appendHistory(agent.index, {
-            role: "user",
-            content: `[SYSTEM] ${call.name} failed: ${result.error}`,
-            metadata: { internal: true },
-          })
-        } else if (call.name === "set_user_brief" && options.isChat) {
-          events.briefSet(agent.index)
-        }
+      if (response.content.length > 0) {
+        project.appendHistory(agent.index, {
+          role: "assistant",
+          content: response.content,
+          metadata: options.silent ? { internal: true } : undefined,
+        })
       }
 
-      return { text, toolCalls }
+      const text = response.content
+        .flatMap((block) => (block.type === "text" ? [block.text] : []))
+        .join("\n\n")
+      const calls = response.content.filter(
+        (block): block is ToolCallBlock => block.type === "tool_call",
+      )
+      const results = this.runToolCalls(calls, response.stopReason, toolDefinitions, options)
+      if (results.length > 0) {
+        project.appendHistory(agent.index, {
+          role: "user",
+          content: results,
+          metadata: { internal: true },
+        })
+      }
+
+      return {
+        text,
+        toolCalls: calls.map(parseToolCall),
+        refused: response.stopReason === "refusal",
+      }
     } catch (caught) {
       const error = toLLMError(caught)
       if (
@@ -247,8 +241,8 @@ export class AgentBrain {
       if (options.isChat) {
         project.appendHistory(agent.index, {
           role: "assistant",
-          content: `Sorry, that request failed: ${error.message}`,
-          metadata: { error: true },
+          content: [{ type: "text", text: `Sorry, that request failed: ${error.message}` }],
+          metadata: { error: true, displayOnly: true },
         })
       }
       return { ...SKIPPED, error }
@@ -257,25 +251,67 @@ export class AgentBrain {
     }
   }
 
-  private displayText(
-    text: string,
-    toolCalls: ParsedToolCall[],
-    finishReason: string | undefined,
+  /** Appends the project context as an internal turn, unless the latest snapshot in history is identical. */
+  private appendContextIfChanged(contextText: string): void {
+    const { project } = this.dependencies
+    const agentIndex = this.host.data.index
+    if (lastContextText(project.getHistory(agentIndex)) === contextText) return
+    project.appendHistory(agentIndex, {
+      role: "user",
+      content: [{ type: "text", text: contextText }],
+      metadata: { internal: true, context: true },
+    })
+  }
+
+  /**
+   * Runs each tool call and returns one result per call, in order. A turn cut off by `max_tokens` or a refusal
+   * may carry truncated input, so its calls are answered with errors instead of being run.
+   */
+  private runToolCalls(
+    calls: readonly ToolCallBlock[],
+    stopReason: StopReason,
+    toolDefinitions: readonly ToolDefinition[],
     options: ThinkOptions,
-  ): string {
-    if (finishReason === "MALFORMED_FUNCTION_CALL")
-      return "That reply was malformed, so I will try again."
-    if (text || options.silent) return text
-    if (toolCalls.length === 0) return "..."
-    return toolCalls.some((toolCall) => toolCall.name === "set_user_brief")
-      ? "Project brief set. Let's begin."
-      : "Working on it..."
+  ): ToolResultBlock[] {
+    const { project, team, events } = this.dependencies
+    const agent = this.host.data
+    const offered = new Set(toolDefinitions.map((definition) => definition.name))
+    const context: ToolContext = {
+      agent,
+      team: team.getTeam(),
+      project,
+      setStatus: (status) => this.host.setState(status),
+      appendHistory: (message) => project.appendHistory(agent.index, message),
+    }
+    const truncated = stopReason === "max_tokens" || stopReason === "refusal"
+
+    return calls.map((call): ToolResultBlock => {
+      if (truncated) {
+        return {
+          type: "tool_result",
+          toolCallId: call.id,
+          content:
+            "Not run: your reply was cut off, so the arguments may be incomplete. Call the tool again.",
+          isError: true,
+        }
+      }
+      const result = runToolCall(context, parseToolCall(call), offered)
+      if (result.ok && call.name === "set_user_brief" && options.isChat) {
+        events.briefSet(agent.index)
+      }
+      return {
+        type: "tool_result",
+        toolCallId: call.id,
+        content: result.ok ? result.summary : result.error,
+        isError: !result.ok,
+      }
+    })
   }
 
   /**
    * Runs an autonomous intent (planning, a task, the final delivery) under the retry policy:
    * exponential backoff between unproductive attempts, a per-project call budget, and a pause
-   * that waits for the user after repeated failures or a quota/auth error.
+   * that waits for the user after repeated failures, rate limiting or a gateway access error.
    */
   private async runAutonomous(
     key: string,
@@ -308,13 +344,15 @@ export class AgentBrain {
     if (result.error && project.getTask(key)) project.setTaskError(key, result.error.message)
 
     const kind = result.error?.kind
-    if (kind === "quota" || kind === "auth" || kind === "missing_key") {
+    if (kind === "rate_limited" || kind === "not_configured" || kind === "unauthorized") {
       project.pauseAutonomy({
-        kind: kind === "quota" ? "quota" : "auth",
+        kind: kind === "rate_limited" ? "quota" : "auth",
         reason:
-          kind === "quota"
-            ? "Gemini rejected the request for quota or rate limits. Resume once your quota allows more calls."
-            : "The Gemini API key is missing or invalid. Agents resume when you save a new key.",
+          kind === "rate_limited"
+            ? "The model provider is rate limiting requests. Resume once it allows more calls."
+            : kind === "unauthorized"
+              ? "You are not signed in to the model gateway. Agents resume when you sign in."
+              : "The model gateway is not configured. Agents resume when it is.",
         agentIndex: this.host.data.index,
       })
     }

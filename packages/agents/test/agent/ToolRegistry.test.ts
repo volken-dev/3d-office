@@ -14,7 +14,7 @@ function agentAt(index: number) {
 }
 
 function toolNames(index: number, phase: "idle" | "working" | "done") {
-  return getToolDefinitions(agentAt(index), team, phase).map((tool) => tool.function.name)
+  return getToolDefinitions(agentAt(index), team, phase).map((tool) => tool.name)
 }
 
 function contextFor(index: number, project = new FakeProject()): ToolContext {
@@ -28,23 +28,19 @@ function contextFor(index: number, project = new FakeProject()): ToolContext {
 }
 
 describe("parseToolCall", () => {
-  test("parses JSON object arguments", () => {
-    const call = {
-      id: "1",
-      type: "function" as const,
-      function: { name: "x", arguments: '{"a":1}' },
-    }
+  test("passes the gateway-parsed input through as the tool arguments", () => {
+    const call = { type: "tool_call" as const, id: "toolu_1", name: "x", input: { a: 1 } }
     expect(parseToolCall(call)).toEqual({ name: "x", args: { a: 1 } })
   })
+})
 
-  test("turns malformed or non-object arguments into an empty object", () => {
-    for (const argumentsText of ["not json", "[1,2]", "null", '"text"']) {
-      const call = {
-        id: "1",
-        type: "function" as const,
-        function: { name: "x", arguments: argumentsText },
+describe("tool definitions", () => {
+  test("every tool schema is a closed object, so providers can enforce it strictly", () => {
+    for (const phase of ["idle", "working", "done"] as const) {
+      for (const tool of getToolDefinitions(team.leadAgent, team, phase)) {
+        expect(tool.inputSchema.type).toBe("object")
+        expect(tool.inputSchema.additionalProperties).toBe(false)
       }
-      expect(parseToolCall(call).args).toEqual({})
     }
   })
 })

@@ -1,4 +1,5 @@
-import type { LLMMessage, LLMTokenUsage } from "@the-delegation/agents/llm/types"
+import { appendToHistory } from "@the-delegation/agents/agent/history"
+import type { AgentMessage } from "@the-delegation/agents/llm/types"
 import {
   LLM_CALL_BUDGET,
   MAX_ACTION_LOG,
@@ -17,9 +18,9 @@ import type {
   Task,
   TaskStatus,
 } from "@the-delegation/agents/project/types"
+import { costOfUsage, findModel } from "@the-delegation/llm/registry"
+import type { Usage } from "@the-delegation/shared/llm-messages"
 import { create } from "zustand"
-import { DEFAULT_MODEL } from "../../core/llm/constants"
-import { calculateCost } from "../../core/llm/pricing"
 import { useTeamStore } from "./teamStore"
 
 export type {
@@ -34,10 +35,11 @@ export type {
   TaskStatus,
 } from "@the-delegation/agents/project/types"
 
-const EMPTY_USAGE: LLMTokenUsage = Object.freeze({
-  promptTokens: 0,
-  completionTokens: 0,
-  totalTokens: 0,
+const EMPTY_USAGE: Usage = Object.freeze({
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
 })
 
 interface CoreState {
@@ -48,8 +50,8 @@ interface CoreState {
   finalOutput: string | null
   /** When the user approved (or auto-approval accepted) the final deliverable. */
   finalizedAt: number | null
-  totalTokenUsage: LLMTokenUsage
-  agentTokenUsage: Record<number, LLMTokenUsage>
+  totalTokenUsage: Usage
+  agentTokenUsage: Record<number, Usage>
   totalEstimatedCost: number
   agentEstimatedCost: Record<number, number>
 
@@ -63,7 +65,7 @@ interface CoreState {
   actionLog: ActionLogEntry[]
   debugLog: DebugLogEntry[]
 
-  agentHistories: Record<number, LLMMessage[]>
+  agentHistories: Record<number, AgentMessage[]>
 
   /** Set when autonomous agent work stopped and is waiting for the user to resume it. */
   autonomyPause: AutonomyPause | null
@@ -100,7 +102,7 @@ interface CoreState {
   addRequestLog: (entry: Omit<RequestDebugLogEntry, "id" | "timestamp" | "phase">) => void
   addResponseLog: (entry: Omit<ResponseDebugLogEntry, "id" | "timestamp" | "phase">) => void
 
-  appendAgentMessage: (agentIndex: number, message: LLMMessage) => void
+  appendAgentMessage: (agentIndex: number, message: AgentMessage) => void
 
   recordIntentAttempt: (key: string, error?: string) => void
   clearIntentAttempts: (key: string) => void
@@ -146,11 +148,12 @@ function appendCapped<T>(list: readonly T[], item: T, maxLength: number): T[] {
     : [...list, item]
 }
 
-function addUsage(total: LLMTokenUsage, added: LLMTokenUsage): LLMTokenUsage {
+function addUsage(total: Usage, added: Usage): Usage {
   return {
-    promptTokens: total.promptTokens + added.promptTokens,
-    completionTokens: total.completionTokens + added.completionTokens,
-    totalTokens: total.totalTokens + added.totalTokens,
+    inputTokens: total.inputTokens + added.inputTokens,
+    outputTokens: total.outputTokens + added.outputTokens,
+    cacheReadTokens: total.cacheReadTokens + added.cacheReadTokens,
+    cacheWriteTokens: total.cacheWriteTokens + added.cacheWriteTokens,
   }
 }
 
@@ -289,9 +292,9 @@ export const useCoreStore = create<CoreState>()((set) => ({
         })),
         agentHistories: {
           ...state.agentHistories,
-          [task.assignedAgentId]: appendCapped(
+          [task.assignedAgentId]: appendToHistory(
             history,
-            { role: "user", content: `Rejected. Reason: ${comments}` },
+            { role: "user", content: [{ type: "text", text: `Rejected. Reason: ${comments}` }] },
             MAX_HISTORY_PER_AGENT,
           ),
         },
@@ -324,10 +327,8 @@ export const useCoreStore = create<CoreState>()((set) => ({
         { ...entry, id: `debug_${uniqueId()}`, timestamp: Date.now(), phase: "response" },
         MAX_DEBUG_LOG,
       )
-      if (!entry.usage) return { debugLog }
-
-      const model = entry.raw?.modelVersion ?? entry.raw?.model ?? DEFAULT_MODEL
-      const callCost = calculateCost(entry.usage.promptTokens, entry.usage.completionTokens, model)
+      const pricedModel = findModel(entry.raw.servedBy.model) ?? findModel(entry.raw.model)
+      const callCost = pricedModel ? costOfUsage(pricedModel, entry.usage) : 0
       return {
         debugLog,
         totalTokenUsage: addUsage(state.totalTokenUsage, entry.usage),
@@ -350,7 +351,7 @@ export const useCoreStore = create<CoreState>()((set) => ({
     set((state) => ({
       agentHistories: {
         ...state.agentHistories,
-        [agentIndex]: appendCapped(
+        [agentIndex]: appendToHistory(
           state.agentHistories[agentIndex] ?? [],
           message,
           MAX_HISTORY_PER_AGENT,

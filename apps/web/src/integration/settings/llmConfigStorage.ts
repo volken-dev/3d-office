@@ -1,11 +1,16 @@
-import type { LLMConfig } from "@the-delegation/agents/llm/types"
-import { DEFAULT_MODEL, isKnownModel } from "../../core/llm/constants"
+import { DEFAULT_TEAM_MODEL_ID, findModel } from "@the-delegation/llm/registry"
 import { getBrowserStorage, readStoredJson } from "../../lib/storage"
+
+/** The browser key settings, kept until the key dialog is removed (#2). */
+export interface LLMConfig {
+  apiKey: string
+  model: string
+}
 
 /** Where the BYOK key is persisted; only uiStore.setLlmConfig writes it. */
 const LLM_CONFIG_STORAGE_KEY = "byok-config"
 
-const DEFAULT_LLM_CONFIG: LLMConfig = { apiKey: "", model: DEFAULT_MODEL }
+const DEFAULT_LLM_CONFIG: LLMConfig = { apiKey: "", model: DEFAULT_TEAM_MODEL_ID }
 
 /** Reads the saved config, falling back to defaults for anything missing or malformed. */
 export function loadLlmConfig(): LLMConfig {
@@ -13,7 +18,10 @@ export function loadLlmConfig(): LLMConfig {
   if (typeof stored !== "object" || stored === null) return { ...DEFAULT_LLM_CONFIG }
   return {
     apiKey: "apiKey" in stored && typeof stored.apiKey === "string" ? stored.apiKey : "",
-    model: "model" in stored && isKnownModel(stored.model) ? stored.model : DEFAULT_MODEL,
+    model:
+      "model" in stored && typeof stored.model === "string" && findModel(stored.model)
+        ? stored.model
+        : DEFAULT_TEAM_MODEL_ID,
   }
 }
 

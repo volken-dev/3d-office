@@ -1,8 +1,11 @@
+import { blockText, toolCallsIn } from "@the-delegation/agents/agent/history"
+import type { ContentBlock } from "@the-delegation/shared/llm-messages"
 import { ChevronRight, Download, MessageSquare, Terminal, Zap } from "lucide-react"
 import React from "react"
 import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { formatTime, formatTokens } from "@/lib/format"
+import { totalTokensOf } from "@/lib/usage"
 import { cn } from "@/lib/utils"
 import type {
   DebugLogEntry,
@@ -101,10 +104,10 @@ function RequestDetails({ entry }: { entry: RequestDebugLogEntry }) {
         <div className="flex flex-wrap gap-1 rounded border border-emerald-100/40 bg-emerald-50/30 p-2">
           {tools.map((tool) => (
             <span
-              key={tool.function.name}
+              key={tool.name}
               className="rounded border border-emerald-100 bg-emerald-50 px-1.5 py-0.5 font-mono text-[11px] font-bold text-emerald-700"
             >
-              {tool.function?.name}
+              {tool.name}
             </span>
           ))}
         </div>
@@ -138,18 +141,7 @@ function RequestDetails({ entry }: { entry: RequestDebugLogEntry }) {
                 >
                   {message.role}
                 </span>
-                {message.content && (
-                  <p className="mt-1 py-1 text-xs leading-relaxed whitespace-pre-wrap text-foreground/80">
-                    {message.content}
-                  </p>
-                )}
-                {message.tool_calls && message.tool_calls.length > 0 && (
-                  <div className="mt-2 space-y-2">
-                    {message.tool_calls.map((toolCall) => (
-                      <ToolCallCard key={toolCall.id} call={toolCall} />
-                    ))}
-                  </div>
-                )}
+                <MessageBlocks content={message.content} />
               </div>
             ))}
           </div>
@@ -159,7 +151,56 @@ function RequestDetails({ entry }: { entry: RequestDebugLogEntry }) {
   )
 }
 
+/** A logged message's blocks: text, tool calls, tool results and a marker for opaque reasoning. */
+function MessageBlocks({ content }: { content: readonly ContentBlock[] }) {
+  return (
+    <div className="mt-1 space-y-2">
+      {content.map((block, blockIndex) => {
+        // biome-ignore lint/suspicious/noArrayIndexKey: a logged message never changes, so a block's position is its identity
+        const key = blockIndex
+        if (block.type === "text") {
+          return (
+            <p
+              key={key}
+              className="py-1 text-xs leading-relaxed whitespace-pre-wrap text-foreground/80"
+            >
+              {block.text}
+            </p>
+          )
+        }
+        if (block.type === "tool_call") return <ToolCallCard key={key} call={block} />
+        if (block.type === "tool_result") {
+          return (
+            <div
+              key={key}
+              className={cn(
+                "rounded border p-2 text-[11px] whitespace-pre-wrap",
+                block.isError
+                  ? "border-destructive/30 bg-destructive/5 text-destructive"
+                  : "border-border bg-muted/40 text-foreground/80",
+              )}
+            >
+              <span className="font-bold">{block.isError ? "Tool error" : "Tool result"}: </span>
+              {block.content}
+            </div>
+          )
+        }
+        return (
+          <span
+            key={key}
+            className="inline-block rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
+          >
+            {block.provider} reasoning (not shown)
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
 function ResponseDetails({ entry }: { entry: ResponseDebugLogEntry }) {
+  const text = blockText(entry.content)
+  const toolCalls = toolCallsIn(entry.content)
   return (
     <>
       <div className="space-y-3 pt-2">
@@ -168,23 +209,23 @@ function ResponseDetails({ entry }: { entry: ResponseDebugLogEntry }) {
             <MessageSquare size={12} aria-hidden />
             <span className="text-[11px] font-bold">Response details</span>
           </div>
-          {entry.content && <CopyButton getText={() => entry.content ?? ""} label="Response" />}
+          {text && <CopyButton getText={() => text} label="Response" />}
         </div>
-        {entry.content && (
+        {text && (
           <div className="relative rounded border border-border bg-background p-3 text-xs leading-relaxed whitespace-pre-wrap text-foreground/80 italic shadow-sm">
             <span className="absolute -top-2 left-2 rounded border border-border bg-background px-1 text-[11px] font-black text-muted-foreground not-italic">
               Text
             </span>
-            {entry.content}
+            {text}
           </div>
         )}
-        {entry.tool_calls && entry.tool_calls.length > 0 && (
+        {toolCalls.length > 0 && (
           <div className="space-y-2">
             <div className="ml-1 flex items-center gap-1.5 text-emerald-700">
               <Zap size={12} aria-hidden />
               <span className="text-[11px] font-black">Tool calls</span>
             </div>
-            {entry.tool_calls.map((toolCall) => (
+            {toolCalls.map((toolCall) => (
               <ToolCallCard key={toolCall.id} call={toolCall} />
             ))}
           </div>
@@ -193,7 +234,7 @@ function ResponseDetails({ entry }: { entry: ResponseDebugLogEntry }) {
 
       {entry.raw != null && (
         <DebugSection
-          title="Raw LLM response"
+          title="Response summary"
           icon={<Download size={12} aria-hidden />}
           copyLabel="Raw response"
           getCopyText={() => JSON.stringify(entry.raw, null, 2)}
@@ -240,12 +281,12 @@ export const DebugEntry = React.memo(function DebugEntry({ entry, agent }: Debug
                 >
                   {entry.phase}
                 </Badge>
-                {entry.phase === "response" && entry.usage && (
+                {entry.phase === "response" && (
                   <Badge
                     variant="outline"
                     className="rounded bg-muted px-1 font-mono text-[11px] font-bold text-muted-foreground"
                   >
-                    T: {formatTokens(entry.usage.totalTokens)}
+                    T: {formatTokens(totalTokensOf(entry.usage))}
                   </Badge>
                 )}
               </div>
@@ -260,15 +301,15 @@ export const DebugEntry = React.memo(function DebugEntry({ entry, agent }: Debug
             </div>
           </div>
 
-          {entry.phase === "response" && entry.tool_calls && entry.tool_calls.length > 0 && (
+          {entry.phase === "response" && toolCallsIn(entry.content).length > 0 && (
             <div className="flex flex-wrap gap-1 pl-4 group-data-[state=open]/entry:hidden">
-              {entry.tool_calls.map((toolCall) => (
+              {toolCallsIn(entry.content).map((toolCall) => (
                 <span
                   key={toolCall.id}
                   className="flex items-center gap-1 rounded border border-emerald-100 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-bold text-emerald-700 shadow-sm"
                 >
                   <Zap size={10} aria-hidden />
-                  {toolCall.function?.name || "(unknown)"}
+                  {toolCall.name}
                 </span>
               ))}
             </div>

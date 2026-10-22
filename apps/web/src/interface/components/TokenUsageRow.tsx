@@ -1,14 +1,15 @@
-import type { LLMTokenUsage } from "@the-delegation/agents/llm/types"
+import type { Usage } from "@the-delegation/shared/llm-messages"
 import { formatTokens } from "@/lib/format"
+import { promptTokensOf } from "@/lib/usage"
 import { cn } from "@/lib/utils"
 
 interface TokenUsageRowProps {
-  usage: Pick<LLMTokenUsage, "promptTokens" | "completionTokens">
+  usage: Usage
   size?: "sm" | "md"
   className?: string
 }
 
-/** Input and output token counts side by side. */
+/** Input (including cached) and output token counts side by side. */
 export function TokenUsageRow({ usage, size = "md", className }: TokenUsageRowProps) {
   return (
     <div
@@ -19,14 +20,14 @@ export function TokenUsageRow({ usage, size = "md", className }: TokenUsageRowPr
       )}
     >
       <span className="text-foreground">
-        {formatTokens(usage.promptTokens)}{" "}
+        {formatTokens(promptTokensOf(usage))}{" "}
         <span className="font-medium text-muted-foreground">input</span>
       </span>
       <span className="text-muted-foreground" aria-hidden>
         +
       </span>
       <span className="text-foreground">
-        {formatTokens(usage.completionTokens)}{" "}
+        {formatTokens(usage.outputTokens)}{" "}
         <span className="font-medium text-muted-foreground">output</span>
       </span>
     </div>

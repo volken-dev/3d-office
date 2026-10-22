@@ -2,22 +2,20 @@ import { fail, readString, type ToolSpec } from "./types"
 
 export const completeTask: ToolSpec<{ taskId: string; output: string }> = {
   definition: {
-    type: "function",
-    function: {
-      name: "complete_task",
-      description:
-        "Finish task. Output must be raw content, no introductions or credit for the work.",
-      parameters: {
-        type: "object",
-        properties: {
-          taskId: { type: "string" },
-          output: {
-            type: "string",
-            description: "Task result in Markdown (e.g. code blocks, text, or research).",
-          },
+    name: "complete_task",
+    description:
+      "Finish task. Output must be raw content, no introductions or credit for the work.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string" },
+        output: {
+          type: "string",
+          description: "Task result in Markdown (e.g. code blocks, text, or research).",
         },
-        required: ["taskId", "output"],
       },
+      required: ["taskId", "output"],
+      additionalProperties: false,
     },
   },
 
@@ -46,14 +44,16 @@ export const completeTask: ToolSpec<{ taskId: string; output: string }> = {
       setStatus("on_hold")
       appendHistory({
         role: "assistant",
-        content: `I've finished **"${task.title}"** and submitted it for review.`,
-        metadata: { reviewTaskId: taskId },
+        content: [
+          { type: "text", text: `I've finished **"${task.title}"** and submitted it for review.` },
+        ],
+        metadata: { reviewTaskId: taskId, displayOnly: true },
       })
-      return { ok: true }
+      return { ok: true, summary: "Submitted for the user's review." }
     }
 
     project.completeTask(taskId, output)
     project.logAction({ agentIndex: agent.index, action: "completed task", taskId })
-    return { ok: true }
+    return { ok: true, summary: "Task completed." }
   },
 }

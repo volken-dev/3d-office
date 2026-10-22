@@ -1,4 +1,4 @@
-import type { LLMMessage } from "@the-delegation/agents/llm/types"
+import type { AgentMessage } from "@the-delegation/agents/llm/types"
 import { useEffect, useMemo, useRef } from "react"
 import { useShallow } from "zustand/react/shallow"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -12,7 +12,7 @@ import { ChatMessage } from "./ChatMessage"
 import { avatarTypeFor } from "./components/Avatar"
 import { SCROLL_AREA_BLOCK } from "./components/styles"
 
-const NO_MESSAGES: LLMMessage[] = []
+const NO_MESSAGES: AgentMessage[] = []
 
 function ThinkingIndicator({ agentName }: { agentName: string }) {
   return (

@@ -3,15 +3,13 @@ import { fail, readString, type ToolSpec } from "./types"
 
 export const setUserBrief: ToolSpec<{ brief: string }> = {
   definition: {
-    type: "function",
-    function: {
-      name: "set_user_brief",
-      description: "Start project with brief.",
-      parameters: {
-        type: "object",
-        properties: { brief: { type: "string" } },
-        required: ["brief"],
-      },
+    name: "set_user_brief",
+    description: "Start project with brief.",
+    inputSchema: {
+      type: "object",
+      properties: { brief: { type: "string" } },
+      required: ["brief"],
+      additionalProperties: false,
     },
   },
 
@@ -28,6 +26,6 @@ export const setUserBrief: ToolSpec<{ brief: string }> = {
 
     project.startProject(brief)
     project.logAction({ agentIndex: agent.index, action: "defined project brief" })
-    return { ok: true }
+    return { ok: true, summary: "Brief set. The project has started." }
   },
 }

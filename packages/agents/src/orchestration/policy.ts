@@ -1,9 +1,10 @@
 import type { AgentWorkStatus, ProjectPhase } from "../project/types"
 
-/** Messages of each agent's history sent to the model per call. */
-export const HISTORY_WINDOW = 10
-/** Messages kept per agent in project state; older ones are dropped. */
-export const MAX_HISTORY_PER_AGENT = 100
+/**
+ * Messages kept per agent; older turns are trimmed at a safe boundary (see appendToHistory). Below the gateway's
+ * 400-message request limit, with room for the turns one call appends.
+ */
+export const MAX_HISTORY_PER_AGENT = 300
 export const MAX_ACTION_LOG = 200
 export const MAX_DEBUG_LOG = 30
 

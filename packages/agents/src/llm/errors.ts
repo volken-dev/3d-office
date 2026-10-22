@@ -1,12 +1,22 @@
 /**
- * - missing_key / auth: only the user can fix it (open the key dialog).
- * - quota: retrying makes it worse; pause until the user resumes.
- * - transient: network, timeout or 5xx; safe to retry with backoff.
+ * Why a model call failed, from the agent loop's point of view:
+ * - not_configured: the gateway has no working provider credentials; only an operator can fix it.
+ * - unauthorized: the user is not signed in or not allowed to call the gateway.
+ * - rate_limited: the provider or the gateway is throttling; pause until the user resumes.
+ * - unavailable: network, timeout or provider outage; safe to retry with backoff.
+ * - invalid_request: the request was rejected as malformed; retrying will not help.
  * - aborted: we cancelled the call ourselves (reset, team switch, task removed).
  */
-export type LLMErrorKind = "missing_key" | "auth" | "quota" | "transient" | "aborted" | "other"
+export type LLMErrorKind =
+  | "not_configured"
+  | "unauthorized"
+  | "rate_limited"
+  | "unavailable"
+  | "invalid_request"
+  | "aborted"
+  | "other"
 
-/** A failed LLM call, classified so callers can decide between retrying, pausing and asking for a key. */
+/** A failed LLM call, classified so callers can decide between retrying, pausing and asking the user. */
 export class LLMError extends Error {
   constructor(
     public readonly kind: LLMErrorKind,
@@ -18,38 +28,17 @@ export class LLMError extends Error {
   }
 }
 
-function statusOf(error: unknown): number | undefined {
-  if (typeof error !== "object" || error === null || !("status" in error)) return undefined
-  return typeof error.status === "number" ? error.status : undefined
-}
-
-function classifyLLMError(error: unknown): LLMErrorKind {
-  if (error instanceof LLMError) return error.kind
+function classifyUnknownError(error: unknown): LLMErrorKind {
   const name = error instanceof Error ? error.name : ""
-  const message = error instanceof Error ? error.message : String(error)
-
-  if (name === "TimeoutError") return "transient"
   if (name === "AbortError") return "aborted"
-
-  const status = statusOf(error)
-  if (
-    status === 401 ||
-    status === 403 ||
-    /API[_ ]KEY[_ ]INVALID|API key not valid|PERMISSION_DENIED/i.test(message)
-  )
-    return "auth"
-  if (status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(message)) return "quota"
-  if (
-    (status !== undefined && status >= 500) ||
-    /failed to fetch|network|timed? ?out|UNAVAILABLE/i.test(message)
-  )
-    return "transient"
+  if (name === "TimeoutError") return "unavailable"
+  if (error instanceof TypeError) return "unavailable"
   return "other"
 }
 
-/** Normalises anything a provider throws into an `LLMError` whose kind drives the retry policy. */
+/** Normalises anything a client throws into an `LLMError` whose kind drives the retry policy. */
 export function toLLMError(error: unknown): LLMError {
   if (error instanceof LLMError) return error
   const message = error instanceof Error ? error.message : String(error)
-  return new LLMError(classifyLLMError(error), message, { cause: error })
+  return new LLMError(classifyUnknownError(error), message, { cause: error })
 }

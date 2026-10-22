@@ -1,4 +1,5 @@
 import type { AgentNode } from "@the-delegation/agents/team"
+import { DEFAULT_TEAM_MODEL_ID, MODELS } from "@the-delegation/llm/registry"
 import { Check, CircleUser, Cpu, Pipette, Save, Target, Trash2, User, X, Zap } from "lucide-react"
 import { useId, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -16,7 +17,6 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
-import { AVAILABLE_MODELS, DEFAULT_MODEL } from "../../core/llm/constants"
 import { Avatar } from "../components/Avatar"
 import { ColorPicker, isColorTooLight } from "./ColorPicker"
 import { DisabledReason, Field, FieldHint, MICRO_LABEL } from "./Field"
@@ -151,16 +151,16 @@ export function AgentConfigPanel({
             label="LLM model"
             icon={<Cpu />}
             readOnly={isView}
-            help="The Gemini model this agent uses."
+            help="The model this agent uses. Claude models fail over to OpenAI during outages."
           >
             {(id) =>
               isView ? (
                 <code className="block w-fit rounded-lg border bg-muted px-3 py-1.5 text-xs text-muted-foreground">
-                  {draft.model || DEFAULT_MODEL}
+                  {draft.model || DEFAULT_TEAM_MODEL_ID}
                 </code>
               ) : (
                 <Select
-                  value={draft.model || DEFAULT_MODEL}
+                  value={draft.model || DEFAULT_TEAM_MODEL_ID}
                   onValueChange={(model) => onChange({ model })}
                 >
                   <SelectTrigger
@@ -170,9 +170,9 @@ export function AgentConfigPanel({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {AVAILABLE_MODELS.map((model) => (
-                      <SelectItem key={model} value={model} className="font-mono text-xs">
-                        {model}
+                    {MODELS.map((model) => (
+                      <SelectItem key={model.id} value={model.id} className="text-xs">
+                        {model.label}
                       </SelectItem>
                     ))}
                   </SelectContent>

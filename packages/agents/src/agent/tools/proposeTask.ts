@@ -12,20 +12,18 @@ interface ProposeTaskArgs {
 
 export const proposeTask: ToolSpec<ProposeTaskArgs> = {
   definition: {
-    type: "function",
-    function: {
-      name: "propose_task",
-      description: "Assign task to agent.",
-      parameters: {
-        type: "object",
-        properties: {
-          title: { type: "string" },
-          description: { type: "string" },
-          agentId: { type: "integer", description: "Agent index" },
-          requiresApproval: { type: "boolean" },
-        },
-        required: ["title", "description", "agentId"],
+    name: "propose_task",
+    description: "Assign task to agent.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        description: { type: "string" },
+        agentId: { type: "integer", description: "Agent index" },
+        requiresApproval: { type: "boolean" },
       },
+      required: ["title", "description", "agentId"],
+      additionalProperties: false,
     },
   },
 
@@ -91,6 +89,6 @@ export const proposeTask: ToolSpec<ProposeTaskArgs> = {
       action: `proposed task: "${args.title}"`,
       taskId: task.id,
     })
-    return { ok: true }
+    return { ok: true, summary: `Task "${args.title}" added to the board as ${task.id}.` }
   },
 }

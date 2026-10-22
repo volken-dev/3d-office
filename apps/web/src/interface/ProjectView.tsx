@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { formatTokens } from "@/lib/format"
+import { totalTokensOf } from "@/lib/usage"
 import { cn } from "@/lib/utils"
 import { type ProjectPhase, type Task, useCoreStore } from "../integration/store/coreStore"
 import { useTeamRoster } from "../integration/store/teamStore"
@@ -124,9 +125,9 @@ function ProjectView() {
         .map(([agentIndex, usage]) => ({ agent: byIndex.get(Number(agentIndex)), usage }))
         .filter(
           (row): row is { agent: AgentNode; usage: typeof row.usage } =>
-            !!row.agent && row.usage.totalTokens > 0,
+            !!row.agent && totalTokensOf(row.usage) > 0,
         )
-        .sort((a, b) => b.usage.totalTokens - a.usage.totalTokens),
+        .sort((a, b) => totalTokensOf(b.usage) - totalTokensOf(a.usage)),
     [agentTokenUsage, byIndex],
   )
 
@@ -245,7 +246,7 @@ function ProjectView() {
 
           <div className="mb-6 rounded-xl border border-border bg-muted/50 p-5">
             <p className="mb-6 font-mono text-4xl font-black tracking-tighter text-foreground">
-              {formatTokens(totalTokenUsage.totalTokens)}
+              {formatTokens(totalTokensOf(totalTokenUsage))}
             </p>
             <TokenUsageRow usage={totalTokenUsage} />
           </div>
@@ -274,7 +275,7 @@ function ProjectView() {
                       </span>
                     )}
                     <span className="font-mono text-xs font-black text-foreground">
-                      {formatTokens(usage.totalTokens)}
+                      {formatTokens(totalTokensOf(usage))}
                     </span>
                   </div>
                   <TokenUsageRow usage={usage} size="sm" className="text-muted-foreground" />

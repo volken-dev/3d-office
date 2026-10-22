@@ -1,5 +1,6 @@
-import type { LLMMessage } from "../../src/llm/types"
-import { LLM_CALL_BUDGET } from "../../src/orchestration/policy"
+import { appendToHistory } from "../../src/agent/history"
+import type { AgentMessage } from "../../src/llm/types"
+import { LLM_CALL_BUDGET, MAX_HISTORY_PER_AGENT } from "../../src/orchestration/policy"
 import type { ProjectSnapshot, ProjectStatePort } from "../../src/orchestration/ports"
 import type {
   ActionLogEntry,
@@ -21,7 +22,7 @@ export class FakeProject implements ProjectStatePort {
   outputUnderReview: string | null = null
   callsUsed = 0
   callLimit = LLM_CALL_BUDGET
-  readonly histories = new Map<number, LLMMessage[]>()
+  readonly histories = new Map<number, AgentMessage[]>()
   readonly intentAttempts = new Map<string, IntentAttempts>()
   readonly actions: Omit<ActionLogEntry, "id" | "timestamp">[] = []
   readonly requests: Omit<RequestDebugLogEntry, "id" | "timestamp" | "phase">[] = []
@@ -58,12 +59,15 @@ export class FakeProject implements ProjectStatePort {
     return this.outputUnderReview !== null
   }
 
-  getHistory(agentIndex: number): readonly LLMMessage[] {
+  getHistory(agentIndex: number): readonly AgentMessage[] {
     return this.histories.get(agentIndex) ?? []
   }
 
-  appendHistory(agentIndex: number, message: LLMMessage): void {
-    this.histories.set(agentIndex, [...this.getHistory(agentIndex), message])
+  appendHistory(agentIndex: number, message: AgentMessage): void {
+    this.histories.set(
+      agentIndex,
+      appendToHistory(this.getHistory(agentIndex), message, MAX_HISTORY_PER_AGENT),
+    )
   }
 
   startProject(brief: string): void {

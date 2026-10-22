@@ -1,5 +1,5 @@
 import type { LLMErrorKind } from "../llm/errors"
-import type { LLMClient, LLMConfig, LLMMessage } from "../llm/types"
+import type { AgentMessage, LLMClient } from "../llm/types"
 import type {
   ActionLogEntry,
   AutonomyPause,
@@ -28,9 +28,9 @@ export interface ProjectStatePort {
   getTask(taskId: string): Task | undefined
   isAwaitingOutputReview(): boolean
 
-  getHistory(agentIndex: number): readonly LLMMessage[]
+  getHistory(agentIndex: number): readonly AgentMessage[]
   /** Append-only, so concurrent writers (chat, review feedback, the agent itself) never overwrite each other. */
-  appendHistory(agentIndex: number, message: LLMMessage): void
+  appendHistory(agentIndex: number, message: AgentMessage): void
 
   startProject(brief: string): void
   addTask(task: NewTask): Task
@@ -57,10 +57,6 @@ export interface TeamPort {
   getTeam(): AgenticSystem
 }
 
-export interface SettingsPort {
-  getLlmConfig(): LLMConfig
-}
-
 export interface LLMErrorEvent {
   agent: AgentNode
   kind: LLMErrorKind
@@ -83,7 +79,6 @@ export interface OrchestratorEvents {
 export interface OrchestrationDeps {
   project: ProjectStatePort
   team: TeamPort
-  settings: SettingsPort
-  createLLMClient(apiKey: string): LLMClient
+  createLLMClient(): LLMClient
   events: OrchestratorEvents
 }

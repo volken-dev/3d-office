@@ -1,4 +1,4 @@
-import type { LLMToolCall, LLMToolDefinition } from "../llm/types"
+import type { ToolCallBlock, ToolDefinition } from "@the-delegation/shared/llm-messages"
 import type { ProjectPhase } from "../project/types"
 import type { AgenticSystem, AgentNode } from "../team"
 import { completeTask } from "./tools/completeTask"
@@ -15,14 +15,14 @@ export interface ParsedToolCall {
 
 interface RegisteredTool {
   name: string
-  definition: LLMToolDefinition
+  definition: ToolDefinition
   isOffered: ToolSpec<unknown>["isOffered"]
   execute(context: ToolContext, rawArgs: Record<string, unknown>): ToolResult
 }
 
 function register<A>(spec: ToolSpec<A>): RegisteredTool {
   return {
-    name: spec.definition.function.name,
+    name: spec.definition.name,
     definition: spec.definition,
     isOffered: spec.isOffered,
     execute(context, rawArgs) {
@@ -40,18 +40,9 @@ const TOOLS: RegisteredTool[] = [
   register(deliverProject),
 ]
 
-/**
- * Parses a tool call's JSON arguments. Unparseable or non-object arguments become an empty object,
- * which each tool's `parseArgs` then rejects with a precise error for the model.
- */
-export function parseToolCall(call: LLMToolCall): ParsedToolCall {
-  let args: Record<string, unknown> = {}
-  try {
-    const value: unknown = JSON.parse(call.function.arguments)
-    if (typeof value === "object" && value !== null && !Array.isArray(value))
-      args = value as Record<string, unknown>
-  } catch {}
-  return { name: call.function.name, args }
+/** A tool call block as the registry runs it. The gateway already parsed `input` into an object. */
+export function parseToolCall(call: ToolCallBlock): ParsedToolCall {
+  return { name: call.name, args: call.input }
 }
 
 /** The tools offered to this agent in this phase; only these may run for the request they are sent with. */
@@ -59,7 +50,7 @@ export function getToolDefinitions(
   agent: AgentNode,
   team: AgenticSystem,
   phase: ProjectPhase,
-): LLMToolDefinition[] {
+): ToolDefinition[] {
   return TOOLS.filter((tool) => tool.isOffered(agent, team, phase)).map((tool) => tool.definition)
 }
 

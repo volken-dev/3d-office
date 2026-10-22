@@ -1,3 +1,4 @@
+import { DEFAULT_LEAD_MODEL_ID, DEFAULT_TEAM_MODEL_ID, MODELS } from "@the-delegation/llm/registry"
 import { ArrowUpRight, Sparkles } from "lucide-react"
 import { ExternalLink } from "@/components/ExternalLink"
 import { Badge } from "@/components/ui/badge"
@@ -17,33 +18,30 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { DEFAULT_MODEL } from "../core/llm/constants"
-import { GEMINI_PRICING } from "../core/llm/pricing"
 
 interface PricingModalProps {
   isOpen?: boolean
   onClose: () => void
 }
 
-const PRICING_URL = "https://ai.google.dev/gemini-api/docs/pricing"
+const PRICING_URL = "https://platform.claude.com/docs/en/about-claude/pricing"
 
-const MODELS_DEFAULT_FIRST = Object.entries(GEMINI_PRICING).sort(([a], [b]) =>
-  a === DEFAULT_MODEL ? -1 : b === DEFAULT_MODEL ? 1 : 0,
-)
+const DEFAULT_MODEL_IDS: ReadonlySet<string> = new Set([
+  DEFAULT_LEAD_MODEL_ID,
+  DEFAULT_TEAM_MODEL_ID,
+])
 
 function formatPrice(usd: number): string {
   return `$${usd.toFixed(2)}`
 }
 
-/** Per-model Gemini token prices, so the user can see what a run will cost them. */
+/** Per-model token prices, so the user can see what a run will cost. */
 function PricingModal({ isOpen = true, onClose }: PricingModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto rounded-3xl p-8 sm:max-w-xl md:p-12">
         <DialogHeader className="items-center gap-3 text-center sm:text-center">
-          <DialogTitle className="text-3xl font-black tracking-tight">
-            Gemini API pricing
-          </DialogTitle>
+          <DialogTitle className="text-3xl font-black tracking-tight">Model pricing</DialogTitle>
           <DialogDescription>
             Prices in USD per 1M tokens, as listed by Google. Check the official page for current
             rates.
@@ -74,8 +72,8 @@ function PricingModal({ isOpen = true, onClose }: PricingModalProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {MODELS_DEFAULT_FIRST.map(([model, pricing]) => {
-              const isDefault = model === DEFAULT_MODEL
+            {MODELS.map(({ id: model, pricing }) => {
+              const isDefault = DEFAULT_MODEL_IDS.has(model)
               return (
                 <TableRow
                   key={model}

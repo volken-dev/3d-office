@@ -15,8 +15,8 @@
     "clean": "rm -rf .next out"
   },
   "dependencies": {
-    "@google/genai": "1.48.0",
     "@the-delegation/agents": "workspace:*",
+    "@the-delegation/llm": "workspace:*",
     "@the-delegation/shared": "workspace:*",
     "@xyflow/react": "^12.10.1",
     "class-variance-authority": "^0.7.1",

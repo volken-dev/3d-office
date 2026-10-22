@@ -46,13 +46,23 @@ describe("completeTask.run", () => {
   test("completes an in-progress task for an agent without review", () => {
     if (!autonomousAgent) throw new Error("Fixture team needs an agent without review")
     const { project, task, context } = setup(autonomousAgent)
-    expect(completeTask.run(context, { taskId: task.id, output: "<form />" })).toEqual({ ok: true })
+    expect(completeTask.run(context, { taskId: task.id, output: "<form />" })).toEqual({
+      ok: true,
+      summary: "Task completed.",
+    })
     expect(project.getTask(task.id)).toMatchObject({ status: "done", output: "<form />" })
   })
 
   test("submits the work for review when the agent has human-in-the-loop", () => {
     const { project, task, statuses, context } = setup(reviewedAgent)
-    expect(completeTask.run(context, { taskId: task.id, output: "Plan" })).toEqual({ ok: true })
+    expect(completeTask.run(context, { taskId: task.id, output: "Plan" })).toEqual({
+      ok: true,
+      summary: "Submitted for the user's review.",
+    })
+    expect(project.getHistory(reviewedAgent.index).at(-1)?.metadata).toEqual({
+      reviewTaskId: task.id,
+      displayOnly: true,
+    })
     expect(project.getTask(task.id)).toMatchObject({ status: "on_hold", draftOutput: "Plan" })
     expect(statuses).toEqual(["on_hold"])
   })

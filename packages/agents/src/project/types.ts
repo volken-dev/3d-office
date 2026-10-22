@@ -1,4 +1,11 @@
-import type { LLMMessage, LLMTokenUsage, LLMToolCall, LLMToolDefinition } from "../llm/types"
+import type {
+  ContentBlock,
+  Message,
+  ServedBy,
+  StopReason,
+  ToolDefinition,
+  Usage,
+} from "@the-delegation/shared/llm-messages"
 
 export type ProjectPhase = "idle" | "working" | "done"
 
@@ -52,24 +59,23 @@ interface DebugLogEntryBase {
 export interface RequestDebugLogEntry extends DebugLogEntryBase {
   phase: "request"
   systemInstruction?: string
-  contents: LLMMessage[]
-  systemTools?: LLMToolDefinition[]
+  contents: Message[]
+  systemTools?: ToolDefinition[]
 }
 
-/** Small summary of the provider response; the full SDK payload is deliberately not retained. */
+/** Small summary of the gateway response; provider payloads are deliberately not retained. */
 export interface ResponseSummary {
+  /** The model the agent asked for. */
   model: string
-  modelVersion?: string
-  responseId?: string
-  finishReason?: string
+  servedBy: ServedBy
+  stopReason: StopReason
 }
 
 export interface ResponseDebugLogEntry extends DebugLogEntryBase {
   phase: "response"
-  content: string | null
-  tool_calls?: LLMToolCall[]
-  usage?: LLMTokenUsage
-  raw?: ResponseSummary
+  content: ContentBlock[]
+  usage: Usage
+  raw: ResponseSummary
 }
 
 export type DebugLogEntry = RequestDebugLogEntry | ResponseDebugLogEntry

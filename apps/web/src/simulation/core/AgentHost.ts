@@ -3,7 +3,7 @@ import {
   type BrainHost,
   type ThinkOptions,
 } from "@the-delegation/agents/agent/AgentBrain"
-import type { LLMMessage } from "@the-delegation/agents/llm/types"
+import type { AgentMessage } from "@the-delegation/agents/llm/types"
 import { canChatWith } from "@the-delegation/agents/orchestration/policy"
 import type { AgentWorkStatus } from "@the-delegation/agents/project/types"
 import { type AgentNode, isLeadAgent } from "@the-delegation/agents/team"
@@ -67,7 +67,7 @@ export class AgentHost implements BrainHost {
     if (!this.disposed) useUiStore.getState().setAgentStatus(this.data.index, state)
   }
 
-  public appendHistory(message: LLMMessage) {
+  public appendHistory(message: AgentMessage) {
     this.brain.appendHistory(message)
   }
 

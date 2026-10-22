@@ -18,6 +18,7 @@ import {
   MAX_AGENTS,
   USER_ID,
 } from "@the-delegation/agents/team"
+import { DEFAULT_TEAM_MODEL_ID } from "@the-delegation/llm/registry"
 import { Plus, Settings, User, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -25,7 +26,6 @@ import { useShallow } from "zustand/react/shallow"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { DEFAULT_MODEL } from "../../core/llm/constants"
 import { getAgentSet, getAllCharacters } from "../../data/agents"
 import { useCoreStore } from "../../integration/store/coreStore"
 import { useTeamStore } from "../../integration/store/teamStore"
@@ -278,7 +278,7 @@ function VisualConfiguratorContent() {
       name: uniqueAgentName(characters),
       description: "Collaborate with the team to achieve the project goals.",
       color: DEFAULT_AGENT_COLOR,
-      model: DEFAULT_MODEL,
+      model: DEFAULT_TEAM_MODEL_ID,
       position: placeNewSubagent(activeAgent, characters),
     }
     requestDiscard(() => {

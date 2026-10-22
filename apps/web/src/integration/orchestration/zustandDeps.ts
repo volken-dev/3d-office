@@ -1,4 +1,3 @@
-import type { LLMClient } from "@the-delegation/agents/llm/types"
 import type {
   OrchestrationDeps,
   ProjectSnapshot,
@@ -6,7 +5,7 @@ import type {
 } from "@the-delegation/agents/orchestration/ports"
 import type { AutonomyPause } from "@the-delegation/agents/project/types"
 import { toast } from "sonner"
-import { GeminiProvider } from "../../core/llm/providers/GeminiProvider"
+import { createGatewayClient } from "../llm/gatewayClient"
 import { useCoreStore } from "../store/coreStore"
 import { getActiveAgentSet } from "../store/teamStore"
 import { useUiStore } from "../store/uiStore"
@@ -26,34 +25,20 @@ function toSnapshot(state: CoreState): ProjectSnapshot {
   }
 }
 
-/** Resumes automatically once the user saves a different key after an auth failure. */
-function resumeWhenKeyChanges() {
-  const keyAtPause = useUiStore.getState().llmConfig.apiKey
-  const unsubscribe = useUiStore.subscribe((state) => {
-    if (state.llmConfig.apiKey === keyAtPause) return
-    unsubscribe()
-    if (state.llmConfig.apiKey && useCoreStore.getState().autonomyPause?.kind === "auth") {
-      useCoreStore.getState().resumeAutonomy()
-      toast.dismiss(PAUSE_TOAST_ID)
-    }
-  })
-}
-
 let closeChatTimer: ReturnType<typeof setTimeout> | undefined
 
 const events: OrchestrationDeps["events"] = {
   llmError({ agent, kind, message }) {
-    if (kind === "auth" || kind === "missing_key") {
-      useUiStore.getState().setBYOKOpen(true, message)
-      return
-    }
     const title =
-      kind === "quota" ? "Gemini quota or rate limit reached" : `${agent.name} hit an error`
+      kind === "rate_limited"
+        ? "The model provider is rate limiting requests"
+        : kind === "not_configured" || kind === "unauthorized"
+          ? "The model gateway is not available"
+          : `${agent.name} hit an error`
     toast.error(title, { id: `llm-error-${agent.index}`, description: message.slice(0, 240) })
   },
 
   autonomyPaused(pause: AutonomyPause) {
-    if (pause.kind === "auth") resumeWhenKeyChanges()
     toast.warning("Agents paused", {
       id: PAUSE_TOAST_ID,
       description: pause.reason,
@@ -125,17 +110,12 @@ const project: ProjectStatePort = {
   },
 }
 
-let cachedClient: { apiKey: string; client: LLMClient } | null = null
+const gatewayClient = createGatewayClient()
 
-/** Wires agent orchestration to the Zustand stores, the browser Gemini SDK and Sonner toasts. */
+/** Wires agent orchestration to the Zustand stores, the model gateway and Sonner toasts. */
 export const zustandOrchestrationDeps: OrchestrationDeps = {
   project,
   team: { getTeam: getActiveAgentSet },
-  settings: { getLlmConfig: () => useUiStore.getState().llmConfig },
-  createLLMClient(apiKey) {
-    if (cachedClient?.apiKey !== apiKey)
-      cachedClient = { apiKey, client: new GeminiProvider(apiKey) }
-    return cachedClient.client
-  },
+  createLLMClient: () => gatewayClient,
   events,
 }

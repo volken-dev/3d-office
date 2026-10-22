@@ -1,4 +1,5 @@
-import type { LLMMessage } from "@the-delegation/agents/llm/types"
+import { displayTextOf } from "@the-delegation/agents/agent/history"
+import type { AgentMessage } from "@the-delegation/agents/llm/types"
 import { FileSearch } from "lucide-react"
 import React from "react"
 import { Markdown } from "@/components/Markdown"
@@ -39,7 +40,7 @@ function ReviewTaskCallout({ taskId }: { taskId: string }) {
 }
 
 interface ChatMessageProps {
-  message: LLMMessage
+  message: AgentMessage
   agentName: string
   agentColor: string
   agentAvatar: AvatarType
@@ -84,10 +85,10 @@ export const ChatMessage = React.memo(function ChatMessage({
             role={isError ? "alert" : undefined}
           >
             {isUser ? (
-              <div className="whitespace-pre-wrap">{message.content}</div>
+              <div className="whitespace-pre-wrap">{displayTextOf(message)}</div>
             ) : (
               <>
-                <Markdown>{message.content}</Markdown>
+                <Markdown>{displayTextOf(message)}</Markdown>
                 {reviewTaskId && <ReviewTaskCallout taskId={reviewTaskId} />}
               </>
             )}

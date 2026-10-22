@@ -1,10 +1,10 @@
 import type { AgenticSystem } from "@the-delegation/agents/team"
+import { DEFAULT_LEAD_MODEL_ID } from "@the-delegation/llm/registry"
 import { Plus } from "lucide-react"
 import { useMemo } from "react"
 import { useShallow } from "zustand/react/shallow"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { DEFAULT_MODEL } from "../../core/llm/constants"
 import { AGENTIC_SETS } from "../../data/agents"
 import { useTeamStore } from "../../integration/store/teamStore"
 import { TeamCard } from "./TeamCard"
@@ -35,7 +35,7 @@ function createTeam(): AgenticSystem {
       name: "Lead Agent",
       description: "Coordinate the team to finish the project.",
       color: DEFAULT_AGENT_COLOR,
-      model: DEFAULT_MODEL,
+      model: DEFAULT_LEAD_MODEL_ID,
       position: { x: 0, y: 150 },
       subagents: [],
     },

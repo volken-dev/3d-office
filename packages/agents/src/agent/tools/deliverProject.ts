@@ -3,20 +3,18 @@ import { fail, readString, type ToolSpec } from "./types"
 
 export const deliverProject: ToolSpec<{ output: string }> = {
   definition: {
-    type: "function",
-    function: {
-      name: "deliver_project",
-      description: "Final delivery of the full project results.",
-      parameters: {
-        type: "object",
-        properties: {
-          output: {
-            type: "string",
-            description: "Full project document in Markdown. NO attribution needed.",
-          },
+    name: "deliver_project",
+    description: "Final delivery of the full project results.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        output: {
+          type: "string",
+          description: "Full project document in Markdown. NO attribution needed.",
         },
-        required: ["output"],
       },
+      required: ["output"],
+      additionalProperties: false,
     },
   },
 
@@ -41,9 +39,15 @@ export const deliverProject: ToolSpec<{ output: string }> = {
       )
     }
 
-    if (team.outputAutoApprove === false) project.requestOutputReview(output)
+    const needsReview = team.outputAutoApprove === false
+    if (needsReview) project.requestOutputReview(output)
     else project.finalizeOutput(output)
     project.logAction({ agentIndex: agent.index, action: "delivered final project results" })
-    return { ok: true }
+    return {
+      ok: true,
+      summary: needsReview
+        ? "Deliverable sent to the user for review."
+        : "Deliverable accepted. The project is done.",
+    }
   },
 }

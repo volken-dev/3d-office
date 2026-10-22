@@ -5,7 +5,7 @@ import {
   USER_ID,
   USER_NAME,
 } from "@the-delegation/agents/team"
-import { DEFAULT_MODEL } from "../core/llm/constants"
+import { DEFAULT_LEAD_MODEL_ID, DEFAULT_TEAM_MODEL_ID } from "@the-delegation/llm/registry"
 import { USER_COLOR } from "../theme/brand"
 
 export const DEFAULT_AGENTIC_SET_ID = "feature-squad"
@@ -27,7 +27,7 @@ export const AGENTIC_SETS: AgenticSystem[] = [
       description:
         "Breaks features into well-scoped engineering tasks, coordinates the squad and owns the final technical plan.",
       color: "#4285F4",
-      model: DEFAULT_MODEL,
+      model: DEFAULT_LEAD_MODEL_ID,
       humanInTheLoop: true,
       position: { x: 0, y: 130 },
       subagents: [
@@ -38,7 +38,7 @@ export const AGENTIC_SETS: AgenticSystem[] = [
           description:
             "Defines user stories, acceptance criteria and scope boundaries for the feature.",
           color: "#A142F4",
-          model: DEFAULT_MODEL,
+          model: DEFAULT_TEAM_MODEL_ID,
           humanInTheLoop: true,
           position: { x: -450, y: 280 },
         },
@@ -49,7 +49,7 @@ export const AGENTIC_SETS: AgenticSystem[] = [
           description:
             "Designs UI components, client state, routing and accessibility for the feature.",
           color: "#FBBC05",
-          model: DEFAULT_MODEL,
+          model: DEFAULT_TEAM_MODEL_ID,
           position: { x: -150, y: 280 },
         },
         {
@@ -59,7 +59,7 @@ export const AGENTIC_SETS: AgenticSystem[] = [
           description:
             "Designs APIs, data models, migrations and service integrations for the feature.",
           color: "#34A853",
-          model: DEFAULT_MODEL,
+          model: DEFAULT_TEAM_MODEL_ID,
           position: { x: 150, y: 280 },
         },
         {
@@ -69,7 +69,7 @@ export const AGENTIC_SETS: AgenticSystem[] = [
           description:
             "Writes the test plan: unit, integration and end-to-end cases, plus edge cases and regressions to watch.",
           color: "#EA4335",
-          model: DEFAULT_MODEL,
+          model: DEFAULT_TEAM_MODEL_ID,
           position: { x: 450, y: 280 },
         },
       ],
@@ -91,7 +91,7 @@ export const AGENTIC_SETS: AgenticSystem[] = [
       description:
         "Frames the problem, weighs alternatives and writes the final design doc with a clear recommendation.",
       color: "#0EA5E9",
-      model: DEFAULT_MODEL,
+      model: DEFAULT_LEAD_MODEL_ID,
       humanInTheLoop: true,
       position: { x: 0, y: 130 },
       subagents: [
@@ -101,7 +101,7 @@ export const AGENTIC_SETS: AgenticSystem[] = [
           name: "Systems Engineer",
           description: "Proposes service boundaries, APIs, data flow and consistency model.",
           color: "#6366F1",
-          model: DEFAULT_MODEL,
+          model: DEFAULT_TEAM_MODEL_ID,
           position: { x: -300, y: 280 },
         },
         {
@@ -110,7 +110,7 @@ export const AGENTIC_SETS: AgenticSystem[] = [
           name: "Data Engineer",
           description: "Designs storage, schemas, indexing, retention and migration strategy.",
           color: "#14B8A6",
-          model: DEFAULT_MODEL,
+          model: DEFAULT_TEAM_MODEL_ID,
           position: { x: 0, y: 280 },
         },
         {
@@ -119,7 +119,7 @@ export const AGENTIC_SETS: AgenticSystem[] = [
           name: "SRE",
           description: "Covers deployment, scaling, observability, failure modes and cost.",
           color: "#F97316",
-          model: DEFAULT_MODEL,
+          model: DEFAULT_TEAM_MODEL_ID,
           humanInTheLoop: true,
           position: { x: 300, y: 280 },
         },
@@ -142,7 +142,7 @@ export const AGENTIC_SETS: AgenticSystem[] = [
       description:
         "Clarifies the bug report, assesses severity and delivers the final incident write-up.",
       color: "#DC2626",
-      model: DEFAULT_MODEL,
+      model: DEFAULT_LEAD_MODEL_ID,
       humanInTheLoop: true,
       position: { x: 0, y: 130 },
       subagents: [
@@ -153,7 +153,7 @@ export const AGENTIC_SETS: AgenticSystem[] = [
           description:
             "Forms hypotheses, narrows down reproduction steps and identifies the root cause.",
           color: "#F59E0B",
-          model: DEFAULT_MODEL,
+          model: DEFAULT_TEAM_MODEL_ID,
           position: { x: 0, y: 260 },
           subagents: [
             {
@@ -162,7 +162,7 @@ export const AGENTIC_SETS: AgenticSystem[] = [
               name: "Fix Engineer",
               description: "Proposes the minimal code fix and the regression tests that prove it.",
               color: "#22C55E",
-              model: DEFAULT_MODEL,
+              model: DEFAULT_TEAM_MODEL_ID,
               humanInTheLoop: true,
               position: { x: 0, y: 390 },
             },
@@ -187,7 +187,7 @@ export const AGENTIC_SETS: AgenticSystem[] = [
       description:
         "Collects the change under review, dispatches reviewers and merges their findings into one prioritized review.",
       color: "#7C3AED",
-      model: DEFAULT_MODEL,
+      model: DEFAULT_LEAD_MODEL_ID,
       humanInTheLoop: true,
       position: { x: 0, y: 130 },
       subagents: [
@@ -197,7 +197,7 @@ export const AGENTIC_SETS: AgenticSystem[] = [
           name: "Correctness Reviewer",
           description: "Finds logic bugs, unhandled edge cases and missing tests.",
           color: "#2563EB",
-          model: DEFAULT_MODEL,
+          model: DEFAULT_TEAM_MODEL_ID,
           position: { x: -300, y: 280 },
         },
         {
@@ -206,7 +206,7 @@ export const AGENTIC_SETS: AgenticSystem[] = [
           name: "Security Reviewer",
           description: "Finds injection, auth, secrets-handling and data-exposure issues.",
           color: "#E11D48",
-          model: DEFAULT_MODEL,
+          model: DEFAULT_TEAM_MODEL_ID,
           position: { x: 0, y: 280 },
         },
         {
@@ -216,7 +216,7 @@ export const AGENTIC_SETS: AgenticSystem[] = [
           description:
             "Finds hot-path inefficiencies, N+1 queries, memory growth and blocking work.",
           color: "#059669",
-          model: DEFAULT_MODEL,
+          model: DEFAULT_TEAM_MODEL_ID,
           position: { x: 300, y: 280 },
         },
       ],
@@ -238,7 +238,7 @@ export const AGENTIC_SETS: AgenticSystem[] = [
       description:
         "Gives pragmatic technical direction: approach, risks, estimates and next steps.",
       color: "#64748B",
-      model: DEFAULT_MODEL,
+      model: DEFAULT_LEAD_MODEL_ID,
       humanInTheLoop: true,
       position: { x: 0, y: 130 },
     },

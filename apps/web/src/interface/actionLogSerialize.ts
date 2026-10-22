@@ -1,3 +1,4 @@
+import { blockText, toolCallsIn } from "@the-delegation/agents/agent/history"
 import type { DebugLogEntry } from "../integration/store/coreStore"
 
 function toPrettyJson(value: unknown): string {
@@ -21,8 +22,9 @@ export function serializeDebugEntry(entry: DebugLogEntry, agentName: string): st
           `SYSTEM TOOLS:\n${toPrettyJson(entry.systemTools)}`,
         ]
       : [
-          `CONTENT:\n${entry.content || "None"}`,
-          `TOOL CALLS:\n${toPrettyJson(entry.tool_calls ?? [])}`,
+          `CONTENT:\n${blockText(entry.content) || "None"}`,
+          `TOOL CALLS:\n${toPrettyJson(toolCallsIn(entry.content))}`,
+          `USAGE:\n${toPrettyJson(entry.usage)}`,
           `RAW RESPONSE:\n${toPrettyJson(entry.raw)}`,
         ]
 
