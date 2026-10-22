@@ -1,18 +1,26 @@
-import { HelpCircle } from 'lucide-react';
-import React from 'react';
-import { USER_COLOR } from '../../theme/brand';
-import { InfoTooltip } from './InfoTooltip';
+import { HelpCircle } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface InfoBubbleProps {
-  text: string;
+  text: string
 }
 
-export const InfoBubble: React.FC<InfoBubbleProps> = ({ text }) => {
+/** Question-mark icon with a tooltip, for inline help next to a label. */
+export function InfoBubble({ text }: InfoBubbleProps) {
   return (
-    <InfoTooltip text={text}>
-      <div className="text-zinc-300 hover:text-[var(--user-color)] transition-colors cursor-pointer outline-none ml-1" style={{ '--user-color': USER_COLOR } as React.CSSProperties}>
-        <HelpCircle size={12} strokeWidth={2.5} />
-      </div>
-    </InfoTooltip>
-  );
-};
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="bare"
+          size="bare"
+          aria-label="More info"
+          className="ml-1 rounded-full text-muted-foreground hover:text-user focus-visible:text-user focus-visible:ring-2"
+        >
+          <HelpCircle className="size-[13px]" strokeWidth={2.5} aria-hidden />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-[220px] text-center">{text}</TooltipContent>
+    </Tooltip>
+  )
+}

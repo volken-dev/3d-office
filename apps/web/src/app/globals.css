@@ -1,11 +1,11 @@
-@import 'tailwindcss';
-@import 'tw-animate-css';
+@import "tailwindcss";
+@import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
 /*
  * Brand palette mapped onto shadcn tokens (light theme only).
- * --primary is the brand charcoal (formerly --color-darkDelegation) and --user is USER_COLOR from src/theme/brand.ts.
+ * --primary is the brand charcoal and --user is USER_COLOR from src/theme/brand.ts.
  */
 :root {
   color-scheme: light;
@@ -67,9 +67,6 @@
   --color-user-foreground: var(--user-foreground);
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
-
-  /* Legacy alias kept so not-yet-migrated components (bg-darkDelegation, text-darkDelegation) keep rendering. */
-  --color-darkDelegation: var(--primary);
 }
 
 @layer base {
@@ -90,7 +87,7 @@
   }
 
   button:not(:disabled),
-  [role='button']:not(:disabled),
+  [role="button"]:not(:disabled),
   a {
     cursor: pointer;
   }

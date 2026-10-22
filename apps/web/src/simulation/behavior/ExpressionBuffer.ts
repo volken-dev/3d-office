@@ -1,11 +1,17 @@
-import { storage } from 'three/tsl';
-import * as THREE from 'three/webgpu';
-import { AtlasCoords, ExpressionKey } from '../../types';
+import { storage } from "three/tsl"
+import * as THREE from "three/webgpu"
+import type { AtlasCoords, ExpressionKey } from "../../types"
 import {
-    ATLAS_COLS, ATLAS_ROWS, BLINK_DURATION, BLINK_FRAME, BLINK_INTERVAL_MIN, BLINK_INTERVAL_RANGE, SPEAKING_FRAME_DURATION
-} from '../constants';
+  ATLAS_COLS,
+  ATLAS_ROWS,
+  BLINK_DURATION,
+  BLINK_FRAME,
+  BLINK_INTERVAL_MIN,
+  BLINK_INTERVAL_RANGE,
+  SPEAKING_FRAME_DURATION,
+} from "../constants"
 
-export const EXPRESSIONS: Record<ExpressionKey, { eyes: AtlasCoords; mouth: AtlasCoords }> = {
+const EXPRESSIONS: Record<ExpressionKey, { eyes: AtlasCoords; mouth: AtlasCoords }> = {
   idle: { eyes: { col: 0, row: 3 }, mouth: { col: 1, row: 3 } },
   listening: { eyes: { col: 1, row: 0 }, mouth: { col: 1, row: 1 } },
   neutral: { eyes: { col: 0, row: 3 }, mouth: { col: 1, row: 2 } },
@@ -15,14 +21,14 @@ export const EXPRESSIONS: Record<ExpressionKey, { eyes: AtlasCoords; mouth: Atla
   wink: { eyes: { col: 0, row: 0 }, mouth: { col: 0, row: 0 } },
   doubtful: { eyes: { col: 1, row: 0 }, mouth: { col: 0, row: 2 } },
   sad: { eyes: { col: 1, row: 1 }, mouth: { col: 1, row: 0 } },
-};
+}
 
-export const SPEAKING_MOUTH_FRAMES: AtlasCoords[] = [
+const SPEAKING_MOUTH_FRAMES: AtlasCoords[] = [
   { col: 1, row: 3 },
   { col: 0, row: 3 },
   { col: 1, row: 2 },
   { col: 0, row: 2 },
-];
+]
 
 /**
  * CPU/GPU buffer that stores per-instance expression data.
@@ -33,103 +39,103 @@ export const SPEAKING_MOUTH_FRAMES: AtlasCoords[] = [
  *   .w = mouth Y offset
  */
 export class ExpressionBuffer {
-  public readonly array: Float32Array;
-  public readonly attribute: THREE.StorageInstancedBufferAttribute;
-  public readonly storageNode: any;
+  public readonly array: Float32Array
+  public readonly attribute: THREE.StorageInstancedBufferAttribute
+  public readonly storageNode: THREE.StorageBufferNode<"vec4">
 
-  private speakingStates: boolean[] = [];
-  private speakingFrames: number[] = [];
-  private speakingTimers: number[] = [];
-  private blinkTimers: number[] = [];
-  private isBlinking: boolean[] = [];
-  private currentExpressions: ExpressionKey[] = [];
+  private speakingStates: boolean[] = []
+  private speakingFrames: number[] = []
+  private speakingTimers: number[] = []
+  private blinkTimers: number[] = []
+  private isBlinking: boolean[] = []
+  private currentExpressions: ExpressionKey[] = []
 
   constructor(private readonly count: number) {
-    this.array = new Float32Array(count * 4);
-    this.attribute = new THREE.StorageInstancedBufferAttribute(this.array, 4);
-    this.storageNode = storage(this.attribute, 'vec4', count);
+    this.array = new Float32Array(count * 4)
+    this.attribute = new THREE.StorageInstancedBufferAttribute(this.array, 4)
+    this.storageNode = storage(this.attribute, "vec4", count)
 
-    for (let i = 0; i < count; i++) {
-      this.speakingStates[i] = false;
-      this.speakingFrames[i] = 0;
-      this.speakingTimers[i] = 0;
-      this.blinkTimers[i] = BLINK_INTERVAL_MIN + Math.random() * BLINK_INTERVAL_RANGE;
-      this.isBlinking[i] = false;
-      this.setExpression(i, 'idle');
+    for (let instanceIndex = 0; instanceIndex < count; instanceIndex++) {
+      this.speakingStates[instanceIndex] = false
+      this.speakingFrames[instanceIndex] = 0
+      this.speakingTimers[instanceIndex] = 0
+      this.blinkTimers[instanceIndex] = BLINK_INTERVAL_MIN + Math.random() * BLINK_INTERVAL_RANGE
+      this.isBlinking[instanceIndex] = false
+      this.setExpression(instanceIndex, "idle")
     }
   }
 
   public setExpression(index: number, name: ExpressionKey) {
-    this.currentExpressions[index] = name;
-    const config = EXPRESSIONS[name] || EXPRESSIONS.idle;
+    this.currentExpressions[index] = name
+    const config = EXPRESSIONS[name] || EXPRESSIONS.idle
 
-    // Apply eye offset (unless blinking)
     if (!this.isBlinking[index]) {
-      this.setEyeOffset(index, config.eyes);
+      this.setEyeOffset(index, config.eyes)
     }
 
-    // Apply mouth offset (unless speaking)
     if (!this.speakingStates[index]) {
-      this.setMouthOffset(index, config.mouth);
+      this.setMouthOffset(index, config.mouth)
     }
   }
 
   public setSpeaking(index: number, isSpeaking: boolean) {
-    this.speakingStates[index] = isSpeaking;
+    this.speakingStates[index] = isSpeaking
     if (!isSpeaking) {
-      // Reset mouth to current expression
-      const config = EXPRESSIONS[this.currentExpressions[index]] || EXPRESSIONS.idle;
-      this.setMouthOffset(index, config.mouth);
+      const config = EXPRESSIONS[this.currentExpressions[index]] || EXPRESSIONS.idle
+      this.setMouthOffset(index, config.mouth)
     }
   }
 
   private setEyeOffset(index: number, coords: AtlasCoords) {
-    this.array[index * 4 + 0] = coords.col * (1 / ATLAS_COLS);
-    this.array[index * 4 + 1] = 1.0 - (coords.row + 1) * (1 / ATLAS_ROWS);
-    this.attribute.needsUpdate = true;
+    this.array[index * 4 + 0] = coords.col * (1 / ATLAS_COLS)
+    this.array[index * 4 + 1] = 1.0 - (coords.row + 1) * (1 / ATLAS_ROWS)
+    this.attribute.needsUpdate = true
   }
 
   private setMouthOffset(index: number, coords: AtlasCoords) {
-    this.array[index * 4 + 2] = coords.col * (1 / ATLAS_COLS);
-    this.array[index * 4 + 3] = 1.0 - (coords.row + 1) * (1 / ATLAS_ROWS);
-    this.attribute.needsUpdate = true;
+    this.array[index * 4 + 2] = coords.col * (1 / ATLAS_COLS)
+    this.array[index * 4 + 3] = 1.0 - (coords.row + 1) * (1 / ATLAS_ROWS)
+    this.attribute.needsUpdate = true
   }
 
-  public update(delta: number) {
-    let needsUpdate = false;
+  public update(deltaSeconds: number) {
+    let needsUpdate = false
 
-    for (let i = 0; i < this.count; i++) {
-      // Handle Blinking
-      this.blinkTimers[i] -= delta;
-      if (this.blinkTimers[i] <= 0) {
-        if (!this.isBlinking[i]) {
-          this.isBlinking[i] = true;
-          this.blinkTimers[i] = BLINK_DURATION;
-          this.setEyeOffset(i, BLINK_FRAME);
-          needsUpdate = true;
+    for (let instanceIndex = 0; instanceIndex < this.count; instanceIndex++) {
+      this.blinkTimers[instanceIndex] -= deltaSeconds
+      if (this.blinkTimers[instanceIndex] <= 0) {
+        if (!this.isBlinking[instanceIndex]) {
+          this.isBlinking[instanceIndex] = true
+          this.blinkTimers[instanceIndex] = BLINK_DURATION
+          this.setEyeOffset(instanceIndex, BLINK_FRAME)
+          needsUpdate = true
         } else {
-          this.isBlinking[i] = false;
-          this.blinkTimers[i] = BLINK_INTERVAL_MIN + Math.random() * BLINK_INTERVAL_RANGE;
-          const config = EXPRESSIONS[this.currentExpressions[i]] || EXPRESSIONS.idle;
-          this.setEyeOffset(i, config.eyes);
-          needsUpdate = true;
+          this.isBlinking[instanceIndex] = false
+          this.blinkTimers[instanceIndex] =
+            BLINK_INTERVAL_MIN + Math.random() * BLINK_INTERVAL_RANGE
+          const config = EXPRESSIONS[this.currentExpressions[instanceIndex]] || EXPRESSIONS.idle
+          this.setEyeOffset(instanceIndex, config.eyes)
+          needsUpdate = true
         }
       }
 
-      // Handle Speaking Animation
-      if (this.speakingStates[i]) {
-        this.speakingTimers[i] -= delta;
-        if (this.speakingTimers[i] <= 0) {
-          this.speakingTimers[i] = SPEAKING_FRAME_DURATION;
-          this.speakingFrames[i] = (this.speakingFrames[i] + 1) % SPEAKING_MOUTH_FRAMES.length;
-          this.setMouthOffset(i, SPEAKING_MOUTH_FRAMES[this.speakingFrames[i]]);
-          needsUpdate = true;
+      if (this.speakingStates[instanceIndex]) {
+        this.speakingTimers[instanceIndex] -= deltaSeconds
+        if (this.speakingTimers[instanceIndex] <= 0) {
+          this.speakingTimers[instanceIndex] = SPEAKING_FRAME_DURATION
+          this.speakingFrames[instanceIndex] =
+            (this.speakingFrames[instanceIndex] + 1) % SPEAKING_MOUTH_FRAMES.length
+          this.setMouthOffset(
+            instanceIndex,
+            SPEAKING_MOUTH_FRAMES[this.speakingFrames[instanceIndex]],
+          )
+          needsUpdate = true
         }
       }
     }
 
     if (needsUpdate) {
-      this.attribute.needsUpdate = true;
+      this.attribute.needsUpdate = true
     }
   }
 }

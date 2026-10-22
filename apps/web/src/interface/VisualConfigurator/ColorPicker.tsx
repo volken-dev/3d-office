@@ -1,113 +1,129 @@
-import { Pipette, X } from 'lucide-react';
-import React, { useRef, useState, useEffect } from 'react';
-import { getBrightness, getDarkenedColor, MAX_BRIGHTNESS } from './colorUtils';
+import { Check, Pipette, TriangleAlert } from "lucide-react"
+import { useEffect, useId, useRef } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { getBrightness, getDarkenedColor, MAX_BRIGHTNESS } from "./colorBrightness"
+import { DEFAULT_AGENT_COLOR } from "./teamTree"
 
-interface ColorPickerProps {
-  color: string;
-  onChange: (color: string) => void;
-  disabled?: boolean;
+const PRESET_COLORS = [
+  DEFAULT_AGENT_COLOR,
+  "#6366F1",
+  "#3B82F6",
+  "#0EA5E9",
+  "#14B8A6",
+  "#22C55E",
+  "#F59E0B",
+  "#F97316",
+  "#EF4444",
+  "#EC4899",
+  "#64748B",
+  "#313437",
+]
+
+/** White text on this colour would be unreadable, so it is rejected as a team or agent colour. */
+export function isColorTooLight(color: string): boolean {
+  return getBrightness(color) > MAX_BRIGHTNESS
 }
 
-export const ColorPicker: React.FC<ColorPickerProps> = ({ 
-  color, 
-  onChange, 
-  disabled = false 
-}) => {
-  const colorInputRef = useRef<HTMLInputElement>(null);
-  const [suggestedColor, setSuggestedColor] = useState<string | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [prevColor, setPrevColor] = useState<string>(color);
+interface ColorPickerProps {
+  color: string
+  onChange: (color: string) => void
+  /** Accessible name of the trigger, e.g. "Agent color". */
+  label: string
+}
+
+/** Preset and custom colour picker that refuses colours too light for white text and suggests a darker one. */
+export function ColorPicker({ color, onChange, label }: ColorPickerProps) {
+  const customId = useId()
+  const tooLight = isColorTooLight(color)
+  const lastReadableColorRef = useRef(tooLight ? DEFAULT_AGENT_COLOR : color)
 
   useEffect(() => {
-    // If external color changes and we are not in a suggestion state, update prevColor
-    if (!suggestedColor) {
-      setPrevColor(color);
-    }
-  }, [color, suggestedColor]);
+    if (!tooLight) lastReadableColorRef.current = color
+  }, [color, tooLight])
 
-  const handleLiveColorChange = (newColor: string) => {
-    onChange(newColor);
-    setSuggestedColor(null);
-    setErrorMsg(null);
-  };
-
-  const handleCommitColorChange = (newColor: string) => {
-    const brightness = getBrightness(newColor);
-    if (brightness > MAX_BRIGHTNESS) {
-      const suggested = getDarkenedColor(newColor);
-      setSuggestedColor(suggested);
-      setErrorMsg('Selected color is too light for white text.');
-    } else {
-      setSuggestedColor(null);
-      setErrorMsg(null);
-      setPrevColor(newColor);
-    }
-  };
+  const suggestedColor = tooLight ? getDarkenedColor(color) : null
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="relative group/picker">
-        <div
-          onClick={() => !disabled && colorInputRef.current?.click()}
-          className={`w-8 h-8 rounded-xl shadow-sm flex items-center justify-center transition-all ${
-            !disabled ? 'cursor-pointer hover:scale-110 active:scale-90 shadow-black/5' : 'opacity-50'
-          }`}
-          style={{ backgroundColor: color || '#A855F7' }}
-        >
-          {!disabled && (
-            <Pipette size={14} className="text-white opacity-90" strokeWidth={2.5} />
-          )}
-        </div>
-        <input
-          ref={colorInputRef}
-          type="color"
-          value={color || '#A855F7'}
-          onInput={(e) => handleLiveColorChange((e.target as HTMLInputElement).value)}
-          onBlur={(e) => handleCommitColorChange((e.target as HTMLInputElement).value)}
-          onChange={(e) => handleCommitColorChange((e.target as HTMLInputElement).value)}
-          className="absolute inset-0 opacity-0 pointer-events-none"
-          disabled={disabled}
-        />
-      </div>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            size="icon"
+            aria-label={`${label}: ${color}`}
+            className="size-9 rounded-xl text-white shadow-sm hover:opacity-90"
+            style={{ backgroundColor: color }}
+          >
+            <Pipette strokeWidth={2.5} />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-64 space-y-3 rounded-xl">
+          <p className="text-[11px] font-black text-muted-foreground">{label}</p>
+          <div className="grid grid-cols-6 gap-2">
+            {PRESET_COLORS.map((preset) => {
+              const isSelected = preset.toLowerCase() === color.toLowerCase()
+              return (
+                <Button
+                  key={preset}
+                  type="button"
+                  size="icon-sm"
+                  aria-label={preset}
+                  aria-pressed={isSelected}
+                  onClick={() => onChange(preset)}
+                  className="size-8 rounded-lg text-white hover:opacity-90"
+                  style={{ backgroundColor: preset }}
+                >
+                  {isSelected && <Check strokeWidth={3} />}
+                </Button>
+              )
+            })}
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t pt-3">
+            <Label htmlFor={customId} className="text-xs font-bold text-muted-foreground">
+              Custom color
+            </Label>
+            <Input
+              id={customId}
+              type="color"
+              value={color}
+              onChange={(event) => onChange(event.target.value)}
+              className="h-8 w-12 cursor-pointer p-0.5 shadow-none"
+            />
+          </div>
+        </PopoverContent>
+      </Popover>
 
-      {(errorMsg || suggestedColor) && (
-        <div className="flex flex-col gap-1.5 min-w-[140px]">
-          {errorMsg && (
-            <p className="text-[8px] font-black leading-tight text-red-500 uppercase tracking-tight">
-              {errorMsg}
-            </p>
-          )}
-
-          {suggestedColor && (
-            <div className="flex items-center gap-1.5 animate-in fade-in slide-in-from-top-1">
-              <button
-                onClick={() => {
-                  onChange(prevColor);
-                  setSuggestedColor(null);
-                  setErrorMsg(null);
-                }}
-                className="flex-1 py-1 px-2 bg-white border border-zinc-200 text-zinc-400 rounded-lg text-[8px] font-black uppercase tracking-wider hover:bg-zinc-50 transition-colors"
-                type="button"
-              >
-                No
-              </button>
-              <button
-                onClick={() => {
-                  onChange(suggestedColor);
-                  setPrevColor(suggestedColor);
-                  setSuggestedColor(null);
-                  setErrorMsg(null);
-                }}
-                className="flex-[2] py-1 px-2 text-white rounded-lg text-[8px] font-black uppercase tracking-wider hover:opacity-90 transition-all shadow-md shadow-black/5"
-                style={{ backgroundColor: suggestedColor }}
-                type="button"
-              >
-                Use suggested
-              </button>
-            </div>
-          )}
+      {suggestedColor && (
+        <div role="alert" className="flex max-w-60 flex-col gap-2">
+          <p className="flex items-center gap-1.5 text-[11px] font-bold leading-tight text-destructive">
+            <TriangleAlert className="size-3.5 shrink-0" />
+            Too light for white text.
+          </p>
+          <div className="flex items-center gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              className="flex-1 text-[11px] font-black"
+              onClick={() => onChange(lastReadableColorRef.current)}
+            >
+              Revert
+            </Button>
+            <Button
+              type="button"
+              size="xs"
+              className="flex-[2] text-[11px] font-black text-white hover:opacity-90"
+              style={{ backgroundColor: suggestedColor }}
+              onClick={() => onChange(suggestedColor)}
+            >
+              Use suggested
+            </Button>
+          </div>
         </div>
       )}
     </div>
-  );
-};
+  )
+}

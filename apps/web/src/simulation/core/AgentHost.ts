@@ -1,70 +1,78 @@
-import { AgentNode } from '../../data/agents';
-import { LLMMessage } from '../../core/llm/types';
-import { AgentState } from '../../types';
-import { useUiStore } from '../../integration/store/uiStore';
-import { AgentActionContext } from '../../core/agent/ToolRegistry';
-import { AgentBrain, BrainHost } from '../../core/agent/AgentBrain';
+import { AgentBrain, type BrainHost, type ThinkOptions } from "../../core/agent/AgentBrain"
+import type { LLMMessage } from "../../core/llm/types"
+import { canChatWith } from "../../core/orchestration/policy"
+import { type AgentNode, isLeadAgent } from "../../data/agents"
+import { useCoreStore } from "../../integration/store/coreStore"
+import { useUiStore } from "../../integration/store/uiStore"
+import type { AgentWorkStatus } from "../../types"
+import type { AgentSimulation } from "./AgentSimulation"
 
-export class AgentHost implements AgentActionContext, BrainHost {
-  public state: AgentState = 'idle';
-  private currentTaskId: string | null = null;
-  public readonly brain: AgentBrain;
+/** Runtime wrapper around one team member: its brain, task and status. */
+export class AgentHost implements BrainHost {
+  public state: AgentWorkStatus = "idle"
+  private currentTaskId: string | null = null
+  private disposed = false
+  public readonly brain: AgentBrain
 
   constructor(
-    public readonly data: AgentNode,
-    public readonly simulation: any // We'll type this properly later
+    /** Replaced in place when the team is edited, so the next LLM turn uses the new model/prompt. */
+    public data: AgentNode,
+    public readonly simulation: AgentSimulation,
   ) {
-    this.brain = new AgentBrain(this);
+    this.brain = new AgentBrain(this)
   }
 
-  /** Determines if the agent is currently available to respond to user messages. */
+  /** Same rule the chat UI applies (useChatAvailability), so an accepted message always gets a turn. */
   public canChat(): boolean {
-    return this.state === 'idle';
+    return canChatWith({
+      phase: useCoreStore.getState().phase,
+      isLead: isLeadAgent(this.simulation.system, this.data.index),
+      status: this.state,
+    })
   }
 
-  public async think(prompt: string, options: any = {}): Promise<{ text: string, toolCalls?: any[] }> {
-    return this.brain.think(prompt, options);
+  public think(prompt: string, options: ThinkOptions = {}) {
+    return this.brain.think(prompt, options)
   }
 
-  public async spark() {
-    return this.brain.spark();
+  public spark() {
+    return this.brain.spark()
   }
 
-  public async executeTask(taskId: string) {
-    return this.brain.executeTask(taskId);
+  public executeTask(taskId: string) {
+    return this.brain.executeTask(taskId)
   }
 
-  public async concludeProject() {
-    return this.brain.concludeProject();
-  }
-
-  public getStatus(): string {
-    return `${this.data.name} is ${this.state}${this.currentTaskId ? ` working on ${this.currentTaskId}` : ''}`;
+  public concludeProject() {
+    return this.brain.concludeProject()
   }
 
   public getCurrentTaskId(): string | null {
-    return this.currentTaskId;
+    return this.currentTaskId
   }
 
   public setTask(taskId: string | null) {
-    this.currentTaskId = taskId;
-    this.setState(taskId ? 'working' : 'idle');
+    this.currentTaskId = taskId
+    this.setState(taskId ? "working" : "idle")
   }
 
-  public setState(state: AgentState) {
-    this.state = state;
-    useUiStore.getState().setAgentStatus(this.data.index, state);
+  /** A disposed host belongs to a previous team, and its index may now be someone else's, so it no longer writes the store. */
+  public setState(state: AgentWorkStatus) {
+    this.state = state
+    if (!this.disposed) useUiStore.getState().setAgentStatus(this.data.index, state)
   }
 
   public appendHistory(message: LLMMessage) {
-    this.brain.appendHistory(message);
+    this.brain.appendHistory(message)
   }
 
   public get isThinking(): boolean {
-    return this.brain.isThinking;
+    return this.brain.isThinking
   }
 
+  /** Aborts the in-flight LLM call and drops the brain's store subscription. */
   public dispose() {
-    // No-op for now
+    this.disposed = true
+    this.brain.dispose()
   }
 }

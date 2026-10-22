@@ -1,171 +1,211 @@
-import { Eye, EyeOff, Trash2, X } from 'lucide-react';
-import React, { useState } from 'react';
-import { useUiStore } from '../integration/store/uiStore';
-import { DEFAULT_MODEL } from '../core/llm/constants';
-import { useShallow } from 'zustand/react/shallow';
+import { AlertCircle, ArrowUpRight, Eye, EyeOff, KeyRound, Trash2 } from "lucide-react"
+import type React from "react"
+import { useState } from "react"
+import { toast } from "sonner"
+import { useShallow } from "zustand/react/shallow"
+import { ExternalLink } from "@/components/ExternalLink"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { useUiStore } from "../integration/store/uiStore"
 
 interface BYOKModalProps {
-  onClose: () => void;
+  isOpen?: boolean
+  onClose: () => void
 }
 
-const STORAGE_KEY = 'byok-config';
+const API_KEY_URL = "https://aistudio.google.com/app/apikey"
+const KEY_SECURITY_URL = "https://ai.google.dev/gemini-api/docs/api-key"
+const LONG_ERROR = 120
 
-const BYOKModal: React.FC<BYOKModalProps> = ({ onClose }) => {
-  const { llmConfig, setLlmConfig, byokError } = useUiStore(useShallow((s) => ({ llmConfig: s.llmConfig, setLlmConfig: s.setLlmConfig, byokError: s.byokError })));
+function maskKey(key: string): string {
+  return key.length > 12 ? `${key.slice(0, 4)}…${key.slice(-4)}` : "••••••••"
+}
 
-  const [apiKey, setApiKey] = useState<string>(llmConfig.apiKey || '');
-  const [showKey, setShowKey] = useState(false);
-  const [isErrorExpanded, setIsErrorExpanded] = useState(false);
+/** Asks for the user's Gemini key (onboarding, replacement or after an auth error) and stores it in this browser. */
+function BYOKModal({ isOpen = true, onClose }: BYOKModalProps) {
+  const { savedKey, setLlmConfig, byokError } = useUiStore(
+    useShallow((state) => ({
+      savedKey: state.llmConfig.apiKey,
+      setLlmConfig: state.setLlmConfig,
+      byokError: state.byokError,
+    })),
+  )
 
-  const handleSave = () => {
-    const config = {
-      apiKey: apiKey.trim(),
-      model: llmConfig.model || DEFAULT_MODEL,
-    };
-    setLlmConfig(config);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-    } catch (e) {
-      console.error('Failed to save BYOK config', e);
+  const [enteredKey, setEnteredKey] = useState("")
+  const [showKey, setShowKey] = useState(false)
+  const [isErrorExpanded, setIsErrorExpanded] = useState(false)
+
+  const hasSavedKey = !!savedKey
+  const isOnboarding = !hasSavedKey && !byokError
+  const trimmedKey = enteredKey.trim()
+
+  const handleSave = (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!trimmedKey) return
+    if (setLlmConfig({ apiKey: trimmedKey })) {
+      toast.success("Gemini API key saved")
+    } else {
+      toast.warning("Key saved for this session only", {
+        description:
+          "This browser blocked local storage, so you will need to enter it again next visit.",
+      })
     }
-    onClose();
-  };
+    onClose()
+  }
 
   const handleClear = () => {
-    const emptyConfig = {
-      apiKey: '',
-      model: llmConfig.model || DEFAULT_MODEL,
-    };
-    setApiKey('');
-    setLlmConfig(emptyConfig);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(emptyConfig));
-    } catch (e) {
-      console.error('Failed to clear BYOK config', e);
-    }
-  };
+    setEnteredKey("")
+    setLlmConfig({ apiKey: "" })
+    toast("Gemini API key removed from this browser")
+  }
 
-  const isSaved = !!llmConfig.apiKey;
+  const isLongError = !!byokError && byokError.length > LONG_ERROR
+  const displayError =
+    byokError && isLongError && !isErrorExpanded
+      ? `${byokError.slice(0, LONG_ERROR - 10)}…`
+      : byokError
 
   return (
-    <div className="fixed inset-0 z-100 flex items-center justify-center p-6 pointer-events-auto overflow-hidden">
-      <div
-        onClick={onClose}
-        className="absolute inset-0 bg-white/60 backdrop-blur-xl"
-      />
-      <div
-        className="relative w-full max-w-md bg-white rounded-[40px] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.1)] p-8 md:p-10 border border-zinc-100"
-      >
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute top-6 right-6 text-zinc-300 hover:text-zinc-600 transition-colors cursor-pointer"
-        >
-          <X size={18} />
-        </button>
-
-        <div className="max-w-md mx-auto">
-          {/* Header */}
-          <div className="mb-6">
-            <h2 className="text-3xl font-black text-darkDelegation tracking-tight mb-2">
-              Gemini API Key
-            </h2>
-            <a
-              href="https://aistudio.google.com/app/apikey"
-              target="_blank"
-              rel="noopener"
-              className="group inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 hover:border-emerald-200 rounded-full transition-all duration-200 mb-3"
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md rounded-3xl p-8 sm:max-w-md md:p-10">
+        <form onSubmit={handleSave} className="grid gap-6">
+          <DialogHeader className="gap-3 text-left">
+            <DialogTitle className="text-2xl font-black tracking-tight sm:text-3xl">
+              {isOnboarding ? "Connect your Gemini API key" : "Gemini API key"}
+            </DialogTitle>
+            <DialogDescription className="leading-relaxed">
+              {isOnboarding
+                ? "The agents in this office run on Google Gemini. Paste your own API key to start delegating; you only pay Google for what the team uses."
+                : "Your agents use this key to call Google Gemini."}
+            </DialogDescription>
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="w-fit rounded-full border-success/30 bg-success/10 text-xs font-black text-emerald-700 hover:bg-success/20 hover:text-emerald-800"
             >
-              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600">Get Gemini API Key</span>
-              <svg className="text-emerald-500 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="7" y1="17" x2="17" y2="7"></line>
-                <polyline points="7 7 17 7 17 17"></polyline>
-              </svg>
-            </a>
-            <p className="text-zinc-400 text-sm font-medium leading-relaxed max-w-[240px]">
-              Your key is stored locally and never leaves your browser.
+              <ExternalLink href={API_KEY_URL}>
+                Get a Gemini API key
+                <ArrowUpRight />
+              </ExternalLink>
+            </Button>
+          </DialogHeader>
+
+          {byokError && (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-2xl border border-destructive/20 bg-destructive/5 p-3"
+            >
+              <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
+              <div className="min-w-0 flex-1">
+                <p className="mb-0.5 text-xs font-black text-destructive">API error</p>
+                <div
+                  className={`${isErrorExpanded ? "max-h-48" : "max-h-24"} overflow-y-auto pr-1`}
+                >
+                  <p className="whitespace-pre-wrap break-words text-xs leading-snug text-red-700">
+                    {displayError}
+                  </p>
+                </div>
+                {isLongError && (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="xs"
+                    className="h-auto px-0 text-xs font-bold text-destructive"
+                    onClick={() => setIsErrorExpanded((expanded) => !expanded)}
+                    aria-expanded={isErrorExpanded}
+                  >
+                    {isErrorExpanded ? "Show less" : "Show more"}
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="grid gap-3">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="byok-api-key" className="text-xs font-black text-muted-foreground">
+                {hasSavedKey ? "Replace key" : "API key"}
+              </Label>
+              {hasSavedKey && (
+                <Badge variant="secondary" className="gap-1 font-mono">
+                  <KeyRound />
+                  Saved: {maskKey(savedKey)}
+                </Badge>
+              )}
+            </div>
+            <div className="relative">
+              <Input
+                id="byok-api-key"
+                type={showKey ? "text" : "password"}
+                value={enteredKey}
+                onChange={(event) => setEnteredKey(event.target.value)}
+                placeholder={
+                  hasSavedKey ? "Paste a new key to replace it" : "Paste your API key here"
+                }
+                autoComplete="off"
+                spellCheck={false}
+                aria-describedby="byok-key-help"
+                className="h-12 rounded-2xl bg-muted/50 pr-12 font-mono placeholder:font-sans"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+                onClick={() => setShowKey((shown) => !shown)}
+                aria-label={showKey ? "Hide key" : "Show key"}
+                aria-pressed={showKey}
+              >
+                {showKey ? <EyeOff /> : <Eye />}
+              </Button>
+            </div>
+            <p id="byok-key-help" className="text-xs leading-relaxed text-muted-foreground">
+              Stored in this browser only and sent directly to Google&apos;s Gemini API.{" "}
+              <ExternalLink
+                href={KEY_SECURITY_URL}
+                className="font-medium text-foreground underline underline-offset-4 hover:text-user"
+              >
+                Restrict this key to this site
+              </ExternalLink>{" "}
+              in Google AI Studio.
             </p>
           </div>
 
-          {/* Error Message */}
-          {byokError && (() => {
-            const isLongError = byokError.length > 120;
-            const displayError = isErrorExpanded || !isLongError ? byokError : byokError.slice(0, 110) + '...';
-
-            return (
-              <div className="mb-6 p-3 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-2 animate-in fade-in slide-in-from-top-2">
-                <div className="mt-0.5 text-red-500 shrink-0">
-                  <X size={14} strokeWidth={3} className="rotate-45" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-red-500 mb-0.5">API Error</p>
-                  <div className={`${isErrorExpanded ? 'max-h-48' : 'max-h-24'} overflow-y-auto pr-1`}>
-                    <p className="text-[11px] font-medium text-red-600 leading-tight break-words whitespace-pre-wrap">
-                      {displayError}
-                    </p>
-                    {isLongError && (
-                      <button
-                        onClick={() => setIsErrorExpanded(!isErrorExpanded)}
-                        className="mt-1 text-[9px] font-black uppercase tracking-widest text-red-500 hover:text-red-700 transition-colors cursor-pointer"
-                      >
-                        {isErrorExpanded ? 'Show Less' : 'Show More'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-
-
-          {/* API Key input */}
-          <div className="mb-10">
-            <label className="block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-300 mb-4 ml-1">
-              API Key
-            </label>
-            <div className="relative group">
-              <input
-                type={showKey ? 'text' : 'password'}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Paste your API key here"
-                className="w-full bg-zinc-50 border border-zinc-100 rounded-3xl px-6 py-4 pr-14 text-sm text-darkDelegation font-mono placeholder:text-zinc-300 placeholder:font-sans focus:outline-none focus:border-zinc-200 transition-all shadow-sm group-hover:shadow-md"
-              />
-              <button
-                type="button"
-                onClick={() => setShowKey(v => !v)}
-                className="absolute right-5 top-1/2 -translate-y-1/2 text-zinc-200 hover:text-zinc-400 transition-colors cursor-pointer"
-              >
-                {showKey ? <EyeOff size={20} strokeWidth={2.5} /> : <Eye size={20} strokeWidth={2.5} />}
-              </button>
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center justify-between">
-            <button
+          <DialogFooter className="flex-row items-center justify-between sm:justify-between">
+            <Button
+              type="button"
+              variant="ghost-destructive"
               onClick={handleClear}
-              disabled={!isSaved && !apiKey}
-              className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-zinc-400 hover:text-red-400 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed group"
+              disabled={!hasSavedKey && !enteredKey}
+              className="rounded-xl text-xs font-black"
             >
-              <div className="p-2 rounded-xl group-hover:bg-red-50 transition-colors">
-                <Trash2 size={16} strokeWidth={2.5} />
-              </div>
+              <Trash2 />
               Clear
-            </button>
-
-            <button
-              onClick={handleSave}
-              disabled={!apiKey.trim()}
-              className="px-12 py-4 bg-darkDelegation text-white rounded-[24px] text-xs font-black uppercase tracking-[0.2em] hover:bg-black transition-all active:scale-95 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed disabled:active:scale-100 shadow-xl shadow-black/10"
+            </Button>
+            <Button
+              type="submit"
+              size="lg"
+              disabled={!trimmedKey}
+              className="h-12 rounded-2xl px-10 text-xs font-black shadow-xl shadow-black/10"
             >
               Save
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
-export default BYOKModal;
+export default BYOKModal

@@ -18,10 +18,13 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
+    "lint:fix": "turbo run lint -- --write",
+    "format": "turbo run format",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean && rm -rf .turbo node_modules"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.15",
     "turbo": "^2.11.10"
   },
   "overrides": {

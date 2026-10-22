@@ -1,172 +1,218 @@
-import { AgentNode, AgenticSystem, getAllAgents } from '../../data/agents';
-import { useCoreStore } from '../../integration/store/coreStore';
-import { AgentHost } from './AgentHost';
-import { useUiStore } from '../../integration/store/uiStore';
+import { type AgenticSystem, getAllAgents } from "../../data/agents"
+import { useCoreStore } from "../../integration/store/coreStore"
+import { useUiStore } from "../../integration/store/uiStore"
+import { AgentHost } from "./AgentHost"
+
+/** Safety net for work that no store change re-triggers. */
+const HEARTBEAT_MS = 5000
+const SPARK_DEBOUNCE_MS = 1000
+/** Tasks start after a staggered delay so agents don't all call the API at once. */
+const TASK_START_DELAY_MS = 1000
+const TASK_START_JITTER_MS = 2000
+
+function delay(milliseconds: number): Promise<unknown> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds))
+}
 
 /**
- * AgentSimulation — Autonomous Service Layer.
- * 
- * DESIGN PRINCIPLE: State-Driven Orchestration.
- * 1. Monitors the Store to trigger autonomous loops.
- * 2. Visuals are reflections of this state.
- * 3. Event-based Resilience: Re-checks for tasks when agents become idle.
+ * Drives the team autonomously from store state: the lead proposes tasks (spark), agents run
+ * scheduled tasks, and the lead delivers once every task is done.
+ *
+ * Retry policy (backoff, attempt cap, call budget, pausing for the user) lives in AgentBrain, which
+ * stays busy while it waits, so re-triggering here never doubles up calls. Nothing starts while the
+ * API-key dialog is open.
  */
 export class AgentSimulation {
-  private agents: Map<number, AgentHost> = new Map();
-  private system: AgenticSystem;
-  private unsubs: (() => void)[] = [];
-  private heartbeatInterval: any = null;
-  private lastSparkTriggerTime: number = 0;
+  private readonly agents = new Map<number, AgentHost>()
+  private currentSystem: AgenticSystem
+  private unsubscribers: (() => void)[] = []
+  private heartbeat: ReturnType<typeof setInterval> | null = null
+  private lastSparkAt = 0
+  private disposed = false
+  /** Task ids with a live execution, so a task is never started twice. */
+  private readonly running = new Set<string>()
 
   constructor(system: AgenticSystem) {
-    this.system = system;
-    this.initializeAgents();
-    this.startStateMonitoring();
+    this.currentSystem = system
+    for (const agentData of getAllAgents(system)) {
+      this.agents.set(agentData.index, new AgentHost(agentData, this))
+    }
+    this.startStateMonitoring()
   }
 
+  /** The lead skips sparking while the user chats with it, so a chat ending re-sparks an empty board. */
   private startStateMonitoring() {
-    // 1. Heartbeat safety net (Periodically check for scheduled tasks and empty boards)
-    this.heartbeatInterval = setInterval(() => {
-      const state = useCoreStore.getState();
-      if (state.phase === 'working' && state.tasks.length === 0) {
-        this.triggerAutonomousStrategy();
-      } else if (state.phase === 'working') {
-        this.processScheduledTasks();
+    this.heartbeat = setInterval(() => {
+      const { phase, tasks } = useCoreStore.getState()
+      if (phase !== "working") return
+      if (tasks.length === 0) {
+        void this.triggerAutonomousStrategy()
+      } else {
+        this.processScheduledTasks()
+        void this.checkProjectCompletion()
       }
-    }, 5000);
+    }, HEARTBEAT_MS)
 
-    // 2. Core Store Monitoring
-    this.unsubs.push(
-      useCoreStore.subscribe((state, prevState) => {
-        // A. Initial Strategy (Spark)
-        if (state.phase === 'working' && prevState.phase === 'idle' && state.tasks.length === 0) {
-          this.triggerAutonomousStrategy();
+    this.unsubscribers.push(
+      useCoreStore.subscribe((state, previousState) => {
+        if (state.tasks === previousState.tasks && state.phase === previousState.phase) return
+
+        if (
+          state.phase === "working" &&
+          previousState.phase === "idle" &&
+          state.tasks.length === 0
+        ) {
+          void this.triggerAutonomousStrategy()
         }
+        if (state.phase === "working") this.processScheduledTasks()
+        void this.checkProjectCompletion()
+      }),
+    )
 
-        // B. Task Lifecycle: Process SCHEDULED tasks
-        if (state.phase === 'working') {
-          this.processScheduledTasks();
+    this.unsubscribers.push(
+      useUiStore.subscribe((state, previousState) => {
+        if (previousState.isBYOKOpen && !state.isBYOKOpen) {
+          this.resume()
+        } else if (previousState.isChatting && !state.isChatting) {
+          const core = useCoreStore.getState()
+          if (core.phase === "working" && core.tasks.length === 0)
+            void this.triggerAutonomousStrategy()
         }
-
-        // C. Project Completion
-        this.checkProjectCompletion();
-      })
-    );
-
-    // 3. UI Store Monitoring (Cleanup)
-    this.unsubs.push(
-      useUiStore.subscribe((state, prevState) => {
-        if (!state.isChatting && prevState.isChatting) {
-          const core = useCoreStore.getState();
-          if (core.phase === 'working' && core.tasks.length === 0) this.triggerAutonomousStrategy();
-        }
-      })
-    );
+      }),
+    )
   }
 
-  /** Central method to check for and start available tasks. */
-  public processScheduledTasks() {
-    const state = useCoreStore.getState();
-    if (state.phase !== 'working') return;
+  private get paused(): boolean {
+    return this.disposed || useUiStore.getState().isBYOKOpen
+  }
 
-    state.tasks.filter(t => t.status === 'scheduled' || t.status === 'in_progress').forEach(task => {
-      const agent = this.getAgent(task.assignedAgentId);
-      const uiStatus = useUiStore.getState().agentStatuses[task.assignedAgentId];
-      
-      // Resilience check: only start if agent is truly idle and not currently thinking.
-      // We check both internal state and UI status as safety.
-      if (agent && (agent.state === 'idle' || uiStatus === 'idle') && !agent.isThinking) {
-        this.startTaskExecution(task.assignedAgentId, task.id);
+  private resume() {
+    const { phase, tasks } = useCoreStore.getState()
+    if (phase !== "working") return
+    if (tasks.length === 0) void this.triggerAutonomousStrategy()
+    this.processScheduledTasks()
+    void this.checkProjectCompletion()
+  }
+
+  /**
+   * Starts every scheduled (or abandoned in-progress) task whose agent is free. The UI status is
+   * read per task because starting one marks its agent busy for the rest of the loop.
+   */
+  public processScheduledTasks() {
+    if (this.paused) return
+    const state = useCoreStore.getState()
+    if (state.phase !== "working") return
+
+    for (const task of state.tasks) {
+      if (task.status !== "scheduled" && task.status !== "in_progress") continue
+      if (this.running.has(task.id)) continue
+
+      const agent = this.getAgent(task.assignedAgentId)
+      const uiStatus = useUiStore.getState().agentStatuses[task.assignedAgentId]
+      if (agent && (agent.state === "idle" || uiStatus === "idle") && !agent.isThinking) {
+        void this.startTaskExecution(agent, task.id)
       }
-    });
+    }
   }
 
   private async triggerAutonomousStrategy() {
-    const lead = this.getAgent(1);
-    const ui = useUiStore.getState();
-    const core = useCoreStore.getState();
+    if (this.paused) return
+    const lead = this.getAgent(this.currentSystem.leadAgent.index)
+    const ui = useUiStore.getState()
 
-    // GUARD: Prevent duplication
-    if (!lead || lead.isThinking || core.tasks.length > 0) return;
-    if (ui.isChatting && ui.selectedNpcIndex === lead.data.index) return;
-    
-    if (Date.now() - this.lastSparkTriggerTime < 1000) return;
-    this.lastSparkTriggerTime = Date.now();
-
-    await lead.spark();
-  }
-
-  private async startTaskExecution(agentIndex: number, taskId: string) {
-    const agent = this.getAgent(agentIndex);
-    if (!agent) return;
-
-    agent.setTask(taskId); 
-    useCoreStore.getState().updateTaskStatus(taskId, 'in_progress');
-    
-    await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 1000));
+    if (!lead || lead.isThinking || useCoreStore.getState().tasks.length > 0) return
+    if (ui.isChatting && ui.selectedNpcIndex === lead.data.index) return
+    if (Date.now() - this.lastSparkAt < SPARK_DEBOUNCE_MS) return
+    this.lastSparkAt = Date.now()
 
     try {
-      if (!agent.isThinking) {
-        await agent.executeTask(taskId);
-      }
-    } catch (err) {
-      console.error(`[AgentSimulation] Agent ${agentIndex} failed:`, err);
-    } finally {
-      // Resilience check: only clear task if not waiting for review or meeting
-      if (agent.state !== 'on_hold' && agent.state !== 'talking') {
-        agent.setTask(null);
-        agent.setState('idle');
-      }
-      
-      // KEY: When finished, check if there are other scheduled tasks waiting
-      this.processScheduledTasks();
-      
-      // AND check if the project is now ready for delivery 
-      // (Resilience for 1-agent teams where lead is thinking when the last task finishes)
-      this.checkProjectCompletion();
+      await lead.spark()
+    } catch (error) {
+      console.error("[AgentSimulation] Planning turn failed:", error)
     }
+  }
+
+  private async startTaskExecution(agent: AgentHost, taskId: string) {
+    this.running.add(taskId)
+    agent.setTask(taskId)
+    useCoreStore.getState().updateTaskStatus(taskId, "in_progress")
+
+    try {
+      await delay(TASK_START_DELAY_MS + Math.random() * TASK_START_JITTER_MS)
+      if (this.disposed || agent.isThinking) return
+      await agent.executeTask(taskId)
+    } catch (error) {
+      console.error(`[AgentSimulation] Agent ${agent.data.index} failed task ${taskId}:`, error)
+    } finally {
+      this.running.delete(taskId)
+      if (!this.disposed) this.finishTaskExecution(agent)
+    }
+  }
+
+  /**
+   * An agent waiting for review keeps its task. Completion is re-checked because the lead may have
+   * been busy when the last task finished (one-agent teams).
+   */
+  private finishTaskExecution(agent: AgentHost) {
+    if (agent.state !== "on_hold") agent.setTask(null)
+
+    this.processScheduledTasks()
+    void this.checkProjectCompletion()
   }
 
   private async checkProjectCompletion() {
-    const state = useCoreStore.getState();
-    const allTasksFinished = state.tasks.length > 0 && state.tasks.every(t => t.status === 'done');
-    
-    if (state.phase === 'working' && allTasksFinished) {
-      const lead = this.getAgent(this.system.leadAgent.index);
-      if (lead && !lead.isThinking) {
-        await lead.concludeProject();
-      }
+    if (this.paused) return
+    const { phase, tasks } = useCoreStore.getState()
+    if (phase !== "working" || tasks.length === 0 || !tasks.every((task) => task.status === "done"))
+      return
+
+    const lead = this.getAgent(this.currentSystem.leadAgent.index)
+    if (!lead || lead.isThinking) return
+
+    try {
+      await lead.concludeProject()
+    } catch (error) {
+      console.error("[AgentSimulation] Delivery turn failed:", error)
     }
   }
 
-  private initializeAgents() {
-    const allAgents = getAllAgents(this.system);
-    for (const agentData of allAgents) {
-      this.agents.set(agentData.index, new AgentHost(agentData, this));
-    }
+  public get system(): AgenticSystem {
+    return this.currentSystem
   }
 
   public getAgent(index: number): AgentHost | undefined {
-    return this.agents.get(index);
+    return this.agents.get(index)
   }
 
   public getAllAgents(): AgentHost[] {
-    return Array.from(this.agents.values());
+    return Array.from(this.agents.values())
   }
 
+  /** Applies edits to the current team's agents (model, prompt, human-in-the-loop) without restarting. */
+  public updateSystem(system: AgenticSystem) {
+    this.currentSystem = system
+    for (const agentNode of getAllAgents(system)) {
+      const host = this.agents.get(agentNode.index)
+      if (host) host.data = agentNode
+    }
+  }
 
-
-  public async handleUserMessage(agentIndex: number, text: string) {
-    const agent = this.getAgent(agentIndex);
-    if (!agent || !agent.canChat()) return null;
-    const response = await agent.think(text, { isChat: true });
-    return response.text;
+  /** Records the user's message and runs the agent's reply. Returns false (and records nothing) if the agent can't chat now. */
+  public async handleUserMessage(agentIndex: number, text: string): Promise<boolean> {
+    const agent = this.getAgent(agentIndex)
+    if (!agent?.canChat()) return false
+    agent.appendHistory({ role: "user", content: text })
+    await agent.think(text, { isChat: true })
+    return true
   }
 
   public dispose() {
-    if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
-    this.unsubs.forEach(unsub => unsub());
-    this.unsubs = [];
-    this.agents.forEach(a => a.dispose());
+    if (this.disposed) return
+    this.disposed = true
+    if (this.heartbeat) clearInterval(this.heartbeat)
+    this.heartbeat = null
+    for (const unsubscribe of this.unsubscribers) unsubscribe()
+    this.unsubscribers = []
+    for (const agent of this.agents.values()) agent.dispose()
   }
 }

@@ -1,32 +1,59 @@
-import { AgentActionContext } from '../ToolRegistry';
-import { useCoreStore } from '../../../integration/store/coreStore';
-import { useUiStore } from '../../../integration/store/uiStore';
+import { fail, readString, type ToolSpec } from "./types"
 
-export function completeTask(agent: AgentActionContext, args: { taskId: string, output: string }): boolean {
-  const store = useCoreStore.getState();
-  const { taskId, output } = args;
+export const completeTask: ToolSpec<{ taskId: string; output: string }> = {
+  definition: {
+    type: "function",
+    function: {
+      name: "complete_task",
+      description:
+        "Finish task. Output must be raw content, no introductions or credit for the work.",
+      parameters: {
+        type: "object",
+        properties: {
+          taskId: { type: "string" },
+          output: {
+            type: "string",
+            description: "Task result in Markdown (e.g. code blocks, text, or research).",
+          },
+        },
+        required: ["taskId", "output"],
+      },
+    },
+  },
 
-  // HUMAN-IN-THE-LOOP: If agent requires validation, submit for review instead of completing.
-  const agentStatus = useUiStore.getState().agentStatuses[agent.data.index];
-  
-  if (agent.data.humanInTheLoop && agentStatus !== 'on_hold') {
-    const tasks = useCoreStore.getState().tasks;
-    const task = tasks.find(t => t.id === taskId);
-    const taskTitle = task?.title || taskId;
-    
-    store.submitTaskForReview(taskId, output);
-    agent.setState('on_hold');
-    agent.appendHistory({
-      role: 'assistant',
-      content: `I've finished **"${taskTitle}"** and submitted it for review.`,
-      metadata: { reviewTaskId: taskId }
-    });
-    return true;
-  }
+  isOffered: (_agent, _team, phase) => phase === "working",
 
-  store.updateTaskStatus(taskId, 'done');
-  store.setTaskOutput(taskId, output);
-  store.addLogEntry({ agentIndex: agent.data.index, action: `completed task`, taskId });
-  
-  return true;
+  parseArgs(raw) {
+    const taskId = readString(raw, "taskId", 100)
+    if (!taskId.ok) return taskId
+    const output = readString(raw, "output", 100_000)
+    if (!output.ok) return output
+    return { ok: true, value: { taskId: taskId.value, output: output.value } }
+  },
+
+  run({ agent, project, setStatus, appendHistory }, { taskId, output }) {
+    const task = project.getTask(taskId)
+    if (!task) return fail(`Unknown taskId "${taskId}". Use the id shown on the board.`)
+    if (task.assignedAgentId !== agent.index)
+      return fail(`Task "${task.title}" is not assigned to you.`)
+    if (task.status !== "in_progress")
+      return fail(
+        `Task "${task.title}" is ${task.status}; only in-progress tasks can be completed.`,
+      )
+
+    if (agent.humanInTheLoop || task.requiresUserApproval) {
+      project.submitTaskForReview(taskId, output)
+      setStatus("on_hold")
+      appendHistory({
+        role: "assistant",
+        content: `I've finished **"${task.title}"** and submitted it for review.`,
+        metadata: { reviewTaskId: taskId },
+      })
+      return { ok: true }
+    }
+
+    project.completeTask(taskId, output)
+    project.logAction({ agentIndex: agent.index, action: "completed task", taskId })
+    return { ok: true }
+  },
 }

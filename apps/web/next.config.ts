@@ -1,22 +1,22 @@
-import type { NextConfig } from 'next';
-import pkg from './package.json' with { type: 'json' };
+import type { NextConfig } from "next"
+import packageJson from "./package.json" with { type: "json" }
 
-const basePath = '/the-delegation';
+const basePath = "/the-delegation"
 
 const nextConfig: NextConfig = {
-  output: 'export',
+  output: "export",
   basePath,
   trailingSlash: true,
   images: { unoptimized: true },
-  // Stops `next dev` from writing an AGENTS.md into the repo.
+  /** Stops `next dev` from writing an AGENTS.md into the repo. */
   agentRules: false,
-  // Off until SceneManager.dispose() also tears down AgentSimulation; a strict-mode remount would double Gemini calls.
-  reactStrictMode: false,
-  // Public, non-secret build constants only. Never put API keys here: `env` values are inlined into the client bundle.
+  /** Regression test for AUDIT.md REL-02: the dev double-mount must leave exactly one canvas and one agent loop. */
+  reactStrictMode: true,
+  /** Public, non-secret build constants only. Never put API keys here: `env` values are inlined into the client bundle. */
   env: {
     NEXT_PUBLIC_BASE_PATH: basePath,
-    NEXT_PUBLIC_APP_VERSION: pkg.version,
+    NEXT_PUBLIC_APP_VERSION: packageJson.version,
   },
-};
+}
 
-export default nextConfig;
+export default nextConfig

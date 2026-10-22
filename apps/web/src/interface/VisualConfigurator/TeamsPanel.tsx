@@ -1,89 +1,107 @@
-import { Plus } from 'lucide-react';
-import React, { useMemo } from 'react';
-import { AGENTIC_SETS, AgenticSystem } from '../../data/agents';
-import { DEFAULT_MODEL } from '../../core/llm/constants';
-import { useTeamStore } from '../../integration/store/teamStore';
-import { TeamCard } from './TeamCard';
-import { useShallow } from 'zustand/react/shallow';
+import { Plus } from "lucide-react"
+import { useMemo } from "react"
+import { useShallow } from "zustand/react/shallow"
+import { Button } from "@/components/ui/button"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { DEFAULT_MODEL } from "../../core/llm/constants"
+import { AGENTIC_SETS, type AgenticSystem } from "../../data/agents"
+import { useTeamStore } from "../../integration/store/teamStore"
+import { TeamCard } from "./TeamCard"
+import { DEFAULT_AGENT_COLOR, type RequestDiscard } from "./teamTree"
 
 interface TeamsPanelProps {
-  onSelectTeam: (id: string) => void;
-  selectedTeamId: string;
-  onModeChange: (mode: 'view' | 'edit') => void;
-  mode: 'view' | 'edit';
+  selectedTeamId: string
+  onSelectTeam: (id: string) => void
+  mode: "view" | "edit"
+  onModeChange: (mode: "view" | "edit") => void
+  onDirtyChange: (dirty: boolean) => void
+  requestDiscard: RequestDiscard
 }
 
-export const TeamsPanel: React.FC<TeamsPanelProps> = ({ onSelectTeam, selectedTeamId, onModeChange, mode }) => {
-  const { customSystems, selectedAgentSetId, saveCustomSystem } = useTeamStore(useShallow((s) => ({ customSystems: s.customSystems, selectedAgentSetId: s.selectedAgentSetId, saveCustomSystem: s.saveCustomSystem })));
+function createTeam(): AgenticSystem {
+  const now = Date.now()
+  return {
+    id: `team-${now}`,
+    teamName: "New Team",
+    teamType: "Custom",
+    teamDescription: "A custom agentic team.",
+    color: DEFAULT_AGENT_COLOR,
+    outputAutoApprove: true,
+    user: { index: 0, model: "Human", position: { x: 0, y: 0 } },
+    leadAgent: {
+      id: `agent-${now}`,
+      index: 1,
+      name: "Lead Agent",
+      description: "Coordinate the team to finish the project.",
+      color: DEFAULT_AGENT_COLOR,
+      model: DEFAULT_MODEL,
+      position: { x: 0, y: 150 },
+      subagents: [],
+    },
+  }
+}
+
+/**
+ * Right-hand list of teams in the editor. Saved edits of built-in teams live in customSystems under
+ * the same id and take precedence over the built-in definition.
+ */
+export function TeamsPanel({
+  selectedTeamId,
+  onSelectTeam,
+  mode,
+  onModeChange,
+  onDirtyChange,
+  requestDiscard,
+}: TeamsPanelProps) {
+  const { customSystems, selectedAgentSetId, upsertSystem } = useTeamStore(
+    useShallow((state) => ({
+      customSystems: state.customSystems,
+      selectedAgentSetId: state.selectedAgentSetId,
+      upsertSystem: state.upsertSystem,
+    })),
+  )
 
   const allSystems = useMemo(() => {
-    const combined = [...customSystems, ...AGENTIC_SETS];
-    return combined.filter((sys, index, self) =>
-      index === self.findIndex((s) => s.id === sys.id)
-    );
-  }, [customSystems]);
+    const customIds = new Set(customSystems.map((system) => system.id))
+    return [...customSystems, ...AGENTIC_SETS.filter((system) => !customIds.has(system.id))]
+  }, [customSystems])
 
-  const handleCreateNew = () => {
-    const newId = `team-${Date.now()}`;
-    const newSystem: AgenticSystem = {
-      id: newId,
-      teamName: 'New Team',
-      teamType: 'Custom',
-      teamDescription: 'A custom agentic team.',
-      color: '#A855F7',
-      outputAutoApprove: true,
-      user: {
-        index: 0,
-        model: 'Human',
-        position: { x: 0, y: 0 }
-      },
-      leadAgent: {
-        id: `agent-${Date.now()}`,
-        index: 1,
-        name: 'Lead Agent',
-        description: 'Coordinate the team to finish the project.',
-        color: '#A855F7',
-        model: DEFAULT_MODEL,
-        position: { x: 0, y: 150 },
-        subagents: []
-      }
-    };
-    saveCustomSystem(newSystem);
-    onSelectTeam(newId);
-    onModeChange('edit');
-  };
+  const handleCreateNew = () =>
+    requestDiscard(() => {
+      const team = createTeam()
+      upsertSystem(team)
+      onSelectTeam(team.id)
+      onModeChange("edit")
+    })
 
   return (
-    <div className="w-96 border-l border-zinc-100 bg-white flex flex-col h-full shrink-0">
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {allSystems.map((system) => {
-          const isSelected = selectedTeamId === system.id;
-          const isActive = selectedAgentSetId === system.id;
-          const isPredefined = AGENTIC_SETS.some(s => s.id === system.id);
-
-          return (
+    <aside aria-label="Teams" className="flex h-full w-96 shrink-0 flex-col border-l bg-background">
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="space-y-3 p-4">
+          {allSystems.map((system) => (
             <TeamCard
               key={system.id}
               system={system}
-              isSelected={isSelected}
-              isActive={isActive}
-              isPredefined={isPredefined}
+              isSelected={selectedTeamId === system.id}
+              isActive={selectedAgentSetId === system.id}
               mode={mode}
               onSelectTeam={onSelectTeam}
               onModeChange={onModeChange}
+              onDirtyChange={onDirtyChange}
+              requestDiscard={requestDiscard}
             />
-          );
-        })}
-      </div>
-      <div className="p-4 border-t border-zinc-50 bg-white">
-        <button
+          ))}
+        </div>
+      </ScrollArea>
+      <div className="border-t p-4">
+        <Button
           onClick={handleCreateNew}
-          className="w-full flex items-center justify-center gap-2 py-3 bg-darkDelegation hover:bg-darkDelegation text-white rounded-xl text-[10px] font-black uppercase tracking-[0.1em] transition-all shadow-lg shadow-black/5 active:scale-[0.98]"
+          className="h-11 w-full rounded-xl text-[11px] font-black shadow-lg shadow-black/5"
         >
-          <Plus size={14} strokeWidth={3} />
-          Create New Team
-        </button>
+          <Plus strokeWidth={3} />
+          Create new team
+        </Button>
       </div>
-    </div>
-  );
-};
+    </aside>
+  )
+}

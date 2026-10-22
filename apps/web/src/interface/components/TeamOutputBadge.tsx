@@ -1,37 +1,42 @@
-import { FileText } from 'lucide-react';
-import React from 'react';
-import { AgenticSystem } from '../../data/agents';
-import { InfoTooltip } from './InfoTooltip';
-import { USER_COLOR, USER_COLOR_SOFT } from '../../theme/brand';
+import { FileText } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { cn } from "@/lib/utils"
+import type { AgenticSystem } from "../../data/agents"
 
 interface TeamOutputBadgeProps {
-  system: AgenticSystem;
-  className?: string;
+  system: AgenticSystem
+  className?: string
 }
 
-export const TeamOutputBadge: React.FC<TeamOutputBadgeProps> = ({ system, className = '' }) => {
+/** Whether the team's final deliverable is auto-approved or waits for the user, with the detail in a tooltip. */
+export function TeamOutputBadge({ system, className }: TeamOutputBadgeProps) {
+  const autoApprove = system.outputAutoApprove !== false
+  const hint = autoApprove
+    ? "Final deliverable is delivered automatically"
+    : "Final deliverable requires your review and approval"
+
   return (
-    <div className={`flex items-center gap-3 px-3 py-1.5 bg-zinc-50/50 border border-zinc-100/50 cursor-pointer rounded-xl backdrop-blur-sm ${className}`}>
-      {/* Auto-Approve Status */}
-      <InfoTooltip
-        text={system.outputAutoApprove !== false
-          ? 'Final deliverable is delivered automatically'
-          : 'Final deliverable requires your review and approval'}
-      >
-        <div className="flex items-center gap-1.5">
-          <FileText size={11} strokeWidth={2.5} className="text-zinc-400" />
-          <div
-            className="w-1 h-1 rounded-full"
-            style={{
-              backgroundColor: system.outputAutoApprove !== false ? '#10b981' : USER_COLOR,
-              boxShadow: system.outputAutoApprove !== false ? undefined : `0 0 8px ${USER_COLOR_SOFT}`
-            }}
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge
+          variant="outline"
+          tabIndex={0}
+          aria-label={`${autoApprove ? "Auto approve" : "Manual review"}: ${hint}`}
+          className={cn(
+            "h-7 gap-1.5 rounded-xl bg-muted/50 px-3 text-[11px] font-black text-muted-foreground",
+            className,
+          )}
+        >
+          <FileText strokeWidth={2.5} aria-hidden />
+          <span
+            className={cn("size-1.5 rounded-full", autoApprove ? "bg-success" : "bg-user")}
+            aria-hidden
           />
-          <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest leading-none whitespace-nowrap">
-            {system.outputAutoApprove !== false ? 'AUTO APPROVE' : 'MANUAL REVIEW'}
-          </span>
-        </div>
-      </InfoTooltip>
-    </div>
-  );
-};
+          {autoApprove ? "Auto approve" : "Manual review"}
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-[220px] text-center">{hint}</TooltipContent>
+    </Tooltip>
+  )
+}

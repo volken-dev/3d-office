@@ -1,268 +1,305 @@
-import * as THREE from 'three/webgpu';
+import * as THREE from "three/webgpu"
 
-import { PoiDef } from '../../types';
-import { CHARACTER_Y_OFFSET, PICK_RADIUS, POI_PICK_RADIUS } from '../constants';
+import type { PoiDef } from "../../types"
+import { CHARACTER_Y_OFFSET, PICK_RADIUS, POI_PICK_RADIUS } from "../constants"
 
-const DRAG_THRESHOLD_PX = 4;
-const FLOOR_PLANE = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // y=0
+const DRAG_THRESHOLD_PX = 4
+/** The y=0 plane, used for floor clicks when the office has no navmesh. */
+const FLOOR_PLANE = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+/** Hover label height above the character's centre. */
+const CHARACTER_LABEL_LIFT = 0.4
+/** Hover label height above a POI. */
+const POI_LABEL_LIFT = 0.5
 
+type ScreenPosition = { x: number; y: number }
+
+/**
+ * Distance along the ray to its first hit on a sphere, or null when the ray misses. Points are
+ * picked as spheres so they are easier to hit than a single point.
+ */
+function raySphereHitDistance(
+  ray: THREE.Ray,
+  centerX: number,
+  centerY: number,
+  centerZ: number,
+  radius: number,
+): number | null {
+  const originToCenterX = ray.origin.x - centerX
+  const originToCenterY = ray.origin.y - centerY
+  const originToCenterZ = ray.origin.z - centerZ
+
+  const halfB =
+    originToCenterX * ray.direction.x +
+    originToCenterY * ray.direction.y +
+    originToCenterZ * ray.direction.z
+  const constantTerm =
+    originToCenterX * originToCenterX +
+    originToCenterY * originToCenterY +
+    originToCenterZ * originToCenterZ -
+    radius * radius
+  const discriminant = halfB * halfB - constantTerm
+
+  if (discriminant < 0) return null
+  return -halfB - Math.sqrt(discriminant)
+}
+
+export interface InputCallbacks {
+  getPositions(): Float32Array | null
+  getCount(): number
+  getPois(): Iterable<PoiDef>
+  isPointValid(point: THREE.Vector3): boolean
+  onSelect(index: number | null): void
+  onFloorClick(x: number, z: number): void
+  onHover(index: number | null, position: ScreenPosition | null): void
+  onPoiHover(id: string | null, label: string | null, position: ScreenPosition | null): void
+  onPoiClick(id: string): void
+}
+
+/**
+ * Turns canvas pointer events into character, POI and floor picks. Picking is done against the
+ * CPU position mirror (no scene raycast against skinned meshes), and hover work is throttled to
+ * one pass per animation frame.
+ */
 export class InputManager {
-  private raycaster = new THREE.Raycaster();
-  private pointer = new THREE.Vector2();
-  private boundPointerDown: (e: PointerEvent) => void;
-  private boundPointerMove: (e: PointerEvent) => void;
-  private boundPointerUp: (e: PointerEvent) => void;
-  private dragStartX = 0;
-  private dragStartY = 0;
-  private isDragging = false;
+  private raycaster = new THREE.Raycaster()
+  private pointer = new THREE.Vector2()
+  private readonly projected = new THREE.Vector3()
+  private readonly planeHit = new THREE.Vector3()
+  private readonly hits: THREE.Intersection[] = []
+  private dragStartX = 0
+  private dragStartY = 0
+  private isDragging = false
+  /** Hover work runs at most once per frame, on the latest pointer position. */
+  private pendingHover: PointerEvent | null = null
+  private hoverFrame = 0
 
-  public selectedIndex: number | null = null;
+  public selectedIndex: number | null = null
 
+  /**
+   * @param floorMeshes Walkable meshes (the hidden navmesh). Clicks elsewhere are ignored;
+   *                    when empty, the y=0 plane is used instead.
+   */
   constructor(
     private canvas: HTMLElement,
     private camera: THREE.PerspectiveCamera,
-    private getPositions: () => Float32Array | null,
-    private getCount: () => number,
-    private onSelect: (index: number | null) => void,
-    private onWaypoint: (x: number, z: number) => void,
-    private onHover: (index: number | null, pos: { x: number; y: number } | null) => void,
-    private getPois: () => PoiDef[],
-    private onPoiHover: (id: string | null, label: string | null, pos: { x: number; y: number } | null) => void,
-    private onPoiClick: (id: string) => void,
-    private raycastObject?: THREE.Object3D,
-    private isPointValid?: (point: THREE.Vector3) => boolean,
+    private floorMeshes: THREE.Object3D[],
+    private callbacks: InputCallbacks,
   ) {
-
-    this.boundPointerDown = this.handlePointerDown.bind(this);
-    this.boundPointerMove = this.handlePointerMove.bind(this);
-    this.boundPointerUp = this.handlePointerUp.bind(this);
-    canvas.addEventListener('pointerdown', this.boundPointerDown);
-    canvas.addEventListener('pointermove', this.boundPointerMove);
-    canvas.addEventListener('pointerup', this.boundPointerUp);
+    canvas.addEventListener("pointerdown", this.handlePointerDown)
+    canvas.addEventListener("pointermove", this.handlePointerMove)
+    canvas.addEventListener("pointerup", this.handlePointerUp)
   }
 
-  private handlePointerDown(event: PointerEvent) {
-    if (event.button !== 0) return;
-    this.dragStartX = event.clientX;
-    this.dragStartY = event.clientY;
-    this.isDragging = false;
+  private handlePointerDown = (event: PointerEvent) => {
+    if (event.button !== 0) return
+    this.dragStartX = event.clientX
+    this.dragStartY = event.clientY
+    this.isDragging = false
   }
 
-  private handlePointerMove(event: PointerEvent) {
-    const rect = this.canvas.getBoundingClientRect();
-    this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-    // If any button is pressed, skip hover/cursor updates to avoid fighting with OrbitControls or dragging logic
+  /** While a button is held, only dragging is tracked: hover updates would fight OrbitControls. */
+  private handlePointerMove = (event: PointerEvent) => {
     if (event.buttons !== 0) {
       if (event.buttons === 1) {
-        const dx = event.clientX - this.dragStartX;
-        const dy = event.clientY - this.dragStartY;
-        if ((dx * dx + dy * dy) > DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) {
-          this.isDragging = true;
+        const deltaX = event.clientX - this.dragStartX
+        const deltaY = event.clientY - this.dragStartY
+        if (deltaX * deltaX + deltaY * deltaY > DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) {
+          this.isDragging = true
         }
       }
-      return;
+      this.pendingHover = null
+      return
     }
 
-    // Reset dragging state when no buttons are pressed
-    this.isDragging = false;
+    this.isDragging = false
+    this.pendingHover = event
+    if (!this.hoverFrame) this.hoverFrame = requestAnimationFrame(this.flushHover)
+  }
 
-    // Detect hover
-    const hoveredIdx = this.getAgentAtPointer();
+  private flushHover = () => {
+    this.hoverFrame = 0
+    const event = this.pendingHover
+    this.pendingHover = null
+    if (event) this.updateHover(event)
+  }
 
-    // If an NPC is selected, only allow hovering that specific NPC
-    const effectiveHoverIdx = (this.selectedIndex !== null && hoveredIdx !== this.selectedIndex)
-      ? null
-      : hoveredIdx;
+  private setPointer(event: PointerEvent): DOMRect {
+    const canvasBounds = this.canvas.getBoundingClientRect()
+    this.pointer.x = ((event.clientX - canvasBounds.left) / canvasBounds.width) * 2 - 1
+    this.pointer.y = -((event.clientY - canvasBounds.top) / canvasBounds.height) * 2 + 1
+    return canvasBounds
+  }
 
-    if (effectiveHoverIdx !== null) {
-      this.canvas.style.cursor = 'pointer';
+  /** Projects a world position to canvas pixels. */
+  private toScreen(x: number, y: number, z: number, canvasBounds: DOMRect): ScreenPosition {
+    const projected = this.projected.set(x, y, z).project(this.camera)
+    return {
+      x: (projected.x * 0.5 + 0.5) * canvasBounds.width,
+      y: (projected.y * -0.5 + 0.5) * canvasBounds.height,
+    }
+  }
 
-      // Project 3D position to 2D for the bubble
-      const positions = this.getPositions();
+  /** While an NPC is selected, only that NPC can be hovered. */
+  private updateHover(event: PointerEvent) {
+    const canvasBounds = this.setPointer(event)
+    const { onHover, onPoiHover } = this.callbacks
+    const hoveredIndex = this.getAgentAtPointer()
+
+    const effectiveHoverIndex =
+      this.selectedIndex !== null && hoveredIndex !== this.selectedIndex ? null : hoveredIndex
+
+    if (effectiveHoverIndex !== null) {
+      this.canvas.style.cursor = "pointer"
+      const positions = this.callbacks.getPositions()
       if (positions) {
-        const worldPos = new THREE.Vector3(
-          positions[effectiveHoverIdx * 4],
-          positions[effectiveHoverIdx * 4 + 1] + CHARACTER_Y_OFFSET + 0.4,
-          positions[effectiveHoverIdx * 4 + 2]
-        );
-        worldPos.project(this.camera);
-        const x = (worldPos.x * 0.5 + 0.5) * rect.width;
-        const y = (worldPos.y * -0.5 + 0.5) * rect.height;
-        this.onPoiHover(null, null, null);
-        this.onHover(effectiveHoverIdx, { x, y });
+        const offset = effectiveHoverIndex * 4
+        onPoiHover(null, null, null)
+        onHover(
+          effectiveHoverIndex,
+          this.toScreen(
+            positions[offset],
+            positions[offset + 1] + CHARACTER_Y_OFFSET + CHARACTER_LABEL_LIFT,
+            positions[offset + 2],
+            canvasBounds,
+          ),
+        )
       }
-    } else {
-      // Not over an agent, check POIs
-      const hoveredPoi = this.getPoiAtPointer();
-
-      if (hoveredPoi && hoveredPoi.occupiedBy === null && hoveredPoi.label) {
-        this.canvas.style.cursor = 'pointer';
-
-        const worldPos = hoveredPoi.position.clone();
-        worldPos.y += 0.5; // Bubble a bit above the POI
-        worldPos.project(this.camera);
-        const x = (worldPos.x * 0.5 + 0.5) * rect.width;
-        const y = (worldPos.y * -0.5 + 0.5) * rect.height;
-
-        this.onHover(null, null);
-        this.onPoiHover(hoveredPoi.id, hoveredPoi.label, { x, y });
-      } else {
-        // Not over agent or POI, check floor/navmesh
-        const target = this.getWorldClickPosition();
-        this.canvas.style.cursor = target ? 'pointer' : 'auto';
-        this.onHover(null, null);
-        this.onPoiHover(null, null, null);
-      }
+      return
     }
+
+    const hoveredPoi = this.getPoiAtPointer()
+    if (hoveredPoi && hoveredPoi.occupiedBy === null && hoveredPoi.label) {
+      this.canvas.style.cursor = "pointer"
+      const { x, y, z } = hoveredPoi.position
+      onHover(null, null)
+      onPoiHover(
+        hoveredPoi.id,
+        hoveredPoi.label,
+        this.toScreen(x, y + POI_LABEL_LIFT, z, canvasBounds),
+      )
+      return
+    }
+
+    this.canvas.style.cursor = this.getWorldClickPosition() ? "pointer" : "auto"
+    onHover(null, null)
+    onPoiHover(null, null, null)
   }
 
   private getAgentAtPointer(): number | null {
-    this.raycaster.setFromCamera(this.pointer, this.camera);
-    const positions = this.getPositions();
-    const count = this.getCount();
-    if (!positions || count === 0) return null;
+    this.raycaster.setFromCamera(this.pointer, this.camera)
+    const positions = this.callbacks.getPositions()
+    const count = this.callbacks.getCount()
+    if (!positions || count === 0) return null
 
-    const ray = this.raycaster.ray;
-    let closestT = Infinity;
-    let closestIdx: number | null = null;
+    const ray = this.raycaster.ray
+    let closestDistance = Infinity
+    let closestIndex: number | null = null
 
-    for (let i = 0; i < count; i++) {
-      const cx = positions[i * 4];
-      const cy = positions[i * 4 + 1] + CHARACTER_Y_OFFSET;
-      const cz = positions[i * 4 + 2];
+    for (let agentIndex = 0; agentIndex < count; agentIndex++) {
+      const hitDistance = raySphereHitDistance(
+        ray,
+        positions[agentIndex * 4],
+        positions[agentIndex * 4 + 1] + CHARACTER_Y_OFFSET,
+        positions[agentIndex * 4 + 2],
+        PICK_RADIUS,
+      )
+      if (hitDistance === null) continue
 
-      const ocx = ray.origin.x - cx;
-      const ocy = ray.origin.y - cy;
-      const ocz = ray.origin.z - cz;
-
-      const halfB = ocx * ray.direction.x + ocy * ray.direction.y + ocz * ray.direction.z;
-      const c = ocx * ocx + ocy * ocy + ocz * ocz - PICK_RADIUS * PICK_RADIUS;
-      const discriminant = halfB * halfB - c;
-
-      if (discriminant < 0) continue;
-
-      const t = -halfB - Math.sqrt(discriminant);
-      if (t > 0 && t < closestT) {
-        closestT = t;
-        closestIdx = i;
+      if (hitDistance > 0 && hitDistance < closestDistance) {
+        closestDistance = hitDistance
+        closestIndex = agentIndex
       }
     }
-    return closestIdx;
+    return closestIndex
   }
 
   private getPoiAtPointer(): PoiDef | null {
-    this.raycaster.setFromCamera(this.pointer, this.camera);
-    const pois = this.getPois();
+    this.raycaster.setFromCamera(this.pointer, this.camera)
+    let closestDistance = Infinity
+    let closestPoi: PoiDef | null = null
 
-    let closestT = Infinity;
-    let closestPoi: PoiDef | null = null;
+    for (const poi of this.callbacks.getPois()) {
+      if (!poi.label) continue
 
-    for (const poi of pois) {
-      if (!poi.label) continue;
+      const hitDistance = raySphereHitDistance(
+        this.raycaster.ray,
+        poi.position.x,
+        poi.position.y,
+        poi.position.z,
+        POI_PICK_RADIUS,
+      )
+      if (hitDistance === null) continue
 
-      // Project POI to a small sphere for easier clicking than just the point
-      const ocx = this.raycaster.ray.origin.x - poi.position.x;
-      const ocy = this.raycaster.ray.origin.y - poi.position.y;
-      const ocz = this.raycaster.ray.origin.z - poi.position.z;
-
-      const halfB = ocx * this.raycaster.ray.direction.x + ocy * this.raycaster.ray.direction.y + ocz * this.raycaster.ray.direction.z;
-      const c = ocx * ocx + ocy * ocy + ocz * ocz - POI_PICK_RADIUS * POI_PICK_RADIUS;
-      const discriminant = halfB * halfB - c;
-
-      if (discriminant < 0) continue;
-
-      const t = -halfB - Math.sqrt(discriminant);
-      if (t > 0 && t < closestT) {
-        closestT = t;
-        closestPoi = poi;
+      if (hitDistance > 0 && hitDistance < closestDistance) {
+        closestDistance = hitDistance
+        closestPoi = poi
       }
     }
 
-    return closestPoi;
+    return closestPoi
   }
 
-  private handlePointerUp(event: PointerEvent) {
-    if (event.button !== 0) return;
-    if (this.isDragging) return;
-    this.handleClick(event as unknown as MouseEvent);
+  private handlePointerUp = (event: PointerEvent) => {
+    if (event.button !== 0 || this.isDragging) return
+    this.handleClick(event)
   }
 
-  private handleClick(event: MouseEvent) {
-    const rect = this.canvas.getBoundingClientRect();
-    this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  /**
+   * Clicking the selected character deselects it; clicking another selects it. With a character
+   * selected, the first click on empty space only clears the selection.
+   */
+  private handleClick(event: PointerEvent) {
+    this.setPointer(event)
+    const { onSelect, onPoiHover, onPoiClick, onFloorClick } = this.callbacks
 
-    const closestIdx = this.getAgentAtPointer();
+    const closestIndex = this.getAgentAtPointer()
 
-    if (closestIdx !== null) {
-      if (closestIdx === this.selectedIndex) {
-        // Click on already-selected character → deselect
-        this.selectedIndex = null;
-        this.onSelect(null);
+    if (closestIndex !== null) {
+      if (closestIndex === this.selectedIndex) {
+        this.selectedIndex = null
+        onSelect(null)
       } else {
-        // Click on a new character (NPC or Player) → select it
-        this.selectedIndex = closestIdx;
-        this.onSelect(closestIdx);
+        this.selectedIndex = closestIndex
+        onSelect(closestIndex)
       }
     } else {
-      // Click missed all characters, check POIs
-      const hoveredPoi = this.getPoiAtPointer();
+      const hoveredPoi = this.getPoiAtPointer()
 
       if (hoveredPoi && hoveredPoi.occupiedBy === null && hoveredPoi.label) {
-        // Clear hover state immediately on click
-        this.onPoiHover(null, null, null);
-        this.onPoiClick(hoveredPoi.id);
+        onPoiHover(null, null, null)
+        onPoiClick(hoveredPoi.id)
       } else if (this.selectedIndex !== null) {
-        // If something was selected, deselect it first
-        this.selectedIndex = null;
-        this.onSelect(null);
+        this.selectedIndex = null
+        onSelect(null)
       } else {
-        // If nothing was selected, move the player
-        const target = this.getWorldClickPosition();
-        if (target) {
-          this.onWaypoint(target.x, target.z);
-        }
+        const target = this.getWorldClickPosition()
+        if (target) onFloorClick(target.x, target.z)
       }
     }
   }
 
+  /** Walkable point under the pointer, or null. The returned vector is reused between calls. */
   private getWorldClickPosition(): THREE.Vector3 | null {
-    this.raycaster.setFromCamera(this.pointer, this.camera);
+    this.raycaster.setFromCamera(this.pointer, this.camera)
 
-    let point: THREE.Vector3 | null = null;
-
-    if (this.raycastObject) {
-      const intersects = this.raycaster.intersectObject(this.raycastObject, true);
-      if (intersects.length > 0) {
-        // Find first mesh that is a navmesh
-        const navMeshMatch = intersects.find(hit => hit.object.name.toLowerCase().includes('navmesh'));
-        if (navMeshMatch) {
-          point = navMeshMatch.point;
-        } else {
-          // Fallback: if no navmesh hit, don't allow movement on other meshes (like walls/props)
-          return null;
-        }
-      }
-    } else {
-      // Fallback to infinite plane (only if no raycastObject)
-      const target = new THREE.Vector3();
-      if (this.raycaster.ray.intersectPlane(FLOOR_PLANE, target)) {
-        point = target;
-      }
+    let point: THREE.Vector3 | null = null
+    if (this.floorMeshes.length > 0) {
+      this.hits.length = 0
+      this.raycaster.intersectObjects(this.floorMeshes, false, this.hits)
+      point = this.hits[0]?.point ?? null
+    } else if (this.raycaster.ray.intersectPlane(FLOOR_PLANE, this.planeHit)) {
+      point = this.planeHit
     }
 
-    if (point && this.isPointValid) {
-      return this.isPointValid(point) ? point : null;
-    }
-
-    return point;
+    return point && this.callbacks.isPointValid(point) ? point : null
   }
 
   public dispose() {
-    this.canvas.removeEventListener('pointerdown', this.boundPointerDown);
-    this.canvas.removeEventListener('pointermove', this.boundPointerMove);
-    this.canvas.removeEventListener('pointerup', this.boundPointerUp);
+    this.canvas.removeEventListener("pointerdown", this.handlePointerDown)
+    this.canvas.removeEventListener("pointermove", this.handlePointerMove)
+    this.canvas.removeEventListener("pointerup", this.handlePointerUp)
+    cancelAnimationFrame(this.hoverFrame)
+    this.hoverFrame = 0
+    this.pendingHover = null
   }
 }

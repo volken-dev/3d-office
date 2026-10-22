@@ -1,13 +1,21 @@
-import * as THREE from 'three/webgpu';
-import { getActiveAgentSet } from '../integration/store/teamStore';
-import { AgentBehavior, AnimationName, CharacterStateKey, ExpressionKey, ICharacterDriver } from '../types';
+import * as THREE from "three/webgpu"
+import type { AgenticSystem } from "../data/agents"
+import {
+  AgentBehavior,
+  type AnimationName,
+  type CharacterStateKey,
+  type ExpressionKey,
+  type ICharacterDriver,
+} from "../types"
 
-import { AgentStateBuffer } from './behavior/AgentStateBuffer';
-import { CharacterStateMachine } from './behavior/CharacterStateMachine';
-import { CharacterManager } from './entities/CharacterManager';
-import { NavMeshManager } from './pathfinding/NavMeshManager';
-import { PathAgent } from './pathfinding/PathAgent';
-import { PoiManager } from './world/PoiManager';
+import type { AgentStateBuffer } from "./behavior/AgentStateBuffer"
+import { CharacterStateMachine } from "./behavior/CharacterStateMachine"
+import type { CharacterManager } from "./entities/CharacterManager"
+import type { NavMeshManager } from "./pathfinding/NavMeshManager"
+import { PathAgent } from "./pathfinding/PathAgent"
+import type { PoiManager } from "./world/PoiManager"
+
+const ORIGIN = new THREE.Vector3(0, 0, 0)
 
 /**
  * CharacterController — unified API for controlling any character (player or NPC).
@@ -25,48 +33,61 @@ import { PoiManager } from './world/PoiManager';
  * All behavior code (PlayerInputDriver, NpcAgentDriver) goes through this class.
  */
 export class CharacterController implements ICharacterDriver {
-  private stateMachine: CharacterStateMachine;
-  private pathAgents: PathAgent[] = [];
+  private stateMachine!: CharacterStateMachine
+  private pathAgents: PathAgent[] = []
   /** Per-agent callback fired when the agent reaches its path destination. */
-  private arrivalCallbacks: ((index: number) => void)[] = [];
+  private arrivalCallbacks: ((index: number) => void)[] = []
 
   constructor(
     public readonly characterManager: CharacterManager,
     private readonly navMesh: NavMeshManager,
     public readonly poiManager: PoiManager,
+    private playerIndex: number,
   ) {
-    const count = characterManager.getCount();
-    this.stateMachine = new CharacterStateMachine(count);
-
-    const stateBuffer = characterManager.getAgentStateBuffer()!;
-    for (let i = 0; i < count; i++) {
-      this.pathAgents.push(new PathAgent(i, stateBuffer));
-    }
+    this.resetAgents()
   }
 
-  // ── High-level character API ─────────────────────────────────
+  /**
+   * Fresh state machine and path followers sized to the current character count. Needs the
+   * characters to be loaded, since path followers write into their state buffer.
+   */
+  private resetAgents(): void {
+    const count = this.characterManager.getCount()
+    const stateBuffer = this.characterManager.getAgentStateBuffer()
+    if (!stateBuffer) throw new Error("CharacterController needs loaded characters")
+    this.stateMachine = new CharacterStateMachine(count)
+    this.pathAgents = []
+    this.arrivalCallbacks = []
+    for (let agentIndex = 0; agentIndex < count; agentIndex++) {
+      this.pathAgents.push(new PathAgent(agentIndex, stateBuffer))
+    }
+  }
 
   /**
    * Transition a character to the given state.
    * The state machine applies the correct animation + expression automatically.
    * Non-interruptible states (e.g. 'sit_down') will queue the new state until ready.
+   * Leaving a seated state releases the character's POIs.
    */
   public play(index: number, state: CharacterStateKey): void {
-    // If transitioning away from a seated state, release any POIs
-    const currentState = this.stateMachine.getState(index);
-    const isCurrentlySeated = currentState === 'sit_idle' || currentState === 'sit_work' || currentState === 'sit_down';
-    const isNewStateSeated = state === 'sit_idle' || state === 'sit_work' || state === 'sit_down';
+    const currentState = this.stateMachine.getState(index)
+    const isCurrentlySeated =
+      currentState === "sit_idle" || currentState === "sit_work" || currentState === "sit_down"
+    const isNewStateSeated = state === "sit_idle" || state === "sit_work" || state === "sit_down"
 
     if (isCurrentlySeated && !isNewStateSeated) {
-      this.poiManager.releaseAll(index);
+      this.poiManager.releaseAll(index)
     }
 
-    this.stateMachine.transition(index, state, this);
+    this.stateMachine.transition(index, state, this)
   }
 
   /**
    * Walk a character to a world-space position using the navmesh.
    * Automatically transitions to 'walk' and then to `arrivalState` on arrival.
+   * The path's last node is replaced by the exact target, not the nearest navmesh polygon
+   * boundary. The player can end up just off the navmesh, where no path exists; it is teleported
+   * rather than ignoring the click.
    *
    * @param arrivalState State to enter upon reaching the destination (default: 'idle')
    * @param onArrival    Optional callback fired when the destination is reached
@@ -76,66 +97,68 @@ export class CharacterController implements ICharacterDriver {
   public moveTo(
     index: number,
     target: THREE.Vector3,
-    arrivalState: CharacterStateKey = 'idle',
+    arrivalState: CharacterStateKey = "idle",
     onArrival?: (index: number) => void,
     fromPosition?: THREE.Vector3,
     targetOrientation?: THREE.Quaternion,
   ): boolean {
-    let from: THREE.Vector3;
+    let from: THREE.Vector3
 
     if (fromPosition) {
-      from = fromPosition.clone();
+      from = fromPosition.clone()
     } else {
-      const positions = this.characterManager.getCPUPositions();
-      if (!positions) return false;
+      const positions = this.characterManager.getCPUPositions()
+      if (!positions) return false
 
       from = new THREE.Vector3(
         positions[index * 4],
         positions[index * 4 + 1],
         positions[index * 4 + 2],
-      );
+      )
     }
 
-    const path = this.navMesh.findPath(from, target);
+    const path = this.navMesh.findPath(from, target)
 
     if (path.length === 0) {
-      // Emergency Teleport: If the target is valid on the navmesh but we can't find a path
-      // (likely because the character is stuck outside the navmesh bounds), teleport directly.
-      if (index === getActiveAgentSet().user.index) {
-        this.characterManager.setPosition(index, target);
+      if (index === this.playerIndex) {
+        this.characterManager.setPosition(index, target)
         if (targetOrientation) {
-          this.characterManager.setOrientation(index, targetOrientation);
+          this.characterManager.setOrientation(index, targetOrientation)
         }
-        this.play(index, arrivalState);
-        onArrival?.(index);
-        return true;
+        this.play(index, arrivalState)
+        onArrival?.(index)
+        return true
       }
 
-      return false;
+      return false
     }
 
-    // Ensure the agent ends up at the exact target position,
-    // not at the nearest navmesh polygon boundary.
-    path[path.length - 1] = target.clone();
+    path[path.length - 1] = target.clone()
 
-    this.pathAgents[index].setPath(path, from);
-    this.arrivalCallbacks[index] = (i) => {
+    this.pathAgents[index].setPath(path, from)
+    this.arrivalCallbacks[index] = (arrivedIndex) => {
       if (targetOrientation) {
-        this.characterManager.setOrientation(i, targetOrientation);
+        this.characterManager.setOrientation(arrivedIndex, targetOrientation)
       }
-      this.play(i, arrivalState);
-      onArrival?.(i);
-    };
+      this.play(arrivedIndex, arrivalState)
+      onArrival?.(arrivedIndex)
+    }
 
-    this.setPhysicsMode(index, AgentBehavior.GOTO);
-    this.play(index, 'walk');
+    this.setPhysicsMode(index, AgentBehavior.GOTO)
+    this.play(index, "walk")
 
-    return true;
+    return true
   }
 
   /**
    * Walk a character to a POI by ID.
-   * Occupies the POI immediately; releases existing ones first.
+   * Occupies the POI immediately; releases existing ones first, but only once a path exists.
+   *
+   * A sit target is armed before walking, so when the sit_down timer expires the state machine
+   * reads it directly, immune to the async gap between syncFromGPU and stateMachine.update. On
+   * arrival the character snaps to the exact POI position (removing any navmesh offset) and, except
+   * for 'area' POIs, its facing; seated arrivals switch the GPU to SEATED so a stray GOTO can't move
+   * them.
    */
   public walkToPoi(
     index: number,
@@ -143,211 +166,164 @@ export class CharacterController implements ICharacterDriver {
     onArrival?: (index: number) => void,
     fromPosition?: THREE.Vector3,
   ): boolean {
-    const poi = this.poiManager.getPoi(poiId);
-    if (!poi || (poi.occupiedBy !== null && poi.occupiedBy !== index)) return false;
+    const poi = this.poiManager.getPoi(poiId)
+    if (!poi || (poi.occupiedBy !== null && poi.occupiedBy !== index)) return false
 
-    const targetState = poi.arrivalState;
-    const isSitVariant = targetState === 'sit_idle' || targetState === 'sit_work';
+    const targetState = poi.arrivalState
+    const isSitVariant = targetState === "sit_idle" || targetState === "sit_work"
 
     if (isSitVariant) {
-      // Pre-arm the sit sequence: sitTarget is stored NOW, before the async arrival fires.
-      // When sit_down timer expires the state machine reads sitTarget directly — this is
-      // immune to the async gap between syncFromGPU.then() and stateMachine.update().
-      this.stateMachine.prepareSitDown(index, targetState as 'sit_idle' | 'sit_work');
+      this.stateMachine.prepareSitDown(index, targetState)
     }
 
-    // Check path before releasing old POIs
-    const moved = this.moveTo(index, poi.position, 'idle', (i) => {
-      // 1. Teleport to exact POI position (removes any sub-unit navmesh offset)
-      this.characterManager.setPosition(i, poi.position);
+    const moved = this.moveTo(
+      index,
+      poi.position,
+      "idle",
+      (arrivedIndex) => {
+        this.characterManager.setPosition(arrivedIndex, poi.position)
 
-      // 2. Snap orientation to POI facing direction (skip if it's an 'area' POI)
-      if (!poi.id.startsWith('area')) {
-        this.characterManager.setOrientation(i, poi.quaternion);
-      }
+        if (!poi.id.startsWith("area")) {
+          this.characterManager.setOrientation(arrivedIndex, poi.quaternion)
+        }
 
-      // 3. Switch GPU to SEATED so the character won't be moved by any stray GOTO commands
-      if (isSitVariant) {
-        this.setPhysicsMode(i, AgentBehavior.SEATED);
-        // play('sit_down') — sitTarget already set above, will auto-transition to finalState
-        this.play(i, 'sit_down');
-      } else {
-        this.play(i, targetState);
-      }
+        if (isSitVariant) {
+          this.setPhysicsMode(arrivedIndex, AgentBehavior.SEATED)
+          this.play(arrivedIndex, "sit_down")
+        } else {
+          this.play(arrivedIndex, targetState)
+        }
 
-      onArrival?.(i);
-    }, fromPosition);
+        onArrival?.(arrivedIndex)
+      },
+      fromPosition,
+    )
 
-    if (!moved) return false;
+    if (!moved) return false
 
-    this.poiManager.releaseAll(index);
-    this.poiManager.occupy(poiId, index);
+    this.poiManager.releaseAll(index)
+    this.poiManager.occupy(poiId, index)
 
-    return true;
+    return true
   }
 
   /** Speaking mouth animation overlay — independent of character state. */
   public setSpeaking(index: number, isSpeaking: boolean): void {
-    this.characterManager.setSpeaking(index, isSpeaking);
+    this.characterManager.setSpeaking(index, isSpeaking)
   }
 
   public getState(index: number): CharacterStateKey {
-    return this.stateMachine.getState(index);
+    return this.stateMachine.getState(index)
   }
 
-  // ── Per-frame update ─────────────────────────────────────────
-
-  /**
-   * Main update loop. Call once per frame.
-   *  1. Updates GPU expression buffers (blink, mouth animation).
-   *  2. Runs GPU compute shader (physics/movement).
-   *  3. Ticks the state machine timers (non-looping state auto-transitions).
-   *  4. Advances per-agent path following.
-   */
-  public update(delta: number, renderer: any): void {
-    this.characterManager.update(delta, renderer);
-    this.stateMachine.update(delta, this);
+  /** Once per frame: expressions and the movement compute pass on the GPU, then state machine timers. */
+  public update(deltaSeconds: number, renderer: THREE.WebGPURenderer): void {
+    this.characterManager.update(deltaSeconds, renderer)
+    this.stateMachine.update(deltaSeconds, this)
   }
 
-  /**
-   * GPU→CPU position readback (async, 1-frame lag).
-   * Returns the positions buffer so drivers can use it for logic.
-   */
-  public async syncFromGPU(renderer: any): Promise<Float32Array | null> {
-    return this.characterManager.syncFromGPU(renderer);
+  /** GPU→CPU position readback (async, about one frame behind). */
+  public async syncFromGPU(renderer: THREE.WebGPURenderer): Promise<Float32Array | null> {
+    return this.characterManager.syncFromGPU(renderer)
   }
 
   /**
    * Advance path agents. Call after syncFromGPU resolves so positions are fresh.
-   * Fires arrival callbacks for agents that reach their destination.
+   * Fires arrival callbacks for agents that reach their destination, after keeping their last
+   * movement direction as the IDLE facing.
    */
   public updatePaths(positions: Float32Array): void {
-    for (let i = 0; i < this.pathAgents.length; i++) {
-      if (!this.pathAgents[i].isMoving) continue;
+    for (let agentIndex = 0; agentIndex < this.pathAgents.length; agentIndex++) {
+      const pathAgent = this.pathAgents[agentIndex]
+      if (!pathAgent.isMoving) continue
 
-      const currentPos = new THREE.Vector3(
-        positions[i * 4],
-        positions[i * 4 + 1],
-        positions[i * 4 + 2],
-      );
-
-      const arrived = this.pathAgents[i].update(currentPos);
+      const arrived = pathAgent.update(positions[agentIndex * 4], positions[agentIndex * 4 + 2])
       if (arrived) {
-        // Keep the last movement direction when transitioning to IDLE
-        const lastDir = this.pathAgents[i].getLastDirection();
-        this.characterManager.setFacing(i, lastDir.x, lastDir.z);
+        const lastDirection = pathAgent.getLastDirection()
+        this.characterManager.setFacing(agentIndex, lastDirection.x, lastDirection.z)
 
-        this.setPhysicsMode(i, AgentBehavior.IDLE);
-        this.arrivalCallbacks[i]?.(i);
+        this.setPhysicsMode(agentIndex, AgentBehavior.IDLE)
+        this.arrivalCallbacks[agentIndex]?.(agentIndex)
       }
     }
   }
 
   /** Cancel movement for an agent and return to idle. */
   public cancelMovement(index: number): void {
-    this.pathAgents[index].cancel();
-    this.setPhysicsMode(index, AgentBehavior.IDLE);
+    this.pathAgents[index].cancel()
+    this.setPhysicsMode(index, AgentBehavior.IDLE)
   }
 
   /**
    * Instantly teleport every agent to their original spawn POI — no pathfinding,
-   * no arrival callbacks. Spawn POIs are reassigned in sorted ID order, mirroring
-   * the order used during initialisation.
+   * no arrival callbacks. All POIs are released and in-flight paths cancelled first; spawn POIs
+   * are then reassigned in sorted ID order, mirroring the order used during initialisation.
    *
    * @param playerIndex  Index of the player character (teleported to world origin).
    * @param npcIndices   Indices of all NPC agents, in the desired spawn-assignment order.
    */
   public warpAllToSpawn(playerIndex: number, npcIndices: number[]): void {
-    // 1. Release all POIs so spawn slots are free
-    this.poiManager.releaseAll(playerIndex);
-    npcIndices.forEach(i => this.poiManager.releaseAll(i));
+    this.poiManager.releaseAll(playerIndex)
+    for (const npcIndex of npcIndices) this.poiManager.releaseAll(npcIndex)
 
-    // 2. Cancel in-flight paths and snap physics to IDLE
-    this.cancelMovement(playerIndex);
-    npcIndices.forEach(i => this.cancelMovement(i));
+    this.cancelMovement(playerIndex)
+    for (const npcIndex of npcIndices) this.cancelMovement(npcIndex)
 
-    // 3. Teleport player to world origin
-    this.characterManager.setPosition(playerIndex, new THREE.Vector3(0, 0, 0));
-    this.play(playerIndex, 'idle');
+    this.characterManager.setPosition(playerIndex, ORIGIN)
+    this.play(playerIndex, "idle")
 
-    // 4. Reassign spawn POIs in sorted order (same as initInstances)
-    const spawnPois = this.poiManager.getPoisByPrefix('spawn');
+    const spawnPois = this.poiManager.getPoisByPrefix("spawn")
     npcIndices.forEach((agentIndex, order) => {
-      const poi = spawnPois[order % spawnPois.length];
+      const poi = spawnPois[order % spawnPois.length]
       if (poi) {
-        this.characterManager.setPosition(agentIndex, poi.position);
-        this.characterManager.setOrientation(agentIndex, poi.quaternion);
-        this.poiManager.occupy(poi.id, agentIndex);
+        this.characterManager.setPosition(agentIndex, poi.position)
+        this.characterManager.setOrientation(agentIndex, poi.quaternion)
+        this.poiManager.occupy(poi.id, agentIndex)
       }
-      this.play(agentIndex, 'idle');
-    });
+      this.play(agentIndex, "idle")
+    })
   }
-
-  // ── Forwarded accessors ──────────────────────────────────────
 
   public getCPUPositions(): Float32Array | null {
-    return this.characterManager.getCPUPositions();
+    return this.characterManager.getCPUPositions()
   }
 
-  public getCPUPosition(index: number): THREE.Vector3 | null {
-    return this.characterManager.getCPUPosition(index);
+  public getCPUPosition(index: number, out: THREE.Vector3): boolean {
+    return this.characterManager.getCPUPosition(index, out)
   }
 
   public getCount(): number {
-    return this.characterManager.getCount();
+    return this.characterManager.getCount()
   }
 
   public getAgentStateBuffer(): AgentStateBuffer | null {
-    return this.characterManager.getAgentStateBuffer();
+    return this.characterManager.getAgentStateBuffer()
   }
 
-  public setColors(): void {
-    this.characterManager.setColors();
-    // Re-sync components after recreation
-    const newCount = this.characterManager.getCount();
-    const stateBuffer = this.characterManager.getAgentStateBuffer()!;
-    this.pathAgents = [];
-    for (let i = 0; i < newCount; i++) {
-      this.pathAgents.push(new PathAgent(i, stateBuffer));
-    }
-    this.stateMachine = new CharacterStateMachine(newCount);
+  /** Switches to another team's characters (one rebuild at most) and resets every character's state. */
+  public setTeam(team: AgenticSystem): void {
+    this.characterManager.setTeam(team)
+    this.playerIndex = team.user.index
+    this.resetAgents()
   }
-
-  public setInstanceCount(count: number): void {
-    this.characterManager.setInstanceCount(count);
-    // Re-sync path agents and state machine after resize
-    const newCount = this.characterManager.getCount();
-    const stateBuffer = this.characterManager.getAgentStateBuffer()!;
-    this.pathAgents = [];
-    for (let i = 0; i < newCount; i++) {
-      this.pathAgents.push(new PathAgent(i, stateBuffer));
-    }
-    this.stateMachine = new CharacterStateMachine(newCount);
-  }
-
-  public get isLoaded(): boolean {
-    return this.characterManager.isLoaded;
-  }
-
-  // ── ICharacterDriver implementation ──────────────────────────
 
   public setPhysicsMode(index: number, mode: AgentBehavior): void {
-    this.characterManager.setPhysicsMode(index, mode);
+    this.characterManager.setPhysicsMode(index, mode)
   }
 
   public setAnimation(index: number, name: AnimationName, loop: boolean = true): void {
-    this.characterManager.setAnimation(index, name, loop);
+    this.characterManager.setAnimation(index, name, loop)
   }
 
   public setExpression(index: number, key: ExpressionKey): void {
-    this.characterManager.setExpression(index, key);
+    this.characterManager.setExpression(index, key)
   }
 
   public getAgentState(index: number): AgentBehavior {
-    return this.characterManager.getAgentState(index);
+    return this.characterManager.getAgentState(index)
   }
 
   public getAnimationDuration(name: AnimationName): number {
-    return this.characterManager.getAnimationDuration(name);
+    return this.characterManager.getAnimationDuration(name)
   }
 }

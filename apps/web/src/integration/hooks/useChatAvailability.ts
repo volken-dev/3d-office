@@ -1,43 +1,38 @@
-import { useCoreStore } from '../store/coreStore'
-import { useActiveTeam } from '../store/teamStore'
-import { useUiStore } from '../store/uiStore'
+import { canChatWith } from "../../core/orchestration/policy"
+import { isLeadAgent } from "../../data/agents"
+import { useCoreStore } from "../store/coreStore"
+import { useActiveTeam } from "../store/teamStore"
+import { useUiStore } from "../store/uiStore"
 
 export interface ChatAvailability {
   canChat: boolean
   reason: string
 }
 
-/**
- * Derives whether the player can chat with a given agent based on
- * the current project phase and the agent's task state.
- */
+/** Whether the user can chat with an agent, using the same rule the agent runtime applies. */
 export function useChatAvailability(agentIndex: number | null): ChatAvailability {
-  const phase = useCoreStore((s) => s.phase)
-  const tasks = useCoreStore((s) => s.tasks)
-  const agentStatus = useUiStore((s) => (agentIndex !== null ? s.agentStatuses[agentIndex] : 'idle'))
+  const phase = useCoreStore((state) => state.phase)
+  const activeTaskTitle = useCoreStore((state) =>
+    agentIndex === null
+      ? undefined
+      : state.tasks.find(
+          (task) => task.assignedAgentId === agentIndex && task.status === "in_progress",
+        )?.title,
+  )
+  const status = useUiStore((state) =>
+    agentIndex !== null ? state.agentStatuses[agentIndex] : undefined,
+  )
   const system = useActiveTeam()
 
-  if (agentIndex === null) return { canChat: false, reason: '' }
-  if (phase === 'done') return { canChat: false, reason: 'Project completed' }
+  if (agentIndex === null) return { canChat: false, reason: "" }
+  const isLead = isLeadAgent(system, agentIndex)
+  if (canChatWith({ phase, isLead, status })) return { canChat: true, reason: "" }
 
-  const isLead = agentIndex === system.leadAgent.index
-
-  // 1. Idle Phase: Only Lead Agent can chat (to set the brief)
-  if (phase === 'idle') {
-    return isLead ? { canChat: true, reason: '' } : { canChat: false, reason: 'Waiting for brief' }
-  }
-
-  // 2. Working Phase: Lead Agent can always talk. Others only when idle.
-  if (isLead || agentStatus === 'idle') {
-    return { canChat: true, reason: '' }
-  }
-
-  // Provide specific reason for busy agents
-  if (agentStatus === 'on_hold') return { canChat: false, reason: 'Review requested...' }
-
-  const activeTask = tasks.find((t) => t.assignedAgentId === agentIndex && t.status === 'in_progress')
-  return { 
-    canChat: false, 
-    reason: activeTask ? `Working on: "${activeTask.title}"` : 'Agent is busy' 
+  if (phase === "done") return { canChat: false, reason: "Project completed" }
+  if (phase === "idle") return { canChat: false, reason: "Waiting for brief" }
+  if (status === "on_hold") return { canChat: false, reason: "Review requested..." }
+  return {
+    canChat: false,
+    reason: activeTaskTitle ? `Working on: "${activeTaskTitle}"` : "Agent is busy",
   }
 }

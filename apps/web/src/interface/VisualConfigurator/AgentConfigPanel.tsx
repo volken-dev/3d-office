@@ -1,327 +1,309 @@
-import { Cpu, Save, Target, Trash2, User, X, Check, Pipette, Zap, CircleUser } from 'lucide-react';
-import React, { useState, useMemo, useEffect } from 'react';
-import { AgentNode, AgenticSystem, getAllCharacters } from '../../data/agents';
-import { USER_COLOR, USER_COLOR_LIGHT, USER_COLOR_SOFT } from '../../theme/brand';
-import { AVAILABLE_MODELS } from '../../core/llm/constants';
-import { useTeamStore } from '../../integration/store/teamStore';
-import { Avatar } from '../components/Avatar';
-import { ColorPicker } from './ColorPicker';
-import { InfoBubble } from '../components/InfoBubble';
-import { getBrightness, MAX_BRIGHTNESS } from './colorUtils';
+import { Check, CircleUser, Cpu, Pipette, Save, Target, Trash2, User, X, Zap } from "lucide-react"
+import { useId, useMemo, useState } from "react"
+import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
+import { cn } from "@/lib/utils"
+import { AVAILABLE_MODELS, DEFAULT_MODEL } from "../../core/llm/constants"
+import type { AgentNode } from "../../data/agents"
+import { Avatar } from "../components/Avatar"
+import { ColorPicker, isColorTooLight } from "./ColorPicker"
+import { DisabledReason, Field, FieldHint, MICRO_LABEL } from "./Field"
+import { type AgentDraft, countDescendants } from "./teamTree"
 
 interface AgentConfigPanelProps {
-  agent: AgentNode;
-  system: AgenticSystem;
-  onClose: (wasSaved: boolean) => void;
-  onUpdate: (updatedAgent: AgentNode) => void;
-  onRemove?: () => void;
-  mode?: 'view' | 'edit';
+  /** The saved agent, used for its place in the hierarchy. */
+  agent: AgentNode
+  draft: AgentDraft
+  isLead: boolean
+  /** Names of the other characters in the team, lower-cased and trimmed. */
+  takenNames: string[]
+  mode: "view" | "edit"
+  onChange: (changes: Partial<AgentDraft>) => void
+  onSave: () => void
+  onClose: () => void
+  onRemove: () => void
+  /** Set while the roster cannot change, e.g. during a running project. */
+  lockedReason: string | null
 }
 
-export const AgentConfigPanel: React.FC<AgentConfigPanelProps> = ({
+function sanitizeName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9 ]/g, "")
+}
+
+/** Side panel for viewing or editing one agent's name, model, colour, description and supervision. */
+export function AgentConfigPanel({
   agent,
-  system: activeSystem,
+  draft,
+  isLead,
+  takenNames,
+  mode,
+  onChange,
+  onSave,
   onClose,
-  onUpdate,
   onRemove,
-  mode = 'edit'
-}) => {
-  const isView = mode === 'view';
-  const saveCustomSystem = useTeamStore((s) => s.saveCustomSystem);
+  lockedReason,
+}: AgentConfigPanelProps) {
+  const isView = mode === "view"
+  const nameErrorId = useId()
+  const supervisionId = useId()
+  const [confirmRemove, setConfirmRemove] = useState(false)
 
-  const [editData, setEditData] = useState<AgentNode>(agent);
-  const isUser = agent.index === 0;
-  const isLead = agent.index === 1;
+  const normalizedName = draft.name.toLowerCase().trim()
+  const nameCollision = takenNames.includes(normalizedName)
+  const nameError =
+    normalizedName === ""
+      ? "Name is required."
+      : nameCollision
+        ? "This name is already used in the team."
+        : null
+  const isValid = !nameError && !isColorTooLight(draft.color)
 
-  useEffect(() => {
-    setEditData(agent);
-  }, [agent]);
+  const capabilities = useMemo(
+    () =>
+      [
+        { label: "Set project brief", enabled: isLead },
+        { label: "Propose tasks", enabled: (agent.subagents?.length ?? 0) > 0 },
+        { label: "Execute and complete tasks", enabled: true },
+        { label: "Autonomous reasoning", enabled: true },
+        { label: "Deliver project", enabled: isLead },
+      ].filter((capability) => capability.enabled),
+    [isLead, agent.subagents],
+  )
 
-  const updateDraft = (changes: Partial<AgentNode>) => {
-    const newData = { ...editData, ...changes };
-    setEditData(newData);
-    onUpdate(newData);
-  };
-
-  const allCharacters = useMemo(() => getAllCharacters(activeSystem), [activeSystem]);
-
-
-  const nameCollision = useMemo(() => {
-    return allCharacters.some(c =>
-      c.id !== agent.id && c.name.toLowerCase().trim() === editData.name.toLowerCase().trim()
-    );
-  }, [allCharacters, agent.id, editData.name]);
-
-  const isValid = useMemo(() => {
-    const brightness = getBrightness(editData.color);
-    const isNameEmpty = editData.name.trim() === '';
-    return brightness <= MAX_BRIGHTNESS && !nameCollision && !isNameEmpty;
-  }, [editData.color, editData.name, nameCollision]);
-
-  const handleSave = () => {
-    if (!isValid) return;
-
-    const oldId = agent.id;
-    const newId = editData.id;
-
-    // 1. Recursive update function
-    const updateRecursive = (node: AgentNode): AgentNode => {
-      // If this is the node being edited
-      let updatedNode = node.id === agent.id ? { ...editData } : { ...node };
-
-
-      // Recurse subagents
-      if (updatedNode.subagents) {
-        updatedNode.subagents = updatedNode.subagents.map(updateRecursive);
-      }
-
-      return updatedNode;
-    };
-
-    const newLeadAgent = updateRecursive(activeSystem.leadAgent);
-
-    const updatedSystem: AgenticSystem = {
-      ...activeSystem,
-      leadAgent: newLeadAgent,
-    };
-
-    saveCustomSystem(updatedSystem);
-    onClose(true); // SAVED
-  };
-
-  const handleNameChange = (name: string) => {
-    // Limit to letters, numbers and spaces
-    const sanitizedName = name.replace(/[^a-zA-Z0-9 ]/g, '');
-    updateDraft({ name: sanitizedName });
-  };
-
-
-  const renderField = (label: string, icon: React.ReactNode, value: React.ReactNode, helpText?: string, inline?: boolean) => (
-    <div className={inline ? "flex items-center justify-between" : "space-y-1.5"}>
-      <div className="flex items-center gap-1.5">
-        {icon && <div className="text-zinc-400 shrink-0">{icon}</div>}
-        <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">{label}</label>
-        {helpText && <InfoBubble text={helpText} />}
-      </div>
-      <div className={inline ? "" : "px-1"}>{value}</div>
-    </div>
-  );
+  const removedCount = countDescendants(agent)
 
   return (
-    <div className="w-80 h-full bg-white border-l border-zinc-100 flex flex-col pointer-events-auto overflow-hidden animate-in slide-in-from-right-full duration-300">
-      {/* Header */}
-      <div className="px-4 py-2.5 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
-        <div className="flex items-center gap-2">
-          {isUser ? (
-            <Avatar type="user" color={USER_COLOR} size={32} />
-          ) : (
-            <Avatar type={isLead ? 'lead' : 'sub'} color={editData.color} size={32} />
-          )}
-          <h3 className="font-bold text-sm text-darkDelegation uppercase tracking-tight truncate">
-            {isUser ? 'User Info' : (isLead ? 'Lead Agent Info' : 'Subagent Info')}
+    <div className="flex h-full w-80 flex-col overflow-hidden bg-background motion-safe:animate-in motion-safe:slide-in-from-left-4 motion-safe:fade-in motion-safe:duration-300">
+      <div className="flex items-center justify-between border-b bg-muted/40 px-4 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <Avatar type={isLead ? "lead" : "sub"} color={draft.color} size={32} />
+          <h3 className="truncate text-sm font-bold tracking-tight text-primary">
+            {isLead ? "Lead agent info" : "Subagent info"}
           </h3>
         </div>
-        <button onClick={() => onClose(false)} className="p-1 hover:bg-zinc-200 rounded-md transition-colors text-zinc-400">
-          <X size={18} />
-        </button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onClose}
+          aria-label="Close agent details"
+          className="text-muted-foreground"
+        >
+          <X />
+        </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5 space-y-8">
-        {isUser ? (
-          <div
-            className="flex flex-col items-center justify-center p-8 text-center space-y-4 rounded-3xl border italic"
-            style={{ backgroundColor: USER_COLOR_LIGHT, borderColor: USER_COLOR_SOFT }}
-          >
-            <div
-              className="p-1 rounded-2xl text-white shadow-lg"
-              style={{ backgroundColor: 'transparent', boxShadow: `0 10px 15px -3px ${USER_COLOR}33` }}
-            >
-              <Avatar type="user" color={USER_COLOR} size={64} />
-            </div>
-            <div>
-              <h4 className="text-sm font-black text-darkDelegation uppercase tracking-widest mb-1">Primary User</h4>
-              <p className="text-[11px] text-zinc-500 font-medium leading-relaxed">This is you. Your identity and role are fixed across all teams for consistency.</p>
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* Identity Group */}
-            <div className="space-y-6">
-              {!isView && (
-                <div className="space-y-1.5 px-1">
-                  <div className="flex items-center gap-1.5">
-                    <Pipette size={12} className="text-zinc-400" />
-                    <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Agent Color</label>
-                  </div>
-                  <ColorPicker
-                    color={editData.color}
-                    onChange={(val) => updateDraft({ color: val })}
-                  />
-                </div>
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="space-y-6 p-5">
+          {!isView && (
+            <Field label="Agent color" icon={<Pipette />} readOnly>
+              {() => (
+                <ColorPicker
+                  label="Agent color"
+                  color={draft.color}
+                  onChange={(color) => onChange({ color })}
+                />
               )}
+            </Field>
+          )}
 
-              {renderField('Name', <CircleUser size={12} />, isView ? (
-                <p className="text-sm font-bold text-darkDelegation">{editData.name}</p>
+          <Field
+            label="Name"
+            icon={<CircleUser />}
+            readOnly={isView}
+            help="Letters, numbers and spaces only. The ID is auto-generated."
+          >
+            {(id) =>
+              isView ? (
+                <p className="text-sm font-bold text-primary">{draft.name}</p>
               ) : (
-                <div className="space-y-1">
-                  <input
-                    type="text"
-                    value={editData.name}
-                    onChange={(e) => handleNameChange(e.target.value)}
-                    className={`w-full px-3 py-2 bg-zinc-50 border rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-black/5 ${nameCollision ? 'border-red-500 text-red-600' : 'border-zinc-200'
-                      }`}
+                <div className="space-y-1.5">
+                  <Input
+                    id={id}
+                    value={draft.name}
+                    onChange={(event) => onChange({ name: sanitizeName(event.target.value) })}
+                    aria-invalid={!!nameError}
+                    aria-describedby={nameError ? nameErrorId : undefined}
+                    className="rounded-xl bg-muted/40 font-bold"
                   />
-                  {nameCollision && (
-                    <p className="text-[9px] text-red-500 font-bold uppercase tracking-tight px-1">
-                      This name is already used in the team
+                  {nameError && (
+                    <p id={nameErrorId} className="text-[11px] font-bold text-destructive">
+                      {nameError}
                     </p>
                   )}
                 </div>
-              ), 'Limit characters to letters, numbers and spaces. The ID is auto-generated.')}
+              )
+            }
+          </Field>
 
-              {renderField('LLM Model', <Cpu size={12} />, isView ? (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-100 border border-zinc-200 rounded-lg text-xs font-mono text-zinc-600 w-fit lowercase">
-                  {editData.model || 'gemini-3-flash-preview'}
-                </div>
-              ) : (
-                <select
-                  value={editData.model || 'gemini-3-flash-preview'}
-                  onChange={(e) => updateDraft({ model: e.target.value })}
-                  className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-black/5 cursor-pointer lowercase"
-                >
-                  {AVAILABLE_MODELS.map(m => <option key={m} value={m} className="lowercase">{m}</option>)}
-                </select>
-              ), 'The specific Gemini model this agent will use.')}
-            </div>
-
-            {/* Content Group */}
-            <div className="space-y-6">
-              {renderField('Description', <Target size={12} />, isView ? (
-                <div className="bg-zinc-50/50 p-4 rounded-xl border border-zinc-100/50 min-h-[120px]">
-                  <p className="text-xs text-zinc-600 leading-relaxed whitespace-pre-wrap font-medium italic">
-                    {editData.description || "No description provided."}
-                  </p>
-                </div>
-              ) : (
-                <textarea
-                  value={editData.description}
-                  onChange={(e) => updateDraft({ description: e.target.value })}
-                  className="w-full h-48 px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs leading-relaxed focus:outline-none focus:ring-2 focus:ring-black/5 resize-none font-medium text-zinc-600"
-                  placeholder="What is this agent specialized in? What are its primary goals and constraints?"
-                />
-              ), 'A concise yet comprehensive definition of the agent\'s role, expertise, and operational guidelines.')}
-            </div>
-
-
-            {/* Capabilities & Controls */}
-            <div className="space-y-6">
-              {renderField('Capabilities', <Zap size={12} />, (
-                <div className="bg-zinc-50 border border-zinc-100 rounded-2xl p-4 gap-y-3 flex flex-col">
-                  {isLead && (
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded-full bg-zinc-200 flex items-center justify-center shrink-0">
-                        <Check size={10} className="text-zinc-700" />
-                      </div>
-                      <span className="text-[10px] font-black text-zinc-700 uppercase tracking-tight">Set Project Brief</span>
-                    </div>
-                  )}
-                  {(editData.subagents?.length || 0) > 0 && (
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded-full bg-zinc-200 flex items-center justify-center shrink-0">
-                        <Check size={10} className="text-zinc-700" />
-                      </div>
-                      <span className="text-[10px] font-black text-zinc-700 uppercase tracking-tight">Propose Tasks</span>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded-full bg-zinc-200 flex items-center justify-center shrink-0">
-                      <Check size={10} className="text-zinc-700" />
-                    </div>
-                    <span className="text-[10px] font-black text-zinc-700 uppercase tracking-tight">Execute & Complete Tasks</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded-full bg-zinc-200 flex items-center justify-center shrink-0">
-                      <Check size={10} className="text-zinc-700" />
-                    </div>
-                    <span className="text-[10px] font-black text-zinc-700 uppercase tracking-tight">Autonomous Reasoning</span>
-                  </div>
-                  {isLead && (
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded-full bg-zinc-200 flex items-center justify-center shrink-0">
-                        <Check size={10} className="text-zinc-700" />
-                      </div>
-                      <span className="text-[10px] font-black text-zinc-700 uppercase tracking-tight">Deliver Project</span>
-                    </div>
-                  )}
-                </div>
-              ), "Tools are automatically assigned based on the agent's role and team hierarchy.")}
-
-              {renderField('Supervision', <User size={12} />, (
-                <div
-                  onClick={() => !isView && updateDraft({ humanInTheLoop: !editData.humanInTheLoop })}
-                  className={`
-                      group flex items-center justify-between p-4 rounded-2xl border transition-all duration-200
-                      ${editData.humanInTheLoop
-                      ? 'shadow-sm'
-                      : 'bg-zinc-50 border-zinc-100 hover:border-zinc-200'}
-                      ${isView ? 'pointer-events-none' : 'cursor-pointer active:scale-[0.98]'}
-                    `}
-                  style={{
-                    backgroundColor: editData.humanInTheLoop ? USER_COLOR_LIGHT : undefined,
-                    borderColor: editData.humanInTheLoop ? USER_COLOR_SOFT : undefined
-                  }}
-                >
-                  <div className="flex flex-col gap-0.5">
-                    <span
-                      className={`text-[10px] font-black uppercase tracking-tight ${editData.humanInTheLoop ? '' : 'text-zinc-700'}`}
-                      style={{ color: editData.humanInTheLoop ? USER_COLOR : undefined }}
-                    >
-                      Human-in-the-loop
-                    </span>
-                    <span className="text-[9px] text-zinc-500 font-medium leading-tight max-w-[160px]">
-                      Agent must request your validation before completing any task.
-                    </span>
-                  </div>
-                  <div className={`
-                      w-8 h-4 rounded-full relative transition-colors duration-200
-                      ${editData.humanInTheLoop ? '' : 'bg-zinc-300'}
-                    `}
-                    style={{ backgroundColor: editData.humanInTheLoop ? USER_COLOR : undefined }}
-                  >
-                    <div className={`
-                        absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform duration-200 shadow-sm
-                        ${editData.humanInTheLoop ? 'translate-x-4.5' : 'translate-x-0.5'}
-                      `} />
-                  </div>
-                </div>
-              ), "When enabled, the agent will pause their work to submit the result for your review and feedback before finalizing.")}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Footer Actions */}
-      {!isView && !isUser && (
-        <div className="p-4 border-t border-zinc-100 bg-zinc-50/30 flex flex-col gap-2">
-          <button
-            onClick={handleSave}
-            disabled={!isValid}
-            className={`w-full py-3 bg-darkDelegation hover:bg-black text-white rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg shadow-black/5 active:scale-95 ${!isValid ? 'opacity-50 cursor-not-allowed' : ''}`}
+          <Field
+            label="LLM model"
+            icon={<Cpu />}
+            readOnly={isView}
+            help="The Gemini model this agent uses."
           >
-            <Save size={16} strokeWidth={2.5} />
-            Update Agent
-          </button>
-          {onRemove && (
-            <button
-              onClick={onRemove}
-              className="w-full py-2.5 text-red-500 hover:bg-red-50 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
+            {(id) =>
+              isView ? (
+                <code className="block w-fit rounded-lg border bg-muted px-3 py-1.5 text-xs text-muted-foreground">
+                  {draft.model || DEFAULT_MODEL}
+                </code>
+              ) : (
+                <Select
+                  value={draft.model || DEFAULT_MODEL}
+                  onValueChange={(model) => onChange({ model })}
+                >
+                  <SelectTrigger
+                    id={id}
+                    className="w-full rounded-xl bg-muted/40 font-mono text-xs"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AVAILABLE_MODELS.map((model) => (
+                      <SelectItem key={model} value={model} className="font-mono text-xs">
+                        {model}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )
+            }
+          </Field>
+
+          <Field
+            label="Description"
+            icon={<Target />}
+            readOnly={isView}
+            help="The agent's role, expertise and operating guidelines."
+          >
+            {(id) =>
+              isView ? (
+                <p className="min-h-[120px] whitespace-pre-wrap rounded-xl border bg-muted/40 p-4 text-xs font-medium italic leading-relaxed text-muted-foreground">
+                  {draft.description || "No description provided."}
+                </p>
+              ) : (
+                <Textarea
+                  id={id}
+                  value={draft.description}
+                  onChange={(event) => onChange({ description: event.target.value })}
+                  placeholder="What is this agent specialized in? What are its primary goals and constraints?"
+                  className="field-sizing-fixed h-48 resize-none rounded-xl bg-muted/40 text-xs font-medium leading-relaxed"
+                />
+              )
+            }
+          </Field>
+
+          <Field
+            label="Capabilities"
+            icon={<Zap />}
+            readOnly
+            help="Tools are assigned automatically from the agent's role and place in the hierarchy."
+          >
+            {() => (
+              <ul className="flex flex-col gap-3 rounded-2xl border bg-muted/40 p-4">
+                {capabilities.map(({ label }) => (
+                  <li key={label} className="flex items-center gap-2">
+                    <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-input">
+                      <Check className="size-2.5" strokeWidth={3} />
+                    </span>
+                    <span className="text-[11px] font-black tracking-tight text-foreground">
+                      {label}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Field>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <User className="size-3.5 text-muted-foreground" />
+              <span className={MICRO_LABEL}>Supervision</span>
+              <FieldHint
+                label="Supervision"
+                text="When enabled, the agent pauses to submit its result for your review and feedback before finalizing."
+              />
+            </div>
+            <div
+              className={cn(
+                "flex items-center justify-between gap-3 rounded-2xl border p-4 transition-colors",
+                draft.humanInTheLoop ? "border-user/20 bg-user/10" : "bg-muted/40",
+              )}
             >
-              <Trash2 size={14} />
-              Remove from Team
-            </button>
+              <Label htmlFor={supervisionId} className="flex flex-col items-start gap-1">
+                <span
+                  className={cn(
+                    "text-[11px] font-black tracking-tight",
+                    draft.humanInTheLoop ? "text-user" : "text-foreground",
+                  )}
+                >
+                  Human-in-the-loop
+                </span>
+                <span className="text-xs font-medium leading-snug text-muted-foreground">
+                  Agent must request your validation before completing any task.
+                </span>
+              </Label>
+              <Switch
+                id={supervisionId}
+                checked={draft.humanInTheLoop}
+                onCheckedChange={(humanInTheLoop) => onChange({ humanInTheLoop })}
+                disabled={isView}
+                className="data-[state=checked]:bg-user"
+              />
+            </div>
+          </div>
+        </div>
+      </ScrollArea>
+
+      {!isView && (
+        <div className="flex flex-col gap-2 border-t bg-muted/20 p-4">
+          <Button
+            onClick={onSave}
+            disabled={!isValid}
+            className="h-11 w-full rounded-2xl text-xs font-black shadow-lg shadow-black/5"
+          >
+            <Save strokeWidth={2.5} />
+            Update agent
+          </Button>
+          {!isLead && (
+            <DisabledReason reason={lockedReason} className="block w-full">
+              <Button
+                variant="ghost-destructive"
+                onClick={() => setConfirmRemove(true)}
+                disabled={!!lockedReason}
+                className="w-full rounded-xl text-[11px] font-black text-destructive"
+              >
+                <Trash2 />
+                Remove from team
+              </Button>
+            </DisabledReason>
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmRemove}
+        onOpenChange={setConfirmRemove}
+        title={`Remove ${agent.name}?`}
+        description={
+          removedCount > 0
+            ? `${agent.name} and the ${removedCount} ${removedCount === 1 ? "subagent" : "subagents"} reporting to it will be removed from this team.`
+            : `${agent.name} will be removed from this team.`
+        }
+        confirmLabel="Remove"
+        onConfirm={onRemove}
+      />
     </div>
-  );
-};
+  )
+}

@@ -1,94 +1,80 @@
+import type { GLTF } from "three/addons/loaders/GLTFLoader.js"
+import * as THREE from "three/webgpu"
+import type { NavMeshManager } from "../pathfinding/NavMeshManager"
+import { isMesh } from "../sceneGraphGuards"
+import type { PoiManager } from "./PoiManager"
 
-import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import * as THREE from 'three/webgpu';
-import { getAgentSet } from '../../data/agents';
-import { useTeamStore } from '../../integration/store/teamStore';
-import { DRACO_LIB_PATH, OFFICE_MODEL_URL } from '../constants';
-import { NavMeshManager } from '../pathfinding/NavMeshManager';
-import { PoiManager } from './PoiManager';
-
+/** Loads the office GLB: hides and registers the navmesh, converts materials, and reads the POIs. */
 export class WorldManager {
-  private office: THREE.Group | null = null;
+  private office: THREE.Group | null = null
+  private navMeshes: THREE.Mesh[] = []
+  /** Materials of meshes named "colored*", which take the active team's colour. */
+  private themedMaterials: THREE.MeshStandardNodeMaterial[] = []
 
   constructor(
     private scene: THREE.Scene,
     private navMesh: NavMeshManager,
-    private poiManager: PoiManager
+    private poiManager: PoiManager,
   ) {}
 
-  public async load(): Promise<void> {
-    const loader = new GLTFLoader();
-    const dracoLoader = new DRACOLoader();
-    dracoLoader.setDecoderPath(DRACO_LIB_PATH);
-    loader.setDRACOLoader(dracoLoader);
-    const officeGltf = await loader.loadAsync(OFFICE_MODEL_URL);
-    this.office = officeGltf.scene;
-    this.scene.add(this.office);
+  /**
+   * Adds the office to the scene. Every visible material is replaced with a node material, which
+   * WebGPU needs for shadows; meshes named "colored*" take the team colour.
+   */
+  public setup(officeGltf: GLTF, themeColor: string): void {
+    this.office = officeGltf.scene
+    this.scene.add(this.office)
+    const color = new THREE.Color(themeColor)
 
-    // Get current AgentSet color
-    const { selectedAgentSetId, customSystems } = useTeamStore.getState();
-    const activeSet = getAgentSet(selectedAgentSetId, customSystems);
-    const themeColor = new THREE.Color(activeSet.color);
+    this.office.traverse((mesh) => {
+      if (!isMesh(mesh)) return
+      const name = mesh.name.toLowerCase()
 
-    // Extract NavMesh and setup
-    this.office.traverse((child) => {
-      if ((child as any).isMesh) {
-        const mesh = child as THREE.Mesh;
-        const name = mesh.name.toLowerCase();
-
-        if (name.includes('navmesh')) {
-          this.navMesh.loadFromGeometry(mesh.geometry);
-          mesh.visible = false;
-        } else {
-          mesh.receiveShadow = true;
-          mesh.castShadow = true;
-
-          // Apply specific material for WebGPU shadow compatibility as requested
-          if (mesh.material) {
-            const oldMat = mesh.material as THREE.MeshStandardMaterial;
-
-            // Check if mesh name starts with "colored" to apply thematic color
-            const isColoredMesh = name.startsWith('colored');
-
-            mesh.material = new THREE.MeshStandardNodeMaterial({
-              color: isColoredMesh ? themeColor : oldMat.color,
-              map: oldMat.map,
-              roughness: 1,
-              metalness: 0.35,
-            });
-          }
-        }
+      if (name.includes("navmesh")) {
+        this.navMesh.loadFromGeometry(mesh.geometry)
+        mesh.visible = false
+        this.navMeshes.push(mesh)
+        return
       }
-    });
 
-    // Extract Points of Interest
-    this.poiManager.loadFromGlb(this.office);
+      mesh.receiveShadow = true
+      mesh.castShadow = true
+      const previousMaterial = mesh.material
+      if (!(previousMaterial instanceof THREE.MeshStandardMaterial)) return
+
+      const isThemed = name.startsWith("colored")
+      const material = new THREE.MeshStandardNodeMaterial({
+        color: isThemed ? color : previousMaterial.color,
+        map: previousMaterial.map,
+        roughness: 1,
+        metalness: 0.35,
+      })
+      previousMaterial.dispose()
+      mesh.material = material
+      if (isThemed) this.themedMaterials.push(material)
+    })
+
+    this.poiManager.loadFromGlb(this.office)
   }
 
   public updateThemeColor(color: string): void {
-    if (!this.office) return;
-
-    const themeColor = new THREE.Color(color);
-
-    this.office.traverse((child) => {
-      if ((child as any).isMesh) {
-        const mesh = child as THREE.Mesh;
-        const name = mesh.name.toLowerCase();
-
-        if (name.startsWith('colored') && mesh.material) {
-          // Update existing material color if it's a NodeMaterial
-          // or replace it if needed. Since we already replaced them in load(),
-          // we can just update the color property.
-          if ((mesh.material as any).color) {
-            (mesh.material as any).color.copy(themeColor);
-          }
-        }
-      }
-    });
+    for (const material of this.themedMaterials) material.color.set(color)
   }
 
-  public getOffice(): THREE.Group | null {
-    return this.office;
+  /** Hidden navmesh meshes, for cheap floor raycasts. */
+  public getNavMeshes(): THREE.Mesh[] {
+    return this.navMeshes
+  }
+
+  public dispose(): void {
+    this.office?.traverse((mesh) => {
+      if (!isMesh(mesh)) return
+      mesh.geometry.dispose()
+      const material = mesh.material
+      if (!Array.isArray(material)) material.dispose()
+    })
+    this.office = null
+    this.navMeshes = []
+    this.themedMaterials = []
   }
 }

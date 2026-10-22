@@ -1,117 +1,174 @@
-import { Info, KeyRound, Maximize2, Settings } from 'lucide-react';
-import React, { useState } from 'react';
-import { useCoreStore } from '../integration/store/coreStore';
-import { useUiStore } from '../integration/store/uiStore';
-import BYOKModal from './BYOKModal';
-import InfoModal from './InfoModal';
-import { useShallow } from 'zustand/react/shallow';
-import { assetUrl } from '../lib/asset';
+import { Expand, Info, KeyRound, PanelBottom, PanelLeft, PanelRight, Settings } from "lucide-react"
+import type React from "react"
+import { useState } from "react"
+import { useShallow } from "zustand/react/shallow"
+import { ExternalLink } from "@/components/ExternalLink"
+import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { cn } from "@/lib/utils"
+import { useCoreStore } from "../integration/store/coreStore"
+import { useUiStore } from "../integration/store/uiStore"
+import BYOKModal from "./BYOKModal"
+import { BrandLogo, GitHubIcon } from "./components/BrandLogo"
+import InfoModal from "./InfoModal"
 
-const version = process.env.NEXT_PUBLIC_APP_VERSION;
+const version = process.env.NEXT_PUBLIC_APP_VERSION
 
-const Header: React.FC = () => {
-  const { llmConfig, isBYOKOpen, setBYOKOpen } = useUiStore(useShallow((s) => ({ llmConfig: s.llmConfig, isBYOKOpen: s.isBYOKOpen, setBYOKOpen: s.setBYOKOpen })));
-  const setViewMode = useCoreStore((s) => s.setViewMode);
-  const [isInfoOpen, setIsInfoOpen] = useState(false);
-  const hasKey = !!llmConfig.apiKey;
+function HeaderIconButton({
+  label,
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof Button> & { label: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={label}
+          className={cn(
+            "text-muted-foreground hover:text-foreground aria-pressed:bg-muted aria-pressed:text-foreground",
+            className,
+          )}
+          {...props}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
+  )
+}
 
-  const handleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-      }
-    }
-  };
+function toggleBrowserFullscreen() {
+  if (!document.fullscreenElement) void document.documentElement.requestFullscreen?.()
+  else void document.exitFullscreen?.()
+}
+
+/** Panel toggles the layout hands to the header, since the header owns the buttons but not the panels. */
+export interface HeaderPanelControls {
+  logsOpen: boolean
+  onToggleLogs: () => void
+  tasksOpen: boolean
+  onToggleTasks: () => void
+  /** Only provided on narrow screens, where the inspector lives in a drawer. */
+  onOpenInspector?: () => void
+}
+
+/**
+ * Top bar: brand, team editor entry, panel toggles and the API key button. The key dialog is
+ * mounted only while open so its form re-reads the saved key each time.
+ */
+function Header({ panels }: { panels: HeaderPanelControls }) {
+  const { hasKey, isBYOKOpen, setBYOKOpen } = useUiStore(
+    useShallow((state) => ({
+      hasKey: !!state.llmConfig.apiKey,
+      isBYOKOpen: state.isBYOKOpen,
+      setBYOKOpen: state.setBYOKOpen,
+    })),
+  )
+  const setViewMode = useCoreStore((state) => state.setViewMode)
+  const [isInfoOpen, setIsInfoOpen] = useState(false)
 
   return (
-    <header className="h-14 border-b border-zinc-100 flex items-center justify-between px-6 bg-white shrink-0 relative z-40">
-      {/* Left: Project Title */}
-      <div className="flex items-center min-w-0">
-        <img
-          src={assetUrl('images/the-delegation.svg')}
-          alt="The Delegation"
-          className="h-10 w-auto shrink-0"
-        />
-
-        <div className="flex items-center gap-3 self-start mt-3 ml-2 min-w-0">
-          <div className="flex items-center gap-1 shrink-0">
-            <button
+    <header className="relative z-40 flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-3 sm:px-6">
+      <div className="flex min-w-0 items-center">
+        <BrandLogo />
+        <div className="mt-3 ml-2 flex min-w-0 items-center gap-3 self-start">
+          <div className="flex shrink-0 items-center gap-1">
+            <HeaderIconButton
+              label="About The Delegation"
               onClick={() => setIsInfoOpen(true)}
-              className="text-zinc-300 hover:text-zinc-500 transition-colors cursor-pointer"
+              className="size-6"
             >
-              <Info size={14} strokeWidth={2} />
-            </button>
-            <span className="text-[10px] font-medium text-zinc-400 font-mono">v{version}</span>
+              <Info className="size-3.5" />
+            </HeaderIconButton>
+            <span className="font-mono text-[11px] font-medium text-muted-foreground">
+              v{version}
+            </span>
           </div>
-
-          <div className="flex items-center gap-3 min-w-0">
-            <a
+          <div className="hidden min-w-0 items-center gap-3 sm:flex">
+            <ExternalLink
               href="https://x.com/arturitu"
-              target="_blank"
-              rel="noopener"
-              className="text-[10px] font-medium text-zinc-400 hover:text-darkDelegation transition-colors truncate"
+              className="truncate text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
               @arturitu
-            </a>
-            <a
+            </ExternalLink>
+            <ExternalLink
               href="https://github.com/arturitu/the-delegation"
-              target="_blank"
-              rel="noopener"
-              className="text-zinc-300 hover:text-darkDelegation transition-colors shrink-0"
-              title="View on GitHub"
+              aria-label="View on GitHub"
+              className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
             >
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
-            </a>
+              <GitHubIcon />
+            </ExternalLink>
           </div>
         </div>
       </div>
 
-      {/* Right: Global Controls */}
-      <div className="flex items-center gap-3">
-
-        <button
-          onClick={() => setViewMode('design')}
-          className="flex items-center gap-2 px-3 py-1 bg-darkDelegation hover:bg-darkDelegation text-white rounded-lg transition-all shadow-lg shadow-black/10 active:scale-95 cursor-pointer h-9 shrink-0 ml-1"
-          title="Manage Teams"
+      <div className="flex items-center gap-1 sm:gap-3">
+        <Button
+          size="cta"
+          onClick={() => setViewMode("design")}
+          aria-label="Manage teams"
+          className="px-3 text-[11px] shadow-lg shadow-black/10"
         >
-          <Settings size={14} className="group-hover:rotate-45 transition-transform" />
-          <span className="text-[10px] font-black uppercase tracking-wider ml-1 hidden sm:inline">Manage Teams</span>
-        </button>
+          <Settings className="size-3.5" />
+          <span className="hidden sm:inline">Manage teams</span>
+        </Button>
 
-        <div className="w-px h-4 bg-zinc-200" />
+        <div className="mx-1 h-4 w-px bg-input" aria-hidden />
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleFullscreen}
-            className="text-zinc-400 hover:text-darkDelegation transition-colors p-1"
-            title="Fullscreen Browser"
+        <div className="flex items-center gap-0.5">
+          <HeaderIconButton
+            label={panels.logsOpen ? "Hide logs" : "Show logs"}
+            aria-pressed={panels.logsOpen}
+            onClick={panels.onToggleLogs}
           >
-            <Maximize2 size={16} />
-          </button>
-          <button
+            <PanelLeft />
+          </HeaderIconButton>
+          <HeaderIconButton
+            label={panels.tasksOpen ? "Hide tasks" : "Show tasks"}
+            aria-pressed={panels.tasksOpen}
+            onClick={panels.onToggleTasks}
+          >
+            <PanelBottom />
+          </HeaderIconButton>
+          {panels.onOpenInspector && (
+            <HeaderIconButton
+              label="Show project and agent details"
+              onClick={panels.onOpenInspector}
+            >
+              <PanelRight />
+            </HeaderIconButton>
+          )}
+          <HeaderIconButton
+            label="Browser fullscreen"
+            onClick={toggleBrowserFullscreen}
+            className="hidden sm:inline-flex"
+          >
+            <Expand />
+          </HeaderIconButton>
+          <HeaderIconButton
+            label={hasKey ? "API key (saved)" : "API key (not set)"}
             onClick={() => setBYOKOpen(true)}
-            className="relative text-zinc-400 hover:text-darkDelegation transition-colors p-1"
-            title="API Key (BYOK)"
+            className={cn("relative", hasKey && "text-emerald-500 hover:text-emerald-600")}
           >
-            <KeyRound size={16} className={hasKey ? 'text-emerald-500 hover:text-emerald-600' : ''} />
+            <KeyRound />
             {hasKey && (
-              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span
+                className="absolute top-1 right-1 size-1.5 rounded-full bg-emerald-400"
+                aria-hidden
+              />
             )}
-          </button>
+          </HeaderIconButton>
         </div>
       </div>
 
-      {isInfoOpen && (
-        <InfoModal key="info-modal" onClose={() => setIsInfoOpen(false)} />
-      )}
-
-      {isBYOKOpen && (
-        <BYOKModal key="byok-modal" onClose={() => setBYOKOpen(false)} />
-      )}
+      <InfoModal isOpen={isInfoOpen} onClose={() => setIsInfoOpen(false)} />
+      {isBYOKOpen && <BYOKModal onClose={() => setBYOKOpen(false)} />}
     </header>
-  );
-};
+  )
+}
 
-export default Header;
+export default Header

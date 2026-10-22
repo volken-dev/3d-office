@@ -1,123 +1,101 @@
-import { Background, Edge, ReactFlow, ReactFlowProvider, useReactFlow } from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
-import { X } from 'lucide-react';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AgenticSystem, getAllAgents, getAllCharacters } from '../data/agents';
-import { DirectionalEdge } from './VisualConfigurator/edges/DirectionalEdge';
-import { VisualFlowNode } from './VisualConfigurator/nodes/VisualFlowNode';
-import { systemToFlow, VisualAgentNode } from './VisualConfigurator/flowUtils';
-import { useFlowFocus } from './VisualConfigurator/hooks/useFlowFocus';
-import { TeamBadge } from './components/TeamBadge';
-import { TeamOutputBadge } from './components/TeamOutputBadge';
-
-const nodeTypes = {
-  agent: VisualFlowNode,
-  user: VisualFlowNode,
-};
-
-const edgeTypes = {
-  default: DirectionalEdge,
-  hierarchy: DirectionalEdge,
-  smoothstep: DirectionalEdge,
-};
+import { Background, type Edge, ReactFlow, ReactFlowProvider, useReactFlow } from "@xyflow/react"
+import "@xyflow/react/dist/style.css"
+import { useEffect, useMemo } from "react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import type { AgenticSystem } from "../data/agents"
+import { TeamBadge } from "./components/TeamBadge"
+import { TeamOutputBadge } from "./components/TeamOutputBadge"
+import { flowEdgeTypes, flowNodeTypes } from "./VisualConfigurator/flowTypes"
+import { useFlowFocus } from "./VisualConfigurator/hooks/useFlowFocus"
+import { systemToFlow, type VisualAgentNode } from "./VisualConfigurator/teamFlowGraph"
 
 interface TeamFlowModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  system: AgenticSystem;
+  isOpen?: boolean
+  onClose: () => void
+  system: AgenticSystem
 }
 
-const FlowViewport: React.FC<{ system: AgenticSystem }> = ({ system }) => {
-  const { fitView } = useReactFlow();
-  const { nodes: initialNodes, edges: initialEdges } = useMemo(() => systemToFlow(system), [system]);
+/** Read-only flow of the team; fits the view after the dialog's open animation so it measures the final size. */
+function FlowViewport({ system }: { system: AgenticSystem }) {
+  const { fitView } = useReactFlow()
+  const { nodes, edges } = useMemo<{ nodes: VisualAgentNode[]; edges: Edge[] }>(
+    () => systemToFlow(system),
+    [system],
+  )
 
-  const [nodes] = useState<VisualAgentNode[]>(initialNodes);
-  const [edges] = useState<Edge[]>(initialEdges);
-
-  // Focus lead agent by default
-  const { nodesWithFocus, edgesWithFocus } = useFlowFocus(nodes, edges, null, system.leadAgent.id);
+  const { nodesWithFocus, edgesWithFocus } = useFlowFocus(nodes, edges, null, system.leadAgent.id)
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      fitView({ padding: 0.2, duration: 800 });
-    }, 100);
-    return () => clearTimeout(timer);
-  }, [fitView]);
+      fitView({ padding: 0.2, duration: 800 })
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [fitView])
 
   return (
     <ReactFlow
       nodes={nodesWithFocus}
       edges={edgesWithFocus}
-      nodeTypes={nodeTypes as any}
-      edgeTypes={edgeTypes as any}
+      nodeTypes={flowNodeTypes}
+      edgeTypes={flowEdgeTypes}
       nodeOrigin={[0.5, 0]}
       fitView
       proOptions={{ hideAttribution: true }}
       nodesConnectable={false}
       nodesDraggable={false}
       elementsSelectable={false}
-      zoomOnScroll={true}
+      zoomOnScroll
       maxZoom={1.5}
       minZoom={0.2}
-      className="bg-zinc-50/50"
+      className="bg-muted/30"
     >
       <Background gap={24} color="#bbbbbb" size={2} />
     </ReactFlow>
-  );
-};
+  )
+}
 
-const TeamFlowModal: React.FC<TeamFlowModalProps> = ({ isOpen, onClose, system }) => {
-  if (!isOpen) return null;
-
+/** Read-only diagram of the active team's hierarchy, opened from the team badge above the canvas. */
+function TeamFlowModal({ isOpen = true, onClose, system }: TeamFlowModalProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-10 pointer-events-none">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-white/60 backdrop-blur-sm pointer-events-auto animate-in fade-in duration-300"
-        onClick={onClose}
-      />
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="flex h-[calc(100dvh-2rem)] max-w-7xl flex-col gap-0 overflow-hidden rounded-3xl p-0 sm:h-[calc(100dvh-5rem)] sm:max-w-7xl">
+        <DialogHeader className="h-16 shrink-0 flex-row items-center gap-4 border-b border-border px-6 pr-14">
+          <DialogTitle className="sr-only">{system.teamName} team structure</DialogTitle>
+          <DialogDescription className="sr-only">
+            Visual representation of the team&apos;s operational flow, with the lead agent in focus.
+          </DialogDescription>
+          <TeamBadge system={system} />
+          <TeamOutputBadge system={system} className="hidden sm:flex" />
+        </DialogHeader>
 
-      {/* Resilience check: only clear task if not waiting for review or meeting */}
-      {/* Modal Content */}
-      <div className="relative w-full h-full max-w-7xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-zinc-200/50 flex flex-col pointer-events-auto animate-in zoom-in-95 fade-in duration-300 ease-out">
-        {/* Header */}
-        <div className="h-16 border-b border-zinc-100 flex items-center justify-between px-6 bg-white shrink-0">
-          <div className="flex items-center gap-4">
-            <TeamBadge system={system} />
-            <TeamOutputBadge system={system} className="hidden sm:flex" />
-          </div>
-
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-zinc-100 rounded-xl transition-colors group"
-          >
-            <X className="w-6 h-6 text-zinc-400 group-hover:text-darkDelegation" />
-          </button>
-        </div>
-
-        {/* Flow Area */}
-        <div className="flex-1 relative">
+        <div className="relative min-h-0 flex-1">
           <ReactFlowProvider>
             <FlowViewport system={system} />
           </ReactFlowProvider>
         </div>
 
-        {/* Footer/Legend */}
-        <div className="px-6 py-4 bg-zinc-50 border-t border-zinc-100 flex items-center justify-between gap-6 overflow-x-auto shrink-0">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-0.5 bg-zinc-300 border-t border-dashed border-zinc-400" />
-              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Hierarchy (Managed)</span>
-            </div>
+        <DialogFooter className="shrink-0 flex-row items-center justify-between gap-6 overflow-x-auto border-t border-border bg-muted/40 px-6 py-4 sm:justify-between">
+          <div className="flex items-center gap-2">
+            <div
+              className="h-0.5 w-3 border-t border-dashed border-muted-foreground"
+              aria-hidden="true"
+            />
+            <span className="text-xs font-bold text-muted-foreground">Hierarchy (managed)</span>
           </div>
-
-          <p className="text-[10px] font-medium text-zinc-400 italic">
-            Visual representation of the team's operational flow.
+          <p className="text-xs font-medium italic text-muted-foreground">
+            Visual representation of the team&apos;s operational flow.
           </p>
-        </div>
-      </div>
-    </div>
-  );
-};
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
-export default TeamFlowModal;
+export default TeamFlowModal

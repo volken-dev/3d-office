@@ -1,399 +1,514 @@
-import * as THREE from 'three/webgpu';
-import { getAgentSet, getAllAgents, AgenticSystem } from '../data/agents';
-import { CharacterController } from './CharacterController';
-import { Engine } from './core/Engine';
-import { Stage } from './core/Stage';
-import { DriverManager } from './drivers/DriverManager';
-import { CharacterManager } from './entities/CharacterManager';
-import { InputManager } from './input/InputManager';
-import { NavMeshManager } from './pathfinding/NavMeshManager';
-import { PoiManager } from './world/PoiManager';
-import { WorldManager } from './world/WorldManager';
+import * as THREE from "three/webgpu"
+import { type AgenticSystem, getAllAgents } from "../data/agents"
+import {
+  clearScreenPositions,
+  notifyScreenPositions,
+  setScreenPosition,
+} from "../integration/screenPositions"
+import { type Task, useCoreStore } from "../integration/store/coreStore"
+import { getActiveAgentSet, useTeamStore } from "../integration/store/teamStore"
+import { useUiStore } from "../integration/store/uiStore"
+import { AgentBehavior } from "../types"
+import { CharacterController } from "./CharacterController"
+import {
+  ALPHA_LERP_RATE,
+  BUBBLE_Y_OFFSET,
+  CHARACTER_MODEL_URL,
+  CHAT_STANDOFF,
+  OFFICE_MODEL_URL,
+  OVERLAP_ALPHA,
+  OVERLAP_DIST_SQ,
+} from "./constants"
+import { AgentSimulation } from "./core/AgentSimulation"
+import { Engine } from "./core/Engine"
+import { Stage } from "./core/Stage"
+import { DriverManager } from "./drivers/DriverManager"
+import { CharacterManager } from "./entities/CharacterManager"
+import { InputManager } from "./input/InputManager"
+import { createSceneLoader } from "./loaders"
+import { NavMeshManager } from "./pathfinding/NavMeshManager"
+import { PoiManager } from "./world/PoiManager"
+import { WorldManager } from "./world/WorldManager"
 
-import { AgentSimulation } from './core/AgentSimulation';
-import { useCoreStore } from '../integration/store/coreStore';
-import { getActiveAgentSet, useTeamStore } from '../integration/store/teamStore';
-import { useUiStore } from '../integration/store/uiStore';
-import { AgentBehavior, ChatMessage } from '../types';
-import { BUBBLE_Y_OFFSET } from './constants';
-import { clearScreenPositions, notifyScreenPositions, setScreenPosition } from '../integration/screenPositions';
+/** Clamp so a long pause (hidden tab, design mode) doesn't teleport characters through walls. */
+const MAX_FRAME_DELTA = 0.1
 
-const MAX_FRAME_DELTA = 0.1;
+function isBusyStatus(status: Task["status"]): boolean {
+  return status === "in_progress" || status === "on_hold" || status === "scheduled"
+}
+
+/** Agent indices in roster order, to tell a roster change from an edit of the same agents. */
+function rosterKey(team: AgenticSystem): string {
+  return getAllAgents(team)
+    .map((agent) => agent.index)
+    .join(",")
+}
 
 /**
- * SceneManager — Visual Integration Layer.
- * 
- * DESIGN PRINCIPLE: Visual Reflex of Logic.
- * 1. Subscribes to the Store to Decouple logic from 3D.
- * 2. Visual actions are fire-and-forget.
- * 3. Smart POI assignment ensures NPCs find desks even with diverse GLB names.
+ * Owns the 3D office and the agent simulation for the active team, and turns store changes
+ * (tasks, chat, team selection) into character movement and animation.
  */
 export class SceneManager {
-  private engine: Engine;
-  private stage: Stage;
-  private characterManager: CharacterManager;
-  private controller: CharacterController | null = null;
-  private navMesh: NavMeshManager;
-  private poiManager: PoiManager;
-  private worldManager: WorldManager;
-  private driverManager: DriverManager | null = null;
-  private simulation: AgentSimulation | null = null;
+  private engine: Engine
+  private stage: Stage
+  private characterManager: CharacterManager
+  private controller: CharacterController | null = null
+  private navMesh: NavMeshManager
+  private poiManager: PoiManager
+  private worldManager: WorldManager
+  private driverManager: DriverManager | null = null
+  private inputManager: InputManager | null = null
+  private simulation: AgentSimulation | null = null
 
-  private lastAgentSetId: string | null = null;
-  private selectedIndex: number | null = null;
-  private coreHandler: ((npcIndex: number, text: string) => Promise<string | null>) | null = null;
+  private team: AgenticSystem
+  private selectedIndex: number | null = null
 
-  private unsubs: (() => void)[] = [];
-  private isDisposed = false;
-  private container: HTMLElement;
-  private resizeObserver: ResizeObserver;
-  private viewportWidth: number;
-  private viewportHeight: number;
-  private isSyncing = false;
-  private pendingSyncDelta = 0;
+  private unsubscribers: (() => void)[] = []
+  private isDisposed = false
+  private container: HTMLElement
+  private resizeObserver: ResizeObserver
+  private viewportWidth: number
+  private viewportHeight: number
+  private isSyncing = false
+  private pendingSyncDelta = 0
+  private readonly scratchPosition = new THREE.Vector3()
+
+  /** Resolves once the scene renders; rejects if WebGPU/WebGL2 or the models fail to load. */
+  public readonly ready: Promise<void>
 
   constructor(container: HTMLElement) {
-    this.container = container;
-    this.viewportWidth = container.clientWidth;
-    this.viewportHeight = container.clientHeight;
-    this.engine = new Engine(container);
-    this.stage = new Stage(this.engine.renderer.domElement);
-    this.characterManager = new CharacterManager(this.stage.scene);
-    this.navMesh = new NavMeshManager();
-    this.poiManager = new PoiManager();
-    this.characterManager.setPoiManager(this.poiManager);
-    this.worldManager = new WorldManager(this.stage.scene, this.navMesh, this.poiManager);
+    this.container = container
+    this.viewportWidth = container.clientWidth
+    this.viewportHeight = container.clientHeight
+    this.team = getActiveAgentSet()
 
-    this.resizeObserver = new ResizeObserver(() => this.onResize());
-    this.resizeObserver.observe(container);
+    this.engine = new Engine(container)
+    this.stage = new Stage(this.engine.renderer.domElement)
+    this.characterManager = new CharacterManager(this.stage.scene, this.team)
+    this.navMesh = new NavMeshManager()
+    this.poiManager = new PoiManager()
+    this.characterManager.setPoiManager(this.poiManager)
+    this.worldManager = new WorldManager(this.stage.scene, this.navMesh, this.poiManager)
 
-    const activeSet = getActiveAgentSet();
-    this.simulation = new AgentSimulation(activeSet);
-    this.setCoreHandler((idx, text) => this.simulation!.handleUserMessage(idx, text));
-    
-    this.init();
-    this.startWatchingCoreStore();
+    this.resizeObserver = new ResizeObserver(() => this.onResize())
+    this.resizeObserver.observe(container)
+
+    this.simulation = new AgentSimulation(this.team)
+
+    this.ready = this.init()
+    this.ready.catch((error) => {
+      if (!this.isDisposed) console.error("[SceneManager] Scene failed to load:", error)
+    })
+    this.startWatchingCoreStore()
+    this.startWatchingTeamStore()
   }
 
+  /**
+   * Renderer init and both model downloads/decodes overlap; only the setup after them is ordered.
+   * The world is set up before the characters because character spawns need its POIs.
+   */
+  private async init() {
+    const loader = createSceneLoader()
+    const [, officeGltf, characterGltf] = await Promise.all([
+      this.engine.init(),
+      loader.load(OFFICE_MODEL_URL),
+      loader.load(CHARACTER_MODEL_URL),
+    ]).finally(() => loader.dispose())
+    if (this.isDisposed) return
+
+    this.worldManager.setup(officeGltf, this.team.color)
+    this.characterManager.setup(characterGltf)
+
+    this.controller = new CharacterController(
+      this.characterManager,
+      this.navMesh,
+      this.poiManager,
+      this.team.user.index,
+    )
+    this.driverManager = new DriverManager(this.controller)
+    this.registerDrivers()
+
+    this.inputManager = new InputManager(
+      this.engine.renderer.domElement,
+      this.stage.camera,
+      this.worldManager.getNavMeshes(),
+      {
+        getPositions: () => this.controller?.getCPUPositions() ?? null,
+        getCount: () => this.controller?.getCount() ?? 0,
+        getPois: () => this.poiManager.values(),
+        isPointValid: (point) => this.navMesh.isPointOnNavMesh(point),
+        onSelect: (agentIndex) => {
+          const ui = useUiStore.getState()
+          if (ui.isChatting) ui.setChatting(false)
+          this.selectedIndex = agentIndex !== this.team.user.index ? agentIndex : null
+          ui.setSelectedNpc(this.selectedIndex)
+        },
+        onFloorClick: (x, z) => this.driverManager?.getPlayerDriver()?.onFloorClick(x, z),
+        onHover: (agentIndex) => useUiStore.getState().setHoveredNpc(agentIndex),
+        onPoiHover: (id, label, position) =>
+          useUiStore.getState().setHoveredPoi(id, label, position),
+        onPoiClick: (id) => this.driverManager?.getPlayerDriver()?.onPoiClick(id),
+      },
+    )
+
+    this.startWatchingUiStore()
+    this.engine.renderer.setAnimationLoop(this.animate)
+  }
+
+  private registerDrivers() {
+    if (!this.driverManager) return
+    const playerIndex = this.team.user.index
+    const leadIndex = this.team.leadAgent.index
+    this.driverManager.dispose()
+    this.driverManager.registerPlayer(playerIndex)
+    for (const agent of getAllAgents(this.team)) {
+      if (agent.index !== playerIndex)
+        this.driverManager.registerNpc(agent.index, agent.index === leadIndex)
+    }
+    this.syncDriverState()
+  }
+
+  /** Pushes task and phase state to the NPC drivers so they don't scan the store every frame. */
+  private syncDriverState() {
+    if (!this.driverManager) return
+    const { tasks, phase } = useCoreStore.getState()
+    const busy = new Set(
+      tasks.filter((task) => isBusyStatus(task.status)).map((task) => task.assignedAgentId),
+    )
+    for (const driver of this.driverManager.npcDrivers()) {
+      driver.setBusy(busy.has(driver.agentIndex))
+      driver.setProjectDone(phase === "done")
+    }
+  }
+
+  /**
+   * Renderer resizes are skipped during a Kanban drag (see onResize), so the final size is applied
+   * once it ends. Task status changes move each affected agent: on hold to the boardroom, in
+   * progress to a desk, just done back to spawn.
+   */
   private startWatchingCoreStore() {
-    this.unsubs.push(
-      useCoreStore.subscribe((state, prevState) => {
-        const agentIndices = Array.from(new Set(state.tasks.flatMap(t => [t.assignedAgentId].filter(id => id !== undefined && id !== 0))));
+    this.unsubscribers.push(
+      useCoreStore.subscribe((state, previousState) => {
+        if (previousState.isResizing && !state.isResizing) this.onResize()
+        if (state.tasks === previousState.tasks && state.phase === previousState.phase) return
+        this.syncDriverState()
+        if (state.tasks === previousState.tasks) return
 
-        agentIndices.forEach(id => {
-          const myTasks = state.tasks.filter(t => t.assignedAgentId === id);
-          const hasChange = myTasks.some(t => {
-            const pt = prevState.tasks.find(old => old.id === t.id);
-            return !pt || pt.status !== t.status;
-          });
-          
-          if (!hasChange) return;
+        const agentIndices = new Set(
+          state.tasks
+            .map((task) => task.assignedAgentId)
+            // TODO(#12): assumes the user is index 0
+            .filter((agentIndex) => agentIndex !== undefined && agentIndex !== 0),
+        )
+        for (const agentIndex of agentIndices) {
+          const agentTasks = state.tasks.filter((task) => task.assignedAgentId === agentIndex)
+          const hasChange = agentTasks.some((task) => {
+            const previousTask = previousState.tasks.find((candidate) => candidate.id === task.id)
+            return !previousTask || previousTask.status !== task.status
+          })
+          if (!hasChange) continue
 
-          const onHold = myTasks.find(t => t.status === 'on_hold');
-          const inProgress = myTasks.find(t => t.status === 'in_progress');
-          const justDone = myTasks.some(t => t.status === 'done' && !prevState.tasks.find(pt => pt.id === t.id && pt.status === 'done'));
+          const onHold = agentTasks.find((task) => task.status === "on_hold")
+          const inProgress = agentTasks.find((task) => task.status === "in_progress")
+          const justDone = agentTasks.some(
+            (task) =>
+              task.status === "done" &&
+              !previousState.tasks.find(
+                (previousTask) => previousTask.id === task.id && previousTask.status === "done",
+              ),
+          )
 
           if (onHold) {
-            this.moveNpcToBoardroom(id);
+            this.moveNpcToBoardroom(agentIndex)
           } else if (inProgress) {
-            this.setNpcWorking(id, true);
+            this.setNpcWorking(agentIndex)
           } else if (justDone) {
-            this.setNpcWorking(id, false);
-            this.moveNpcToSpawn(id);
+            this.moveNpcToSpawn(agentIndex)
           }
-        });
-      })
-    );
+        }
+      }),
+    )
   }
 
-  private async init() {
-    await this.engine.init();
-    if (this.isDisposed) return;
+  private startWatchingTeamStore() {
+    this.unsubscribers.push(
+      useTeamStore.subscribe(() => {
+        const next = getActiveAgentSet()
+        if (next === this.team) return
+        const previous = this.team
+        this.team = next
 
-    await this.worldManager.load();
-    await this.characterManager.load();
-    if (this.isDisposed) return;
-
-    const state = useUiStore.getState();
-    this.characterManager.setInstanceCount(state.instanceCount);
-    this.controller = new CharacterController(this.characterManager, this.navMesh, this.poiManager);
-    this.driverManager = new DriverManager(this.controller);
-    
-    const activeSet = getActiveAgentSet();
-    const playerIndex = activeSet.user.index;
-    this.driverManager.registerPlayer(playerIndex);
-
-    getAllAgents(activeSet).forEach((agent) => {
-      if (agent.index !== playerIndex) this.driverManager!.registerNpc(agent.index, agent);
-    });
-
-    new InputManager(
-      this.engine.renderer.domElement, this.stage.camera,
-      () => this.controller!.getCPUPositions(), () => this.controller!.getCount(),
-      (idx) => { if (useUiStore.getState().isChatting) useUiStore.getState().setChatting(false); this.selectedIndex = idx !== activeSet.user.index ? idx : null; useUiStore.getState().setSelectedNpc(this.selectedIndex); },
-      (x, z) => this.driverManager?.getPlayerDriver().onFloorClick(x, z),
-      (idx) => useUiStore.getState().setHoveredNpc(idx),
-      () => this.poiManager.getAllPois(),
-      (id, label, pos) => useUiStore.getState().setHoveredPoi(id, label, pos),
-      (id) => this.driverManager?.getPlayerDriver().onPoiClick(id),
-      this.worldManager.getOffice() ?? undefined, (p) => this.navMesh.isPointOnNavMesh(p)
-    );
-
-    this.engine.renderer.setAnimationLoop(this.animate.bind(this));
-
-    this.unsubs.push(useUiStore.subscribe((s, prev) => {
-      if (s.instanceCount !== prev.instanceCount) this.controller?.setInstanceCount(s.instanceCount);
-      const team = useTeamStore.getState();
-      if (team.selectedAgentSetId !== this.lastAgentSetId) {
-        this.lastAgentSetId = team.selectedAgentSetId;
-        const set = getAgentSet(team.selectedAgentSetId, team.customSystems);
-        this.reinitializeSimulation(set);
-        this.worldManager.updateThemeColor(set.color);
-        if (this.controller) {
-          this.controller.setColors();
-          this.controller.warpAllToSpawn(set.user.index, getAllAgents(set).map(a => a.index));
+        if (next.id !== previous.id || rosterKey(next) !== rosterKey(previous)) {
+          this.applyTeamChange()
+        } else {
+          this.simulation?.updateSystem(next)
         }
-      }
-      if ((s.isChatting !== prev.isChatting || s.isThinking !== prev.isThinking || s.isTyping !== prev.isTyping) && this.controller) {
-        const set = getActiveAgentSet();
-        if (s.isChatting && !prev.isChatting && s.selectedNpcIndex !== null) {
-           this._startChatVisuals(s.selectedNpcIndex);
+      }),
+    )
+  }
+
+  /**
+   * A different team, or agents added/removed: new simulation, characters and drivers, everyone
+   * back at spawn. While still loading, init() builds everything from this.team instead.
+   */
+  private applyTeamChange() {
+    const team = this.team
+    this.simulation?.dispose()
+    this.simulation = new AgentSimulation(team)
+    this.worldManager.updateThemeColor(team.color)
+
+    if (!this.controller) return
+    this.controller.setTeam(team)
+    this.registerDrivers()
+    this.controller.warpAllToSpawn(
+      team.user.index,
+      getAllAgents(team).map((agent) => agent.index),
+    )
+  }
+
+  private startWatchingUiStore() {
+    this.unsubscribers.push(
+      useUiStore.subscribe((state, previousState) => {
+        const controller = this.controller
+        if (!controller) return
+        if (
+          state.isChatting === previousState.isChatting &&
+          state.isThinking === previousState.isThinking &&
+          state.isTyping === previousState.isTyping
+        )
+          return
+
+        const user = this.team.user.index
+        if (state.isChatting && !previousState.isChatting && state.selectedNpcIndex !== null) {
+          this.startChatVisuals(state.selectedNpcIndex)
         }
-        
-        if (s.isChatting && s.selectedNpcIndex !== null) {
-          const npc = s.selectedNpcIndex, user = set.user.index;
-          if (this.controller.getState(npc) !== 'walk') this.controller.play(npc, s.isThinking ? 'talk' : 'listen');
-          this.controller.setSpeaking(npc, s.isThinking);
-          if (this.controller.getState(user) !== 'walk') this.controller.play(user, s.isTyping ? 'talk' : 'listen');
-          this.controller.setSpeaking(user, s.isTyping);
-        } else if (!s.isChatting && prev.isChatting) {
-          // Cleanup Chat Visuals
-          const npc = prev.selectedNpcIndex;
-          const user = set.user.index;
+
+        if (state.isChatting && state.selectedNpcIndex !== null) {
+          const npc = state.selectedNpcIndex
+          if (controller.getState(npc) !== "walk")
+            controller.play(npc, state.isThinking ? "talk" : "listen")
+          controller.setSpeaking(npc, state.isThinking)
+          if (controller.getState(user) !== "walk")
+            controller.play(user, state.isTyping ? "talk" : "listen")
+          controller.setSpeaking(user, state.isTyping)
+        } else if (!state.isChatting && previousState.isChatting) {
+          const npc = previousState.selectedNpcIndex
           if (npc !== null) {
-            this.driverManager?.getNpcDriver(npc)?.setChatting(false);
-            this.controller.setSpeaking(npc, false);
-            this.controller.play(npc, 'idle');
-            this.controller.poiManager.releaseAll(npc);
+            this.driverManager?.getNpcDriver(npc)?.setChatting(false)
+            controller.setSpeaking(npc, false)
+            controller.play(npc, "idle")
+            controller.poiManager.releaseAll(npc)
           }
-          this.controller.setSpeaking(user, false);
-          this.controller.play(user, 'idle');
-          this.selectedIndex = null;
+          controller.setSpeaking(user, false)
+          controller.play(user, "idle")
+          this.selectedIndex = null
         }
-      }
-
-      // Monitor individual agent status changes for autonomous animations
-      if (s.agentStatuses !== prev.agentStatuses && this.controller) {
-        Object.keys(s.agentStatuses).forEach(key => {
-          const idx = parseInt(key);
-          const status = s.agentStatuses[idx];
-          const prevStatus = prev.agentStatuses[idx];
-          if (status !== prevStatus) {
-             if (status === 'talking') this.setNpcTalking(idx, true);
-             else if (prevStatus === 'talking') this.setNpcTalking(idx, false);
-          }
-        });
-      }
-    }));
+      }),
+    )
   }
 
-  private _startChatVisuals(npcIndex: number): void {
-    if (!this.controller) return;
-    const pos = this.controller.getCPUPositions(); if (!pos) return;
-    const set = getActiveAgentSet();
-    const npc = new THREE.Vector3(pos[npcIndex * 4], 0, pos[npcIndex * 4 + 2]);
-    const player = new THREE.Vector3(pos[set.user.index * 4], 0, pos[set.user.index * 4 + 2]);
-    let dir = new THREE.Vector3().subVectors(player, npc).normalize();
-    if (dir.length() < 0.01) dir.set(1, 0, 0);
-    const target = npc.clone().addScaledVector(dir, 1.2);
+  /** Walks the player over to the NPC and turns the two to face each other. */
+  private startChatVisuals(npcIndex: number): void {
+    const controller = this.controller
+    if (!controller) return
+    const positions = controller.getCPUPositions()
+    if (!positions) return
+    const user = this.team.user.index
+    const npc = new THREE.Vector3(positions[npcIndex * 4], 0, positions[npcIndex * 4 + 2])
+    const player = new THREE.Vector3(positions[user * 4], 0, positions[user * 4 + 2])
+    const direction = new THREE.Vector3().subVectors(player, npc).normalize()
+    if (direction.length() < 0.01) direction.set(1, 0, 0)
+    const target = npc.clone().addScaledVector(direction, CHAT_STANDOFF)
 
-    this.selectedIndex = npcIndex;
-    this.driverManager?.getNpcDriver(npcIndex)?.setChatting(true);
-    this.controller.cancelMovement(npcIndex);
-    this.controller.play(npcIndex, 'listen');
-    this.controller.getAgentStateBuffer()?.setWaypoint(npcIndex, dir.x, dir.z);
-    this.driverManager?.getPlayerDriver()?.walkTo(target, 'listen', () => {
-      const p = this.controller!.getCPUPositions()!;
-      const fx = p[npcIndex * 4] - p[set.user.index * 4], fz = p[npcIndex * 4 + 2] - p[set.user.index * 4 + 2];
-      this.controller!.getAgentStateBuffer()?.setWaypoint(set.user.index, fx, fz);
-      this.controller!.getAgentStateBuffer()?.setWaypoint(npcIndex, -fx, -fz);
-      this._triggerNpcGreeting(npcIndex);
-    });
+    this.selectedIndex = npcIndex
+    this.driverManager?.getNpcDriver(npcIndex)?.setChatting(true)
+    controller.cancelMovement(npcIndex)
+    controller.play(npcIndex, "listen")
+    controller.getAgentStateBuffer()?.setWaypoint(npcIndex, direction.x, direction.z)
+    this.driverManager?.getPlayerDriver()?.walkTo(target, "listen", () => {
+      const arrivedPositions = controller.getCPUPositions()
+      if (!arrivedPositions) return
+      const facingX = arrivedPositions[npcIndex * 4] - arrivedPositions[user * 4]
+      const facingZ = arrivedPositions[npcIndex * 4 + 2] - arrivedPositions[user * 4 + 2]
+      controller.getAgentStateBuffer()?.setWaypoint(user, facingX, facingZ)
+      controller.getAgentStateBuffer()?.setWaypoint(npcIndex, -facingX, -facingZ)
+    })
   }
 
-  public startChat(npcIndex: number): void {
-    useUiStore.getState().setChatting(true);
+  /** Opens the chat with the currently selected NPC. */
+  public startChat(): void {
+    useUiStore.getState().setChatting(true)
   }
-
 
   public async sendMessage(text: string): Promise<void> {
-    const { selectedNpcIndex, isThinking } = useUiStore.getState();
-    if (selectedNpcIndex === null || isThinking) return;
-    useCoreStore.setState((s) => ({
-      agentHistories: { ...s.agentHistories, [selectedNpcIndex!]: [...(s.agentHistories[selectedNpcIndex!] || []), { role: 'user', content: text }] }
-    }));
-    useUiStore.setState({ isThinking: true, isTyping: false });
+    const { selectedNpcIndex, isThinking } = useUiStore.getState()
+    if (selectedNpcIndex === null || isThinking || !this.simulation) return
+    useUiStore.setState({ isThinking: true, isTyping: false })
     try {
-      if (this.coreHandler) await this.coreHandler(selectedNpcIndex!, text);
-      useUiStore.setState({ isThinking: false });
-    } catch (err) {
-      console.error('[SceneManager] sendMessage error:', err);
-      useUiStore.setState({ isThinking: false });
+      await this.simulation.handleUserMessage(selectedNpcIndex, text)
+    } catch (error) {
+      console.error("[SceneManager] sendMessage error:", error)
+    } finally {
+      useUiStore.setState({ isThinking: false })
     }
   }
 
-  private reinitializeSimulation(activeSet: AgenticSystem) {
-    if (this.simulation) this.simulation.dispose();
-    this.simulation = new AgentSimulation(activeSet);
-    this.setCoreHandler((idx, text) => this.simulation!.handleUserMessage(idx, text));
-    if (this.driverManager) {
-      const playerIndex = activeSet.user.index;
-      this.driverManager.dispose();
-      this.driverManager.registerPlayer(playerIndex);
-      getAllAgents(activeSet).forEach((a) => {
-        if (a.index !== playerIndex) this.driverManager!.registerNpc(a.index, a);
-      });
+  /** Sends the agent to its own desk (`sit_work-<index>`), or to a desk picked by index if the office has none for it. */
+  public setNpcWorking(index: number): void {
+    if (!this.controller) return
+    let poi = this.poiManager.getPoi(`sit_work-${index}`)
+    if (!poi) {
+      const desks = this.poiManager.getPoisByPrefix("sit_work")
+      // TODO(#12): assumes agent indices start at 1
+      if (desks.length > 0) poi = desks[(index - 1) % desks.length]
     }
-  }
-  public setCoreHandler(handler: ((npcIndex: number, text: string) => Promise<string | null>) | null): void {
-    this.coreHandler = handler;
-  }
-
-  public getLeadBrain() {
-    if (!this.simulation) return null;
-    const set = getActiveAgentSet();
-    const lead = this.simulation.getAgent(set.leadAgent.index);
-    return lead?.brain || null;
-  }
-
-  /** 
-   * SMART DESK ASSIGNMENT
-   * Attempts to find a work POI. If work-${index} is missing, it picks 
-   * a desk from the 'sit_work' group based on the agent's unique index.
-   */
-  public setNpcWorking(index: number, working: boolean): void {
-    if (!this.controller) return;
-    if (working) {
-      const id = `sit_work-${index}`;
-      let poi = this.poiManager.getPoi(id);
-      if (!poi) {
-         // Smart fallback: assign a desk based on order (agent index is 1-based)
-         const desks = this.poiManager.getPoisByPrefix('sit_work');
-         if (desks.length > 0) poi = desks[(index - 1) % desks.length];
-      }
-      if (poi) this.controller.walkToPoi(index, poi.id);
-    }
-  }
-  
-  public setNpcTalking(index: number, talking: boolean): void {
-    if (!this.controller) return;
-    if (talking) {
-      if (this.controller.getState(index) !== 'walk') this.controller.play(index, 'talk');
-      this.controller.setSpeaking(index, true);
-    } else {
-      this.controller.setSpeaking(index, false);
-      const task = useCoreStore.getState().tasks.find(t => t.status === 'on_hold' && t.assignedAgentId === index);
-      this.controller.play(index, task ? 'listen' : 'idle');
-    }
+    if (poi) this.controller.walkToPoi(index, poi.id)
   }
 
   public moveNpcToBoardroom(index: number): void {
-    if (!this.controller) return;
-    const poi = this.poiManager.getPoi('area-boardroom') || this.poiManager.getPoi('boardroom');
-    if (poi) {
-      this.controller.walkToPoi(index, poi.id, () => {
-        const core = useCoreStore.getState();
-        const t = core.tasks.find(t => t.status === 'on_hold' && t.assignedAgentId === index);
-      });
+    if (!this.controller) return
+    const poi = this.poiManager.getPoi("area-boardroom") || this.poiManager.getPoi("boardroom")
+    if (poi) this.controller.walkToPoi(index, poi.id)
+  }
+
+  public moveNpcToSpawn(index: number): void {
+    if (!this.controller) return
+    const poi = this.poiManager.getPoi(`spawn-${index}`)
+    if (poi)
+      this.controller.moveTo(index, poi.position, "idle", undefined, undefined, poi.quaternion)
+  }
+
+  private onResize() {
+    const width = this.container.clientWidth
+    const height = this.container.clientHeight
+    if (width === 0 || height === 0) return
+    this.viewportWidth = width
+    this.viewportHeight = height
+    this.stage.onResize(width, height)
+    if (!useCoreStore.getState().isResizing) this.engine.onResize(width, height)
+  }
+
+  /**
+   * One frame. Skipped in design mode, where the canvas is hidden behind the editor. The GPU→CPU
+   * position readback is async, so a new one is never queued while the previous is in flight; the
+   * frame time it covers accumulates until it resolves.
+   */
+  private animate = () => {
+    this.engine.timer.update()
+    const deltaSeconds = Math.min(this.engine.timer.getDelta(), MAX_FRAME_DELTA)
+    if (useCoreStore.getState().viewMode === "design") return
+
+    const controller = this.controller
+    this.engine.trackFrame(deltaSeconds)
+    this.stage.update()
+    controller?.update(deltaSeconds, this.engine.renderer)
+
+    this.pendingSyncDelta += deltaSeconds
+    if (controller && !this.isSyncing) {
+      this.isSyncing = true
+      const syncDelta = this.pendingSyncDelta
+      this.pendingSyncDelta = 0
+      controller
+        .syncFromGPU(this.engine.renderer)
+        .then((positions) => {
+          if (!positions || this.isDisposed || controller !== this.controller) return
+          controller.updatePaths(positions)
+          this.driverManager?.update(positions, syncDelta)
+          this.updateTransparency(positions, syncDelta)
+        })
+        .finally(() => {
+          this.isSyncing = false
+        })
     }
-  }
 
-  public moveNpcToSpawn(index: number, onArrival?: () => void): void {
-    if (!this.controller) return;
-    const poi = this.poiManager.getPoi(`spawn-${index}`);
-    if (poi) this.controller.moveTo(index, poi.position, 'idle', onArrival, undefined, poi.quaternion);
-    else if (onArrival) onArrival();
-  }
-
-  private async _triggerNpcGreeting(idx: number): Promise<void> {
-    const set = getActiveAgentSet();
-    const agent = getAllAgents(set).find(a => a.index === idx);
-    if (!agent) return;
-    useUiStore.setState({ isThinking: true });
-    const msg: ChatMessage = { role: 'assistant', text: `Hello. I am ${agent.name}. How can I assist you?`, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
-    useUiStore.setState({ chatMessages: [msg], isThinking: false });
-  }
-
-  private onResize() { 
-    const w = this.container.clientWidth, h = this.container.clientHeight;
-    if (w === 0 || h === 0) return;
-    this.viewportWidth = w; this.viewportHeight = h;
-    this.stage.onResize(w, h);
-    if (!useCoreStore.getState().isResizing) this.engine.onResize(w, h);
-  }
-
-  private animate() {
-    this.engine.timer.update();
-    // Clamp so a long pause (hidden tab, design mode) doesn't teleport characters through walls
-    const delta = Math.min(this.engine.timer.getDelta(), MAX_FRAME_DELTA);
-    if (useCoreStore.getState().viewMode === 'design') return; // canvas is hidden behind the editor
-
-    this.engine.trackFrame(delta);
-    this.stage.update(); this.controller?.update(delta, this.engine.renderer);
-
-    // GPU→CPU readback is async; never queue a new one while the previous is still in flight
-    this.pendingSyncDelta += delta;
-    if (this.controller && !this.isSyncing) {
-      this.isSyncing = true;
-      const syncDelta = this.pendingSyncDelta;
-      this.pendingSyncDelta = 0;
-      this.controller.syncFromGPU(this.engine.renderer).then((pos) => {
-        if (!pos || !this.controller) return;
-        this.controller.updatePaths(pos); this.driverManager?.update(pos, syncDelta);
-        this.updateTransparency(pos, syncDelta);
-      }).finally(() => { this.isSyncing = false; });
-    }
-
-    const player = getActiveAgentSet().user.index;
-    this.stage.setFollowTarget(this.controller?.getCPUPosition(this.selectedIndex ?? player) ?? null);
-    if (this.controller) {
-      const camera = this.stage.camera;
-      for (let i = 0; i < this.controller.getCount(); i++) {
-        const p = this.controller.getCPUPosition(i);
-        if (!p) continue;
-        p.y += BUBBLE_Y_OFFSET; p.project(camera);
-        setScreenPosition(i, (p.x * 0.5 + 0.5) * this.viewportWidth, (p.y * -0.5 + 0.5) * this.viewportHeight);
+    const player = this.team.user.index
+    const followed =
+      controller?.getCPUPosition(this.selectedIndex ?? player, this.scratchPosition) ?? false
+    this.stage.setFollowTarget(followed ? this.scratchPosition : null)
+    if (controller) {
+      const camera = this.stage.camera
+      const bubblePosition = this.scratchPosition
+      for (let agentIndex = 0; agentIndex < controller.getCount(); agentIndex++) {
+        if (!controller.getCPUPosition(agentIndex, bubblePosition)) continue
+        bubblePosition.y += BUBBLE_Y_OFFSET
+        bubblePosition.project(camera)
+        setScreenPosition(
+          agentIndex,
+          (bubblePosition.x * 0.5 + 0.5) * this.viewportWidth,
+          (bubblePosition.y * -0.5 + 0.5) * this.viewportHeight,
+        )
       }
-      notifyScreenPositions();
+      notifyScreenPositions()
     }
-    this.stage.setChatMode(useUiStore.getState().isChatting, this.controller?.getAgentState(player) === AgentBehavior.GOTO);
-    this.engine.render(this.stage.scene, this.stage.camera);
+    this.stage.setChatMode(
+      useUiStore.getState().isChatting,
+      controller?.getAgentState(player) === AgentBehavior.GOTO,
+    )
+    this.engine.render(this.stage.scene, this.stage.camera)
   }
 
-  private updateTransparency(pos: Float32Array, delta: number) {
-    if (!this.controller) return;
-    const count = this.controller.getCount(), buffer = this.controller.getAgentStateBuffer();
-    if (!buffer) return;
-    for (let i = 0; i < count; i++) {
-      let overlap = false;
-      for (let j = 0; j < count; j++) {
-        if (i === j) continue;
-        if ((pos[i * 4] - pos[j * 4]) ** 2 + (pos[i * 4 + 2] - pos[j * 4 + 2]) ** 2 < 0.36) { overlap = true; break; }
+  /** Fades characters that overlap so neither hides the other. */
+  private updateTransparency(positions: Float32Array, deltaSeconds: number) {
+    if (!this.controller) return
+    const count = this.controller.getCount()
+    const buffer = this.controller.getAgentStateBuffer()
+    if (!buffer) return
+    for (let agentIndex = 0; agentIndex < count; agentIndex++) {
+      let overlap = false
+      for (let otherIndex = 0; otherIndex < count; otherIndex++) {
+        if (agentIndex === otherIndex) continue
+        if (
+          (positions[agentIndex * 4] - positions[otherIndex * 4]) ** 2 +
+            (positions[agentIndex * 4 + 2] - positions[otherIndex * 4 + 2]) ** 2 <
+          OVERLAP_DIST_SQ
+        ) {
+          overlap = true
+          break
+        }
       }
-      const cur = buffer.getAlpha(i), tar = overlap ? 0.4 : 1.0;
-      if (Math.abs(cur - tar) > 0.01) buffer.setAlpha(i, THREE.MathUtils.lerp(cur, tar, Math.min(delta * 2.0, 1.0)));
+      const currentAlpha = buffer.getAlpha(agentIndex)
+      const targetAlpha = overlap ? OVERLAP_ALPHA : 1.0
+      if (Math.abs(currentAlpha - targetAlpha) > 0.01)
+        buffer.setAlpha(
+          agentIndex,
+          THREE.MathUtils.lerp(
+            currentAlpha,
+            targetAlpha,
+            Math.min(deltaSeconds * ALPHA_LERP_RATE, 1.0),
+          ),
+        )
     }
   }
 
   public resetScene() {
-    if (!this.controller) return;
-    useUiStore.getState().setChatting(false);
-    const set = getActiveAgentSet();
-    getAllAgents(set).forEach((a) => this.controller?.setSpeaking(a.index, false));
-    this.controller.warpAllToSpawn(set.user.index, getAllAgents(set).map(a => a.index));
-    this.stage.setFollowTarget(null);
-    this.stage.setChatMode(false, false);
+    if (!this.controller) return
+    useUiStore.getState().setChatting(false)
+    const agents = getAllAgents(this.team)
+    for (const agent of agents) this.controller.setSpeaking(agent.index, false)
+    this.controller.warpAllToSpawn(
+      this.team.user.index,
+      agents.map((agent) => agent.index),
+    )
+    this.stage.setFollowTarget(null)
+    this.stage.setChatMode(false, false)
   }
 
-  public dispose() { this.isDisposed = true; clearScreenPositions(); this.resizeObserver.disconnect(); this.unsubs.forEach(u => u()); this.driverManager?.dispose(); this.engine.dispose(); }
+  /** Stops the render loop and the agent loop and releases every listener, subscription and GPU resource. Idempotent. */
+  public dispose() {
+    if (this.isDisposed) return
+    this.isDisposed = true
+    for (const unsubscribe of this.unsubscribers) unsubscribe()
+    this.unsubscribers = []
+    this.simulation?.dispose()
+    this.simulation = null
+    this.inputManager?.dispose()
+    this.inputManager = null
+    this.resizeObserver.disconnect()
+    this.driverManager?.dispose()
+    this.stage.dispose()
+    this.characterManager.dispose()
+    this.worldManager.dispose()
+    this.engine.dispose()
+    clearScreenPositions()
+  }
 }

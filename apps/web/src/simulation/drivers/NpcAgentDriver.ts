@@ -1,206 +1,203 @@
-import * as THREE from 'three/webgpu';
-import { AgentNode, USER_ID, MAX_AGENTS } from '../../data/agents';
-import { useCoreStore } from '../../integration/store/coreStore';
-import { IAgentDriver } from '../../types';
-import { CharacterController } from '../CharacterController';
+import * as THREE from "three/webgpu"
+import { MAX_AGENTS } from "../../data/agents"
+import type { CharacterStateKey, IAgentDriver } from "../../types"
+import type { CharacterController } from "../CharacterController"
 
+/** Seconds before an NPC's first idle decision: INITIAL_WAIT_MIN plus up to INITIAL_WAIT_RANGE. */
+const INITIAL_WAIT_MIN = 2
+const INITIAL_WAIT_RANGE = 5
+/** Distance from its spawn beyond which the lead walks back to celebrate; wider than the arrival radius so it doesn't oscillate at the edge. */
+const CELEBRATION_RADIUS = 1.5
+const STAY_SEATED_CHANCE = 0.1
+const GO_SIT_CHANCE = 0.4
+/** Rolls below this (and above GO_SIT_CHANCE when standing) wander to a common area. */
+const WANDER_CHANCE = 0.7
+/** Agents spread around an area's centre on a circle of this radius, one slot per possible agent. */
+const AREA_SPREAD_RADIUS = 1
+const UP_AXIS = new THREE.Vector3(0, 1, 0)
 
-/**
- * NpcAgentDriver — drives a single NPC autonomously.
- *
- * Each NPC in the scene has its own instance of this class.
- * The update() method is the entry point for all NPC autonomous behavior.
- *
- * It respects the global Core phase and individual task status to determine behavior.
- */
+function randomSeconds(minimum: number, range: number): number {
+  return Math.random() * range + minimum
+}
+
+/** Wanders, sits and idles an NPC while it has no task; stays put while SceneManager moves it for work. */
 export class NpcAgentDriver implements IAgentDriver {
-  public readonly agentIndex: number;
-  private behaviorTimer: number = Math.random() * 5 + 2; // Initial wait before moving
-  private wasBusy: boolean = false;
-
-  /**
-   * External state injected by the pilar 'Integration' or 'Simulation' loop.
-   * This removes the direct dependency on useUiStore (Interface).
-   */
-  private isChattingWithMe: boolean = false;
+  private behaviorTimer: number = randomSeconds(INITIAL_WAIT_MIN, INITIAL_WAIT_RANGE)
+  private isChattingWithMe = false
+  /** Has a scheduled, in-progress or on-hold task. */
+  private isBusy = false
+  private projectDone = false
 
   constructor(
-    agentIndex: number,
+    public readonly agentIndex: number,
     protected readonly controller: CharacterController,
-    protected readonly data: AgentNode,
-  ) {
-    this.agentIndex = agentIndex;
-  }
+    private readonly isLead: boolean,
+  ) {}
 
-  /** Sets whether the agent is currently engaged in a chat, suspending autonomy. */
+  /** Suspends autonomy while the user chats with this agent. */
   public setChatting(isChatting: boolean): void {
-    this.isChattingWithMe = isChatting;
+    this.isChattingWithMe = isChatting
   }
 
-  // ── IAgentDriver ─────────────────────────────────────────────
+  /** Leaving work picks a new idle activity right away instead of lingering at the desk. */
+  public setBusy(busy: boolean): void {
+    if (this.isBusy && !busy) this.behaviorTimer = 0
+    this.isBusy = busy
+  }
 
-  public update(positions: Float32Array, delta: number): void {
-    const currentState = this.controller.getState(this.agentIndex);
-    const systemState = useCoreStore.getState();
+  public setProjectDone(done: boolean): void {
+    this.projectDone = done
+  }
 
-    // If we are currently chatting with this NPC, suspend autonomous behavior
-    if (this.isChattingWithMe) {
-      return;
+  /**
+   * The lead celebrates at its spot once the project is delivered. SceneManager drives movement to
+   * desks and the boardroom while the agent has work. Otherwise new actions are only decided from
+   * a resting state.
+   */
+  public update(positions: Float32Array, deltaSeconds: number): void {
+    if (this.isChattingWithMe) return
+
+    const currentState = this.controller.getState(this.agentIndex)
+
+    if (this.isLead && this.projectDone) {
+      this._updateProjectReadyBehavior(positions, currentState)
+      return
     }
 
-    // Special behavior for Lead Agent when project is ready
-    const isLeadCandidate = this.agentIndex === 1;
-    if (isLeadCandidate && systemState.phase === 'done') {
-      this._updateProjectReadyBehavior(positions, delta, currentState);
-      return;
-    }
+    if (this.isBusy) return
 
-    // Capture current active task (if any)
-    const activeTask = systemState.tasks.find(
-      t => t.assignedAgentId === this.agentIndex && (t.status === 'in_progress' || t.status === 'on_hold' || t.status === 'scheduled')
-    );
-    const isBusyWithSystem = !!activeTask;
-
-    // Detect busy→idle transition: kick the agent to move away immediately
-    if (this.wasBusy && !isBusyWithSystem) {
-      this.behaviorTimer = 0;
-    }
-    this.wasBusy = isBusyWithSystem;
-
-    // 1. SYSTEM HIERARCHY: If the agent is busy with a system task, the driver stays PASSIVE.
-    // The SceneManager is responsible for the intentional movement to work/boardrooms.
-    if (activeTask) {
-      // Suspend ALL autonomous deciding while busy with the store-driven tasks.
-      // We only allow flavor updates if we are not walking (set by SceneManager)
-      if (currentState !== 'walk' && currentState !== 'sit_idle' && currentState !== 'sit_work') {
-        // You could optionally put some idle-standing animations here, but basically
-        // we want to stay where the SceneManager put us.
-      }
-      return;
-    }
-
-    // 2. AUTONOMOUS BEHAVIOR: Only decide new actions if we are currently resting in a stable state
-    if (currentState === 'idle' || currentState === 'sit_idle' || currentState === 'look_around') {
-      this.behaviorTimer -= delta;
+    if (currentState === "idle" || currentState === "sit_idle" || currentState === "look_around") {
+      this.behaviorTimer -= deltaSeconds
 
       if (this.behaviorTimer <= 0) {
-        this._decideNextAction(positions, currentState);
+        this._decideNextAction(positions, currentState)
       }
     }
   }
 
-  private _updateProjectReadyBehavior(positions: Float32Array, delta: number, currentState: string): void {
-    const spawnId = `idle-spawn-${this.agentIndex}`;
-    const targetPoi = this.controller.poiManager.getPoi(spawnId);
-    if (!targetPoi) return;
+  /**
+   * Walks the lead back to its spawn, then loops the happy state there. Once close, it snaps to the
+   * spawn orientation; movement is only cancelled when not already arriving through moveTo's
+   * arrival state (idle).
+   */
+  private _updateProjectReadyBehavior(
+    positions: Float32Array,
+    currentState: CharacterStateKey,
+  ): void {
+    const spawnId = `idle-spawn-${this.agentIndex}`
+    const targetPoi = this.controller.poiManager.getPoi(spawnId)
+    if (!targetPoi) return
 
-    const currentPos = new THREE.Vector3(
-      positions[this.agentIndex * 4],
-      positions[this.agentIndex * 4 + 1],
-      positions[this.agentIndex * 4 + 2]
-    );
+    const offset = this.agentIndex * 4
+    const deltaX = positions[offset] - targetPoi.position.x
+    const deltaY = positions[offset + 1] - targetPoi.position.y
+    const deltaZ = positions[offset + 2] - targetPoi.position.z
 
-    // If not near spawn area, go there
-    const dist = currentPos.distanceTo(targetPoi.position);
-    if (dist > 1.5) { // Slightly larger threshold to avoid oscillation
-      if (currentState !== 'walk') {
-        this.controller.moveTo(this.agentIndex, targetPoi.position, 'happy_loop', undefined, currentPos, targetPoi.quaternion);
+    if (
+      deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ >
+      CELEBRATION_RADIUS * CELEBRATION_RADIUS
+    ) {
+      if (currentState !== "walk") {
+        const currentPosition = new THREE.Vector3(
+          positions[offset],
+          positions[offset + 1],
+          positions[offset + 2],
+        )
+        this.controller.moveTo(
+          this.agentIndex,
+          targetPoi.position,
+          "happy_loop",
+          undefined,
+          currentPosition,
+          targetPoi.quaternion,
+        )
       }
-      return;
+      return
     }
 
-    // If arrived or idling near spawn, switch to the looping happy state.
-    const isHappy = currentState === 'happy_loop';
-    if (!isHappy && currentState !== 'walk') {
-      // Snap to target orientation if we are already close but not in the final state
-      this.controller.characterManager.setOrientation(this.agentIndex, targetPoi.quaternion);
+    const isHappy = currentState === "happy_loop"
+    if (!isHappy && currentState !== "walk") {
+      this.controller.characterManager.setOrientation(this.agentIndex, targetPoi.quaternion)
 
-      // Don't cancel movement if we're naturally arriving via moveTo's arrivalState
-      if (currentState !== 'idle') {
-        this.controller.cancelMovement(this.agentIndex);
+      if (currentState !== "idle") {
+        this.controller.cancelMovement(this.agentIndex)
       }
-      this.controller.play(this.agentIndex, 'happy_loop');
+      this.controller.play(this.agentIndex, "happy_loop")
     }
   }
 
-  private _decideNextAction(positions: Float32Array, currentState: string): void {
-    const rand = Math.random();
-    const isSeated = currentState === 'sit_idle';
+  /**
+   * One idle decision from a single roll. Seated: mostly stand up and fall through to the standing
+   * options (but never sit again straight away), sometimes stay seated. Standing: maybe go sit (the
+   * lead never sits), else maybe wander to a common area facing its centre, else play a short
+   * reaction. A seated agent that wanted to get up but found nowhere to go stays seated.
+   */
+  private _decideNextAction(positions: Float32Array, currentState: CharacterStateKey): void {
+    const roll = Math.random()
+    const isSeated = currentState === "sit_idle"
 
-    // 1. Behavior when SEATED
-    if (isSeated) {
-      // 10% chance to just stay seated and play an expression
-      if (rand < 0.1) {
-        const expressions: ('sit_idle')[] = ['sit_idle'];
-        const randomAnim = expressions[Math.floor(Math.random() * expressions.length)];
-        this.controller.play(this.agentIndex, randomAnim);
-        this.behaviorTimer = Math.random() * 15 + 15;
-        return;
-      }
-
-      // 90% chance to stand up: fall through to movement logic below,
-      // but only to move/wander, not to sit again immediately.
+    if (isSeated && roll < STAY_SEATED_CHANCE) {
+      this.controller.play(this.agentIndex, "sit_idle")
+      this.behaviorTimer = randomSeconds(15, 15)
+      return
     }
 
-    // Capture current position
-    const currentPos = new THREE.Vector3(
+    const currentPosition = new THREE.Vector3(
       positions[this.agentIndex * 4],
       positions[this.agentIndex * 4 + 1],
-      positions[this.agentIndex * 4 + 2]
-    );
+      positions[this.agentIndex * 4 + 2],
+    )
 
-    // 2. Behavior when STANDING (or if decided to get up)
-
-    // A. Chance to go sit (only if NOT already seated or if we explicitly want a new POI)
-    // Lead agent candidates NEVER sit, they prefer to pace or stay standing
-    const isLeadCandidate = this.agentIndex === 1;
-    if (!isSeated && rand < 0.4 && !isLeadCandidate) {
-      const pois = this.controller.poiManager.getFreePois('sit_idle', this.agentIndex);
+    if (!isSeated && roll < GO_SIT_CHANCE && !this.isLead) {
+      const pois = this.controller.poiManager.getFreePois("sit_idle", this.agentIndex)
       if (pois.length > 0) {
-        const poi = pois[Math.floor(Math.random() * pois.length)];
-        this.controller.walkToPoi(this.agentIndex, poi.id, undefined, currentPos);
-        this.behaviorTimer = Math.random() * 15 + 15;
-        return;
+        const poi = pois[Math.floor(Math.random() * pois.length)]
+        this.controller.walkToPoi(this.agentIndex, poi.id, undefined, currentPosition)
+        this.behaviorTimer = randomSeconds(15, 15)
+        return
       }
     }
 
-    // B. Chance to wander to common areas (both standing and those getting up)
-    if (rand < 0.7) {
-      const areaPois = this.controller.poiManager.getFreePoisByPrefix('area-', this.agentIndex);
+    if (roll < WANDER_CHANCE) {
+      const areaPois = this.controller.poiManager.getFreePoisByPrefix("area-", this.agentIndex)
       if (areaPois.length > 0) {
-        const areaPoi = areaPois[Math.floor(Math.random() * areaPois.length)];
+        const areaPoi = areaPois[Math.floor(Math.random() * areaPois.length)]
 
-        // Calculate distributed position (0.75m radius, 1 slot per MAX_AGENTS)
-        const angle = (this.agentIndex * (Math.PI * 2)) / MAX_AGENTS;
-        const radius = 1;
-        const target = areaPoi.position.clone();
-        target.x += Math.cos(angle) * radius;
-        target.z += Math.sin(angle) * radius;
+        const angle = (this.agentIndex * (Math.PI * 2)) / MAX_AGENTS
+        const target = areaPoi.position.clone()
+        target.x += Math.cos(angle) * AREA_SPREAD_RADIUS
+        target.z += Math.sin(angle) * AREA_SPREAD_RADIUS
 
-        // Calculate "natural" rotation: facing the center of the area
-        const direction = new THREE.Vector3().subVectors(areaPoi.position, target).normalize();
-        const rotationY = Math.atan2(direction.x, direction.z);
-        const targetQuaternion = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotationY);
+        const direction = new THREE.Vector3().subVectors(areaPoi.position, target).normalize()
+        const rotationY = Math.atan2(direction.x, direction.z)
+        const targetQuaternion = new THREE.Quaternion().setFromAxisAngle(UP_AXIS, rotationY)
 
-        if (this.controller.moveTo(this.agentIndex, target, 'look_around', undefined, currentPos, targetQuaternion)) {
-          this.controller.poiManager.releaseAll(this.agentIndex);
-          this.behaviorTimer = Math.random() * 5 + 10;
-          return;
+        if (
+          this.controller.moveTo(
+            this.agentIndex,
+            target,
+            "look_around",
+            undefined,
+            currentPosition,
+            targetQuaternion,
+          )
+        ) {
+          this.controller.poiManager.releaseAll(this.agentIndex)
+          this.behaviorTimer = randomSeconds(10, 5)
+          return
         }
       }
     }
 
-    // C. Fallback: play a short reaction animation (only if standing)
     if (!isSeated) {
-      const expressions: ('look_around' | 'wave' | 'happy')[] = ['look_around', 'wave', 'happy'];
-      const randomAnim = expressions[Math.floor(Math.random() * expressions.length)];
-      this.controller.play(this.agentIndex, randomAnim);
-      this.behaviorTimer = Math.random() * 5 + 5;
+      const reactions: CharacterStateKey[] = ["look_around", "wave", "happy"]
+      const reaction = reactions[Math.floor(Math.random() * reactions.length)]
+      this.controller.play(this.agentIndex, reaction)
+      this.behaviorTimer = randomSeconds(5, 5)
     } else {
-      // If we were seated and decided to get up (10%) but found no place to go, stay seated.
-      this.behaviorTimer = 5;
+      this.behaviorTimer = 5
     }
   }
 
-  public dispose(): void { }
+  public dispose(): void {}
 }

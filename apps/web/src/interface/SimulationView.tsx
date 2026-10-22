@@ -1,94 +1,156 @@
-import { Maximize2, Minimize2, Eye } from 'lucide-react';
-import React, { Suspense, lazy, useState } from 'react';
-import { useCoreStore } from '../integration/store/coreStore';
-import { useTeamStore, useActiveTeam } from '../integration/store/teamStore';
-import { useUiStore } from '../integration/store/uiStore';
-import InspectorPanel from './InspectorPanel';
-import UIOverlay from './UIOverlay';
-import { AuditModal } from './AuditModal';
-import { TeamBadge } from './components/TeamBadge';
-import { TeamOutputBadge } from './components/TeamOutputBadge';
-import { useShallow } from 'zustand/react/shallow';
+import { Eye, Focus, Minimize2, MonitorX } from "lucide-react"
+import type React from "react"
+import { lazy, Suspense, useEffect, useState } from "react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useActiveTeam } from "../integration/store/teamStore"
+import { useUiStore } from "../integration/store/uiStore"
+import { useSceneManager } from "../simulation/SceneContext"
+import type { SceneManager } from "../simulation/SceneManager"
+import { AuditModal } from "./AuditModal"
+import { TeamBadge } from "./components/TeamBadge"
+import { TeamOutputBadge } from "./components/TeamOutputBadge"
+import InspectorPanel from "./InspectorPanel"
+import UIOverlay from "./UIOverlay"
 
-const TeamFlowModal = lazy(() => import('./TeamFlowModal'));
+const TeamFlowModal = lazy(() => import("./TeamFlowModal"))
 
-interface SimulationViewProps {
-  canvasRef: React.RefObject<HTMLDivElement>;
-  isFullscreen: boolean;
-  setIsFullscreen: (value: boolean) => void;
+type SceneStatus = "loading" | "ready" | "error"
+
+/** Tracks SceneManager.ready so a missing WebGPU/WebGL2 or a failed model download is visible instead of a blank canvas. */
+function useSceneStatus(scene: SceneManager | null): SceneStatus {
+  const [settled, setSettled] = useState<{ scene: SceneManager; ok: boolean } | null>(null)
+  useEffect(() => {
+    if (!scene) return
+    let active = true
+    scene.ready.then(
+      () => {
+        if (active) setSettled({ scene, ok: true })
+      },
+      () => {
+        if (active) setSettled({ scene, ok: false })
+      },
+    )
+    return () => {
+      active = false
+    }
+  }, [scene])
+  if (!scene || settled?.scene !== scene) return "loading"
+  return settled.ok ? "ready" : "error"
 }
 
-const SimulationView: React.FC<SimulationViewProps> = ({ canvasRef, isFullscreen, setIsFullscreen }) => {
-  const { selectedNpcIndex, activeAuditTaskId, setActiveAuditTaskId } = useUiStore(useShallow((s) => ({ selectedNpcIndex: s.selectedNpcIndex, activeAuditTaskId: s.activeAuditTaskId, setActiveAuditTaskId: s.setActiveAuditTaskId })));
-  const activeSet = useActiveTeam();
-  const [isFlowModalOpen, setIsFlowModalOpen] = useState(false);
+interface SimulationViewProps {
+  canvasRef: React.RefObject<HTMLDivElement | null>
+  isFocusMode: boolean
+  onFocusModeChange: (value: boolean) => void
+}
 
-  React.useEffect(() => {
-    if (activeAuditTaskId) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-  }, [activeAuditTaskId]);
+/** The canvas column: team bar, the 3D view with its overlays and load states, and the task review dialog. */
+function SimulationView({ canvasRef, isFocusMode, onFocusModeChange }: SimulationViewProps) {
+  const selectedNpcIndex = useUiStore((state) => state.selectedNpcIndex)
+  const activeAuditTaskId = useUiStore((state) => state.activeAuditTaskId)
+  const setActiveAuditTaskId = useUiStore((state) => state.setActiveAuditTaskId)
+  const activeTeam = useActiveTeam()
+  const [isFlowModalOpen, setIsFlowModalOpen] = useState(false)
+  const sceneStatus = useSceneStatus(useSceneManager())
+  const focusLabel = isFocusMode ? "Exit focus (Esc)" : "Focus 3D view"
 
   return (
-    <div className="flex flex-col flex-1 min-w-0 min-h-0 relative">
-      {/* Simulation View Header */}
-      <div className="h-14 border-b border-black/5 flex items-center justify-between px-5 bg-white shrink-0">
-        <div className="flex-1 flex items-center gap-4">
-          <button
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex h-14 shrink-0 items-center justify-between border-b border-black/5 bg-background px-3 sm:px-5">
+        <div className="flex min-w-0 flex-1 items-center gap-4">
+          <Button
+            variant="bare"
+            size="bare"
             onClick={() => setIsFlowModalOpen(true)}
-            className="flex items-center gap-4 hover:bg-zinc-50 px-2.5 py-1.5 rounded-2xl transition-all active:scale-95 group cursor-pointer"
-            title="View Team Flow"
+            aria-label={`View team flow for ${activeTeam.teamName}`}
+            className="group gap-4 rounded-2xl px-2.5 py-1.5 hover:bg-muted/50 focus-visible:ring-2 active:scale-95"
           >
-            <TeamBadge system={activeSet} />
-            <div className="w-8 h-8 rounded-full border border-zinc-100 flex items-center justify-center text-zinc-300 group-hover:text-darkDelegation group-hover:border-zinc-200 transition-colors">
-              <Eye size={14} />
-            </div>
-          </button>
-
-          <TeamOutputBadge system={activeSet} className="hidden md:flex" />
+            <TeamBadge system={activeTeam} />
+            <span className="flex size-8 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors group-hover:border-input group-hover:text-foreground">
+              <Eye className="size-3.5" aria-hidden />
+            </span>
+          </Button>
+          <TeamOutputBadge system={activeTeam} className="hidden md:flex" />
         </div>
 
-        <div className="flex items-center justify-end gap-1">
-          <button
-            onClick={() => setIsFullscreen(!isFullscreen)}
-            className="p-2 text-zinc-400 hover:text-darkDelegation transition-colors cursor-pointer"
-            title={isFullscreen ? "Exit Fullscreen" : "Fullscreen Panel"}
-          >
-            {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-          </button>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => onFocusModeChange(!isFocusMode)}
+              aria-label={focusLabel}
+              aria-pressed={isFocusMode}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              {isFocusMode ? <Minimize2 /> : <Focus />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{focusLabel}</TooltipContent>
+        </Tooltip>
       </div>
 
-      <div ref={canvasRef} className="flex-1 min-h-0 relative overflow-hidden bg-black/5">
+      <div ref={canvasRef} className="relative min-h-0 flex-1 overflow-hidden bg-black/5">
         <UIOverlay />
-        {isFullscreen && selectedNpcIndex !== null && (
-          <div className="absolute top-4 right-4 bottom-4 w-96 z-50 pointer-events-none flex flex-col gap-4">
+        {sceneStatus === "loading" && (
+          <div
+            role="status"
+            className="pointer-events-none absolute inset-0 flex items-center justify-center"
+          >
+            <span className="animate-pulse text-xs font-bold text-muted-foreground">
+              Loading office…
+            </span>
+          </div>
+        )}
+        {sceneStatus === "error" && (
+          <div className="absolute inset-0 flex items-center justify-center p-6">
+            <Alert variant="destructive" className="max-w-md rounded-xl">
+              <MonitorX />
+              <AlertTitle>The 3D office could not load</AlertTitle>
+              <AlertDescription>
+                It needs WebGPU or WebGL2 (a recent Chrome, Edge, Safari or Firefox) and a working
+                connection to download the models. The panels and agents still work; reload to try
+                again.
+              </AlertDescription>
+            </Alert>
+          </div>
+        )}
+        {isFocusMode && selectedNpcIndex !== null && (
+          <div className="pointer-events-none absolute top-4 right-4 bottom-4 z-30 flex w-96 max-w-[calc(100%-2rem)] flex-col gap-4">
             <InspectorPanel isFloating />
           </div>
         )}
       </div>
 
       {isFlowModalOpen && (
-        <Suspense fallback={null}>
-          <TeamFlowModal
-            isOpen={isFlowModalOpen}
-            onClose={() => setIsFlowModalOpen(false)}
-            system={activeSet}
-          />
+        <Suspense
+          fallback={
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+              role="status"
+              aria-label="Loading team flow"
+            >
+              <Skeleton className="h-[70dvh] w-[min(64rem,calc(100vw-2rem))] rounded-3xl bg-background/80" />
+            </div>
+          }
+        >
+          <TeamFlowModal isOpen onClose={() => setIsFlowModalOpen(false)} system={activeTeam} />
         </Suspense>
       )}
 
       {activeAuditTaskId && (
         <AuditModal
-          isOpen={!!activeAuditTaskId}
+          key={activeAuditTaskId}
+          isOpen
           taskId={activeAuditTaskId}
           onClose={() => setActiveAuditTaskId(null)}
         />
       )}
     </div>
-  );
-};
+  )
+}
 
-export default SimulationView;
+export default SimulationView

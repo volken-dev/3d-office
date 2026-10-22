@@ -1,20 +1,21 @@
-'use client';
+"use client"
 
-import dynamic from 'next/dynamic';
-import { Toaster } from '@/components/ui/sonner';
-import { TooltipProvider } from '@/components/ui/tooltip';
+import dynamic from "next/dynamic"
+import { Toaster } from "@/components/ui/sonner"
+import { TooltipProvider } from "@/components/ui/tooltip"
 
-// The app reads localStorage in its stores and boots a WebGPU scene, so it is never rendered on the server.
-const App = dynamic(() => import('@/App'), {
+/** The app reads localStorage in its stores and boots a WebGPU scene, so it is never rendered on the server. */
+const App = dynamic(() => import("@/App"), {
   ssr: false,
   loading: () => <div className="h-dvh w-screen bg-background" />,
-});
+})
 
+/** The ssr:false boundary: everything interactive renders beneath it, client-side only. */
 export function ClientApp() {
   return (
     <TooltipProvider delayDuration={150}>
       <App />
       <Toaster />
     </TooltipProvider>
-  );
+  )
 }

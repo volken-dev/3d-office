@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/images/the-delegation.svg" width="256" alt="The Delegation Logo">
+  <img src="apps/web/public/images/the-delegation.svg" width="256" alt="The Delegation Logo">
 </p>
 
 <p align="center">
@@ -9,7 +9,7 @@
 > [!IMPORTANT]
 > **\*** This experience requires **BYOK (Bring Your Own Key)**. You will need a **[Gemini API key](https://aistudio.google.com/app/apikey)** to run the simulation. You can also **clone or fork** this repository to run it locally.
 <div align="center">
-  <img src="public/images/the-delegation-UI.jpg" width="100%" alt="The Delegation Hero">
+  <img src="apps/web/public/images/the-delegation-UI.jpg" width="100%" alt="The Delegation Hero">
 </div>
 
 <br/>
@@ -42,6 +42,25 @@ This is a [Turborepo](https://turborepo.com) monorepo using Bun workspaces:
 | `packages/shared` | API contract types and schemas shared by web and api |
 
 Common tasks run from the repo root through Turborepo: `bun dev`, `bun run build`, `bun run lint`, `bun run typecheck`. Target one package with `bunx turbo run <task> --filter=web`.
+
+## Backend
+
+`apps/api` is a [Hono](https://hono.dev) app prepared for moving Gemini calls and key custody off the browser. The web app does not use it yet; it is still bring-your-own-key and ships as a static export.
+
+```bash
+cp apps/api/.env.example apps/api/.env   # set GEMINI_API_KEY and ALLOWED_ORIGINS
+bunx turbo run dev --filter=api          # http://127.0.0.1:8787/api
+```
+
+| Route | What it does |
+|---|---|
+| `GET /api/health` | Liveness check |
+| `POST /api/llm/completions` | Validates the body against `@the-delegation/shared`, calls Gemini with the server-side `GEMINI_API_KEY`, returns normalized output only |
+
+- `src/app.ts` is runtime-agnostic (Bun, Workers or Node) and exports `AppType`; `src/index.ts` is the Bun entry. `bun run build` bundles it into a single `dist/index.js` for `bun run start`.
+- The request and response contract (zod schemas plus inferred types, error shape, model allowlist and size caps) lives in `packages/shared`.
+- The web app gets a typed client from `apps/web/src/lib/api-client.ts` (`hc<AppType>`, base URL from `NEXT_PUBLIC_API_URL`). It imports only types from `apps/api`, so no server code reaches the bundle.
+- CORS allows only the origins listed in `ALLOWED_ORIGINS`. The per-IP rate limiter is in-memory and meant for development only. There is no authentication yet, so do not deploy this endpoint publicly before adding auth and a shared rate limiter.
 
 ## Features
 

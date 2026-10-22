@@ -1,98 +1,78 @@
-import React from 'react';
-import { getAgentSet, getAllAgents, getAllCharacters } from '../data/agents';
-import { useCoreStore } from '../integration/store/coreStore';
-import { useTeamStore, useActiveTeam } from '../integration/store/teamStore';
-import { Avatar } from './components/Avatar';
+import { useCoreStore } from "../integration/store/coreStore"
+import { useTeamRoster } from "../integration/store/teamStore"
+import { SectionHeading } from "./components/SectionHeading"
+import { EYEBROW } from "./components/styles"
+import { TokenUsageRow } from "./components/TokenUsageRow"
 
-import { formatTokens } from './ProjectView';
+const NO_USAGE = { promptTokens: 0, completionTokens: 0 }
 
 interface AgentStatusPanelProps {
-  agentIndex: number;
+  agentIndex: number
 }
 
-const AgentStatusPanel: React.FC<AgentStatusPanelProps> = ({ agentIndex }) => {
-  const tasks = useCoreStore((s) => s.tasks);
-  const agentUsage = useCoreStore((s) => s.agentTokenUsage[agentIndex]);
-  const system = useActiveTeam();
-  const agents = getAllAgents(system);
-
-  const agent = agents.find(a => a.index === agentIndex);
-  if (!agent) return null;
-
-  const activeTask = tasks.find(
-    (t) => t.assignedAgentId === agentIndex && t.status === 'in_progress'
-  ) ?? null;
-
-  const usage = agentUsage || { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+/** Inspector body for one agent: what it is, which model it runs, what it has spent and what it is doing. */
+function AgentStatusPanel({ agentIndex }: AgentStatusPanelProps) {
+  const activeTask = useCoreStore((state) =>
+    state.tasks.find(
+      (task) => task.assignedAgentId === agentIndex && task.status === "in_progress",
+    ),
+  )
+  const usage = useCoreStore((state) => state.agentTokenUsage[agentIndex]) ?? NO_USAGE
+  const agent = useTeamRoster().byIndex.get(agentIndex)
+  if (!agent) return null
 
   return (
-    <div className="flex flex-col h-full p-6">
-      {/* Agent Info */}
+    <div className="flex h-full flex-col p-6">
       <div className="mb-8 space-y-6">
-        {/* Role/Description */}
-        {agent.index !== 0 && (
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Description</p>
-              <div className="h-px flex-1 bg-zinc-100" />
-            </div>
-            <p className="text-xs text-zinc-600 leading-relaxed font-medium capitalize-first">{agent.description}</p>
+        <section>
+          <SectionHeading label="Description" className="mb-2" />
+          <p className="text-xs leading-relaxed font-medium text-foreground/80 first-letter:uppercase">
+            {agent.description}
+          </p>
+        </section>
+        <section>
+          <SectionHeading label="Model" className="mb-2" />
+          <div className="inline-flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-1.5 font-mono">
+            <p className="text-xs font-bold tracking-tighter text-foreground">{agent.model}</p>
           </div>
-        )}
-        {/* Model */}
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Model</p>
-            <div className="h-px flex-1 bg-zinc-100" />
-          </div>
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-zinc-50 rounded-lg border border-zinc-100/60 font-mono">
-            <p className="text-[11px] font-bold text-darkDelegation uppercase tracking-tighter">
-              {agent.model}
-            </p>
-          </div>
-        </div>
-        {/* Token Usage */}
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Token Usage</p>
-            <div className="h-px flex-1 bg-zinc-100" />
-          </div>
-          <div className="flex items-center gap-1.5 text-[11px] font-bold font-mono">
-            <span className="text-zinc-700">{formatTokens(usage.promptTokens)} <span className="text-zinc-400 font-medium">input</span></span>
-            <span className="text-zinc-300">+</span>
-            <span className="text-zinc-700">{formatTokens(usage.completionTokens)} <span className="text-zinc-400 font-medium">output</span></span>
-          </div>
-        </div>
+        </section>
+        <section>
+          <SectionHeading label="Token usage" className="mb-2" />
+          <TokenUsageRow usage={usage} />
+        </section>
       </div>
 
-      <div className="h-px bg-zinc-100 w-full mb-6" />
+      <div className="mb-6 h-px w-full bg-border" aria-hidden />
 
-      {/* Task Status */}
       {activeTask ? (
-        <div className="mb-6">
-          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2 flex items-center gap-2">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: agent.color }}></span>
-              <span className="relative inline-flex rounded-full h-2 w-2" style={{ backgroundColor: agent.color }}></span>
+        <section className="mb-6">
+          <h3 className={`${EYEBROW} mb-2 flex items-center gap-2`}>
+            <span className="relative flex size-2" aria-hidden>
+              <span
+                className="absolute inline-flex size-full animate-ping rounded-full opacity-75"
+                style={{ backgroundColor: agent.color }}
+              />
+              <span
+                className="relative inline-flex size-2 rounded-full"
+                style={{ backgroundColor: agent.color }}
+              />
             </span>
-            Doing Now
+            Doing now
+          </h3>
+          <p className="text-sm leading-snug font-bold text-foreground">
+            &ldquo;{activeTask.title}&rdquo;
           </p>
-          <p className="text-sm text-darkDelegation leading-snug font-bold">
-            "{activeTask.title}"
-          </p>
-        </div>
+        </section>
       ) : (
-        <div className="mb-6">
-          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400/50 mb-2">
-            Status
-          </p>
-          <p className="text-sm text-zinc-300 leading-snug italic font-medium">
+        <section className="mb-6">
+          <h3 className={`${EYEBROW} mb-2`}>Status</h3>
+          <p className="text-sm leading-snug font-medium text-muted-foreground italic">
             Waiting for next task...
           </p>
-        </div>
+        </section>
       )}
     </div>
-  );
-};
+  )
+}
 
-export default AgentStatusPanel;
+export default AgentStatusPanel

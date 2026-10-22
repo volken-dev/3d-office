@@ -1,142 +1,145 @@
+import { useEffect, useRef, useState } from "react"
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
+import { useCoreStore } from "./integration/store/coreStore"
+import { useUiStore } from "./integration/store/uiStore"
+import { ActionLogPanel } from "./interface/ActionLogPanel"
+import { ReviewRequestToasts } from "./interface/components/ReviewRequestToasts"
+import { DESKTOP_QUERY, useMediaQuery } from "./interface/components/useMediaQuery"
+import { DesignModeDialog } from "./interface/DesignModeDialog"
+import { FinalOutputModal } from "./interface/FinalOutputModal"
+import Header, { type HeaderPanelControls } from "./interface/Header"
+import InspectorPanel from "./interface/InspectorPanel"
+import { KanbanDock } from "./interface/KanbanDock"
+import { OutputReviewModal } from "./interface/OutputReviewModal"
+import SimulationView from "./interface/SimulationView"
+import { SceneContext } from "./simulation/SceneContext"
+import { SceneManager } from "./simulation/SceneManager"
+
+type DrawerPanel = "logs" | "inspector" | null
+
 /**
- * @license
- * SPDX-License-Identifier: Apache-2.0
+ * The app shell. Panel visibility is layout state only, so it lives here rather than in a store.
+ * Below lg the side panels live in drawers so the canvas keeps the width. The scene stays mounted
+ * in design mode (hidden and paused) so it does not reload on return. Radix dialogs mark the
+ * Escape that closes them as handled, so only an unhandled Escape leaves focus mode.
  */
-
-import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
-import { useCoreStore } from './integration/store/coreStore';
-import { ActionLogPanel } from './interface/ActionLogPanel';
-import { FinalOutputModal } from './interface/FinalOutputModal';
-import Header from './interface/Header';
-import InspectorPanel from './interface/InspectorPanel';
-import { KanbanPanel } from './interface/KanbanPanel';
-import { OutputReviewModal } from './interface/OutputReviewModal';
-import SimulationView from './interface/SimulationView';
-import { SceneContext } from './simulation/SceneContext';
-import { SceneManager } from './simulation/SceneManager';
-
-// React Flow is only needed in design mode, so keep it out of the initial bundle
-const VisualConfigurator = lazy(() =>
-  import('./interface/VisualConfigurator/VisualConfigurator').then((m) => ({ default: m.VisualConfigurator }))
-);
-import { useShallow } from 'zustand/react/shallow';
-
-
-const App: React.FC = () => {
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const managerRef = useRef<SceneManager | null>(null);
-  const [sceneManager, setSceneManager] = useState<SceneManager | null>(null);
-  const { isLogOpen, isKanbanOpen, setIsResizing, viewMode, setViewMode, isResizing } = useCoreStore(useShallow((s) => ({ isLogOpen: s.isLogOpen, isKanbanOpen: s.isKanbanOpen, setIsResizing: s.setIsResizing, viewMode: s.viewMode, setViewMode: s.setViewMode, isResizing: s.isResizing })));
-
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [kanbanHeight, setKanbanHeight] = useState(220);
-
-  const startResizing = useCallback(() => {
-    setIsResizing(true);
-  }, [setIsResizing]);
-
-  const stopResizing = useCallback(() => {
-    setIsResizing(false);
-  }, [setIsResizing]);
-
-  const resize = useCallback((e: MouseEvent) => {
-    if (useCoreStore.getState().isResizing) {
-      const windowHeight = window.innerHeight;
-      const newHeight = windowHeight - e.clientY;
-      const minHeight = windowHeight * 0.2;
-      const maxHeight = windowHeight * 0.5;
-      if (newHeight >= minHeight && newHeight <= maxHeight) {
-        setKanbanHeight(newHeight);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener('mousemove', resize);
-    window.addEventListener('mouseup', stopResizing);
-    return () => {
-      window.removeEventListener('mousemove', resize);
-      window.removeEventListener('mouseup', stopResizing);
-    };
-  }, [resize, stopResizing]);
+export default function App() {
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const managerRef = useRef<SceneManager | null>(null)
+  const [sceneManager, setSceneManager] = useState<SceneManager | null>(null)
+  const viewMode = useCoreStore((state) => state.viewMode)
+  const [isLogOpen, setLogOpen] = useState(true)
+  const [isKanbanOpen, setKanbanOpen] = useState(true)
+  const [isFocusMode, setFocusMode] = useState(false)
+  const isDesktop = useMediaQuery(DESKTOP_QUERY)
+  const [drawer, setDrawer] = useState<DrawerPanel>(null)
+  const isDesign = viewMode === "design"
 
   useEffect(() => {
     if (canvasRef.current && !managerRef.current) {
-      const manager = new SceneManager(canvasRef.current);
-      managerRef.current = manager;
-      setSceneManager(manager);
+      const manager = new SceneManager(canvasRef.current)
+      managerRef.current = manager
+      setSceneManager(manager)
     }
-
     return () => {
       if (managerRef.current) {
-        managerRef.current.dispose();
-        managerRef.current = null;
-        setSceneManager(null);
+        managerRef.current.dispose()
+        managerRef.current = null
+        setSceneManager(null)
       }
-    };
-  }, []);
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isFocusMode) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isUnhandledEscape = event.key === "Escape" && !event.defaultPrevented
+      if (isUnhandledEscape) setFocusMode(false)
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [isFocusMode])
+
+  useEffect(() => {
+    if (isDesktop) return
+    return useUiStore.subscribe((state, previousState) => {
+      if (
+        state.selectedNpcIndex !== null &&
+        state.selectedNpcIndex !== previousState.selectedNpcIndex
+      )
+        setDrawer("inspector")
+    })
+  }, [isDesktop])
+
+  const panels: HeaderPanelControls = isDesktop
+    ? {
+        logsOpen: isLogOpen,
+        onToggleLogs: () => setLogOpen(!isLogOpen),
+        tasksOpen: isKanbanOpen,
+        onToggleTasks: () => setKanbanOpen(!isKanbanOpen),
+      }
+    : {
+        logsOpen: drawer === "logs",
+        onToggleLogs: () => setDrawer(drawer === "logs" ? null : "logs"),
+        tasksOpen: isKanbanOpen,
+        onToggleTasks: () => setKanbanOpen(!isKanbanOpen),
+        onOpenInspector: () => setDrawer("inspector"),
+      }
+
+  const showChrome = !isFocusMode && !isDesign
 
   return (
     <SceneContext.Provider value={sceneManager}>
-      <div className="w-screen h-screen bg-white overflow-hidden flex flex-col">
-        {/* Top: Header */}
-        {!isFullscreen && <Header />}
+      <div className="flex h-dvh w-screen flex-col overflow-hidden bg-background">
+        {!isFocusMode && <Header panels={panels} />}
 
-        <div className="flex-1 flex flex-row min-h-0 min-w-0 overflow-hidden">
-          {/* Left: Log panel */}
-          {isLogOpen && !isFullscreen && viewMode !== 'design' && <ActionLogPanel />}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
+          {showChrome && isDesktop && isLogOpen && <ActionLogPanel />}
 
-          {/* Center: canvas + kanban drawer stacked */}
-          <div className="relative flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden bg-zinc-50">
-
-            {/* Simulation Context - Persistently Mounted */}
+          <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-zinc-50">
             <div
-              className="flex-1 flex flex-col min-w-0 min-h-0"
-              style={{ visibility: viewMode === 'design' ? 'hidden' : 'visible' }}
+              className="flex min-h-0 min-w-0 flex-1 flex-col"
+              style={{ visibility: isDesign ? "hidden" : "visible" }}
             >
-              <SimulationView canvasRef={canvasRef} isFullscreen={isFullscreen} setIsFullscreen={setIsFullscreen} />
-
-              {/* Resize Bar */}
-              {isKanbanOpen && !isFullscreen && (
-                <div
-                  className={`h-2 hover:h-2 bg-transparent hover:bg-zinc-200 border-t border-black/5 transition-colors cursor-row-resize z-30 flex items-center justify-center group shrink-0 ${isResizing ? 'bg-zinc-300' : ''}`}
-                  onMouseDown={startResizing}
-                >
-                  <div className="w-12 h-1 bg-zinc-300 rounded-full group-hover:bg-zinc-400" />
-                </div>
-              )}
-
-              {isKanbanOpen && !isFullscreen && <KanbanPanel height={kanbanHeight} />}
+              <SimulationView
+                canvasRef={canvasRef}
+                isFocusMode={isFocusMode}
+                onFocusModeChange={setFocusMode}
+              />
+              {isKanbanOpen && !isFocusMode && <KanbanDock />}
             </div>
-          </div>
+          </main>
 
-          {/* Right: Inspector sidebar */}
-          {!isFullscreen && viewMode !== 'design' && <InspectorPanel />}
+          {showChrome && isDesktop && <InspectorPanel />}
         </div>
 
-        {/* Design Mode Overlay (Modal) */}
-        {viewMode === 'design' && (
-          <div
-            className="fixed inset-0 z-[60] flex items-center justify-center p-3 md:p-6 bg-white/40 backdrop-blur-xl"
+        {!isDesktop && (
+          <Sheet
+            open={showChrome && drawer !== null}
+            onOpenChange={(open) => !open && setDrawer(null)}
           >
-            <div
-              className="w-full h-full bg-white rounded-2xl shadow-2xl border border-zinc-200/50 overflow-hidden flex flex-col"
-              onClick={(e) => e.stopPropagation()}
+            <SheetContent
+              side={drawer === "logs" ? "left" : "right"}
+              className="w-80 gap-0 p-0 pt-12 sm:max-w-80"
+              aria-describedby={undefined}
             >
-              <Suspense fallback={null}>
-                <VisualConfigurator />
-              </Suspense>
-            </div>
-          </div>
+              <SheetTitle className="sr-only">
+                {drawer === "logs" ? "Logs" : "Project and agent details"}
+              </SheetTitle>
+              {drawer === "logs" ? (
+                <ActionLogPanel className="w-full border-r-0" />
+              ) : (
+                <InspectorPanel className="w-full border-l-0" />
+              )}
+            </SheetContent>
+          </Sheet>
         )}
 
-        {/* Final output — fixed viewport overlay */}
+        <DesignModeDialog open={isDesign} />
         <FinalOutputModal />
         <OutputReviewModal />
+        <ReviewRequestToasts />
       </div>
     </SceneContext.Provider>
-  );
-};
-
-export default App;
-
+  )
+}

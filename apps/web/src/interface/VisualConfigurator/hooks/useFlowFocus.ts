@@ -1,63 +1,52 @@
+import type { Edge } from "@xyflow/react"
+import { useMemo } from "react"
+import { USER_ID } from "../../../data/agents"
+import type { VisualAgentNode } from "../teamFlowGraph"
 
-import { useMemo } from 'react';
-import { VisualAgentNode } from '../flowUtils';
-import { USER_ID } from '../../../data/agents';
-
-export const useFlowFocus = (
+/** Dims the other subagents and their edges while a subagent is selected; the user-to-lead path stays visible. */
+export function useFlowFocus(
   nodes: VisualAgentNode[],
-  edges: any[],
+  edges: Edge[],
   selectedAgentId: string | null,
-  leadAgentId: string
-) => {
-  const nodesWithFocus = useMemo(() => {
-    const selectedNode = selectedAgentId ? nodes.find(n => n.id === selectedAgentId) : null;
-    const isSubagentSelected = selectedNode?.type === 'agent' && !selectedNode.data.isLead;
+  leadAgentId: string,
+) {
+  const isSubagentSelected = useMemo(() => {
+    const selected = selectedAgentId ? nodes.find((node) => node.id === selectedAgentId) : null
+    return selected?.type === "agent" && !selected.data.isLead
+  }, [nodes, selectedAgentId])
 
-    if (!isSubagentSelected) {
-      return nodes.map(node => ({
+  const nodesWithFocus = useMemo(
+    () =>
+      nodes.map((node) => ({
         ...node,
-        data: { ...node.data, isDimmed: false }
-      }));
-    }
-
-    return nodes.map(node => ({
-      ...node,
-      data: { 
-        ...node.data, 
-        isDimmed: (node.type === 'agent' && !node.data.isLead && node.id !== selectedAgentId)
-      }
-    }));
-  }, [nodes, selectedAgentId]);
-
-  const edgesWithFocus = useMemo(() => {
-    const selectedNode = selectedAgentId ? nodes.find(n => n.id === selectedAgentId) : null;
-    const isSubagentSelected = selectedNode?.type === 'agent' && !selectedNode.data.isLead;
-
-    if (!isSubagentSelected) {
-      return edges.map(edge => ({
-        ...edge,
-        style: { ...edge.style, opacity: 1 },
-        animated: edge.animated,
-      }));
-    }
-
-    return edges.map(edge => {
-      const involvesSelected = edge.source === selectedAgentId || edge.target === selectedAgentId;
-      const isCorePath = (edge.source === USER_ID || edge.target === USER_ID) && 
-                         (edge.source === leadAgentId || edge.target === leadAgentId);
-      
-      const shouldBeOpaque = involvesSelected || isCorePath;
-
-      return {
-        ...edge,
-        style: { 
-          ...edge.style, 
-          opacity: shouldBeOpaque ? 1 : 0.05 
+        data: {
+          ...node.data,
+          isDimmed:
+            isSubagentSelected &&
+            node.type === "agent" &&
+            !node.data.isLead &&
+            node.id !== selectedAgentId,
         },
-        animated: shouldBeOpaque ? edge.animated : false,
-      };
-    });
-  }, [edges, nodes, selectedAgentId, leadAgentId]);
+      })),
+    [nodes, selectedAgentId, isSubagentSelected],
+  )
 
-  return { nodesWithFocus, edgesWithFocus };
-};
+  const edgesWithFocus = useMemo(
+    () =>
+      edges.map((edge) => {
+        const involvesSelected = edge.source === selectedAgentId || edge.target === selectedAgentId
+        const isCorePath =
+          (edge.source === USER_ID || edge.target === USER_ID) &&
+          (edge.source === leadAgentId || edge.target === leadAgentId)
+        const visible = !isSubagentSelected || involvesSelected || isCorePath
+        return {
+          ...edge,
+          style: { ...edge.style, opacity: visible ? 1 : 0.05 },
+          animated: visible ? edge.animated : false,
+        }
+      }),
+    [edges, selectedAgentId, leadAgentId, isSubagentSelected],
+  )
+
+  return { nodesWithFocus, edgesWithFocus }
+}

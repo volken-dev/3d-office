@@ -1,97 +1,57 @@
-import type * as THREE from 'three/webgpu';
+import type * as THREE from "three/webgpu"
 
-import { LLMConfig } from './core/llm/types';
-
-export interface ChatMessage {
-  role: 'user' | 'assistant' | 'system' | 'tool';
-  text: string;
-  timestamp: string;
-}
-
-// ── Store state (pure data + simple setters) ─────────────────
-export type AgentState = 'idle' | 'moving' | 'working' | 'on_hold' | 'talking';
-
-export interface CharacterState {
-  isThinking: boolean;
-  instanceCount: number;
-  selectedNpcIndex: number | null;
-  hoveredNpcIndex: number | null;
-  hoveredPoiId: string | null;
-  hoveredPoiLabel: string | null;
-  hoverPosition: { x: number; y: number } | null;
-  isChatting: boolean;
-  isTyping: boolean;
-  chatMessages: ChatMessage[];
-  inspectorTab: 'info' | 'chat';
-  
-  // Real-time agent statuses for 3D synchronization
-  agentStatuses: Record<number, AgentState>;
-  setAgentStatus: (index: number, status: AgentState) => void;
-
-  isBYOKOpen: boolean;
-  byokError: string | null;
-  setBYOKOpen: (open: boolean, error?: string | null) => void;
-
-  activeAuditTaskId: string | null;
-  setActiveAuditTaskId: (taskId: string | null) => void;
-
-  // BYOK LLM Configuration
-  llmConfig: LLMConfig;
-
-  setThinking: (isThinking: boolean) => void;
-  setIsTyping: (isTyping: boolean) => void;
-  setInspectorTab: (tab: 'info' | 'chat') => void;
-  setInstanceCount: (count: number) => void;
-  setSelectedNpc: (index: number | null) => void;
-  setHoveredNpc: (index: number | null) => void;
-  setHoveredPoi: (id: string | null, label: string | null, pos: { x: number; y: number } | null) => void;
-  setLlmConfig: (config: Partial<LLMConfig>) => void;
-  setChatting: (isChatting: boolean) => void;
-}
+/** What an agent is doing in the project (distinct from AgentBehavior, its physics mode on the GPU). */
+export type AgentWorkStatus = "idle" | "working" | "on_hold"
 
 export enum AnimationName {
-  IDLE = 'Idle',
-  WALK = 'Walk',
-  TALK = 'Talk',
-  LISTEN = 'Listen',
-  SIT_DOWN = 'Sit',      // one-shot sit-down entry animation
-  SIT_IDLE = 'Sit_Idle', // loop: seated idle
-  SIT_WORK = 'Sit_Work', // loop: seated working
-  LOOK_AROUND = 'LookAround',
-  HAPPY = 'Happy',
-  SAD = 'Sad',
-  PICK = 'Pick',
-  WAVE = 'Wave'
+  IDLE = "Idle",
+  WALK = "Walk",
+  TALK = "Talk",
+  LISTEN = "Listen",
+  /** One-shot sit-down entry animation. */
+  SIT_DOWN = "Sit",
+  /** Loop: seated idle. */
+  SIT_IDLE = "Sit_Idle",
+  /** Loop: seated working. */
+  SIT_WORK = "Sit_Work",
+  LOOK_AROUND = "LookAround",
+  HAPPY = "Happy",
+  SAD = "Sad",
+  PICK = "Pick",
+  WAVE = "Wave",
 }
 
 /** Stored as a float in the GPU agent buffer (.w component). */
 export enum AgentBehavior {
-  IDLE   = 0, // position locked, velocity zero, facing follows waypoint field (if non-zero)
-  GOTO   = 1, // moves toward target waypoint (.x/.z of agent buffer)
-  SEATED = 2, // position locked, velocity zero — character is seated, treated like IDLE on GPU
+  /** Position locked, velocity zero, facing follows the waypoint field (if non-zero). */
+  IDLE = 0,
+  /** Moves toward the target waypoint (.x/.z of the agent buffer). */
+  GOTO = 1,
+  /** Position locked, velocity zero: the character is seated, treated like IDLE on the GPU. */
+  SEATED = 2,
 }
-
-// ── Character State Machine ───────────────────────────────────
 
 /**
  * High-level character state keys understood by the state machine.
  * Each maps declaratively to an animation + optional expression.
+ * `sit_down` is a one-shot entry animation that auto-transitions to `sit_idle`; `sit_idle` and
+ * `sit_work` loop; `happy_loop` and `wave_loop` are looping versions with no auto-transition.
  */
 export type CharacterStateKey =
-  | 'idle'
-  | 'walk'
-  | 'talk'
-  | 'listen'
-  | 'sit_down'   // one-shot entry animation; auto-transitions to sit_idle
-  | 'sit_idle'   // looping: seated at rest
-  | 'sit_work'   // looping: seated working
-  | 'look_around'
-  | 'happy'
-  | 'happy_loop' // looping version of happy, no auto-transition
-  | 'sad'
-  | 'pick'
-  | 'wave'
-  | 'wave_loop'; // looping version of wave, no auto-transition
+  | "idle"
+  | "walk"
+  | "talk"
+  | "listen"
+  | "sit_down"
+  | "sit_idle"
+  | "sit_work"
+  | "look_around"
+  | "happy"
+  | "happy_loop"
+  | "sad"
+  | "pick"
+  | "wave"
+  | "wave_loop"
 
 /**
  * Declarative definition of a character state.
@@ -99,52 +59,48 @@ export type CharacterStateKey =
  */
 export interface CharacterStateDef {
   /** GPU animation to play. */
-  animation: AnimationName;
+  animation: AnimationName
   /** Facial expression to set when entering this state. Undefined = keep current. */
-  expression?: ExpressionKey;
+  expression?: ExpressionKey
   /** True = animation loops forever. False = plays once then auto-transitions. */
-  loop: boolean;
+  loop: boolean
   /** Override the clip duration (seconds). Only used when loop=false. */
-  durationOverride?: number;
+  durationOverride?: number
   /** State to enter automatically after a non-looping animation finishes. */
-  nextState?: CharacterStateKey;
+  nextState?: CharacterStateKey
   /**
    * Whether external callers can interrupt this state with a new one.
    * Non-interruptible states (e.g. 'sit_down' entry) must finish before new commands apply.
    */
-  interruptible: boolean;
+  interruptible: boolean
 }
-
-// ── POI System ────────────────────────────────────────────────
 
 export interface PoiDef {
-  id: string;
+  id: string
   /** World-space position to walk toward. */
-  position: THREE.Vector3;
+  position: THREE.Vector3
   /** World-space quaternion for orientation. */
-  quaternion: THREE.Quaternion;
+  quaternion: THREE.Quaternion
   /** State to enter upon arrival. */
-  arrivalState: CharacterStateKey;
+  arrivalState: CharacterStateKey
   /** Agent index currently occupying this POI, or null if free. */
-  occupiedBy: number | null;
+  occupiedBy: number | null
   /** Optional label to show on hover (e.g. "Sit down"). */
-  label?: string;
+  label?: string
 }
-
-// ── Driver interfaces ─────────────────────────────────────────
 
 /**
  * Low-level rendering/GPU interface that behavior drivers call.
  * Decouples BehaviorManager and StateMachine from concrete CharacterManager.
  */
 export interface ICharacterDriver {
-  setPhysicsMode(index: number, mode: AgentBehavior): void;
-  setAnimation(index: number, name: AnimationName, loop?: boolean): void;
-  setExpression(index: number, key: ExpressionKey): void;
-  setSpeaking(index: number, isSpeaking: boolean): void;
-  getAgentState(index: number): AgentBehavior;
-  getAnimationDuration(name: AnimationName): number;
-  getCPUPositions(): Float32Array | null;
+  setPhysicsMode(index: number, mode: AgentBehavior): void
+  setAnimation(index: number, name: AnimationName, loop?: boolean): void
+  setExpression(index: number, key: ExpressionKey): void
+  setSpeaking(index: number, isSpeaking: boolean): void
+  getAgentState(index: number): AgentBehavior
+  getAnimationDuration(name: AnimationName): number
+  getCPUPositions(): Float32Array | null
 }
 
 /**
@@ -152,21 +108,23 @@ export interface ICharacterDriver {
  * (PlayerInputDriver, NpcAgentDriver, etc.)
  */
 export interface IAgentDriver {
-  readonly agentIndex: number;
-  update(positions: Float32Array, delta: number): void;
-  dispose(): void;
+  readonly agentIndex: number
+  update(positions: Float32Array, delta: number): void
+  dispose(): void
 }
 
-// ── Misc ─────────────────────────────────────────────────────
-
-export type ExpressionKey = 'idle' | 'listening' | 'neutral' | 'surprised' | 'happy' | 'sick' | 'wink' | 'doubtful' | 'sad';
+export type ExpressionKey =
+  | "idle"
+  | "listening"
+  | "neutral"
+  | "surprised"
+  | "happy"
+  | "sick"
+  | "wink"
+  | "doubtful"
+  | "sad"
 
 export interface AtlasCoords {
-  col: number;
-  row: number;
-}
-
-export interface ExpressionConfig {
-  eyes: AtlasCoords;
-  mouth: AtlasCoords;
+  col: number
+  row: number
 }

@@ -1,193 +1,298 @@
-import { Info, RefreshCcw } from 'lucide-react';
-import React, { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
+import { FileText, Info, KeyRound, RefreshCcw } from "lucide-react"
+import { useMemo, useState } from "react"
+import { useShallow } from "zustand/react/shallow"
+import { Markdown } from "@/components/Markdown"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { formatTokens } from "@/lib/format"
+import { cn } from "@/lib/utils"
+import type { AgenticSystem, AgentNode } from "../data/agents"
+import { type ProjectPhase, type Task, useCoreStore } from "../integration/store/coreStore"
+import { useTeamRoster } from "../integration/store/teamStore"
+import { useUiStore } from "../integration/store/uiStore"
+import { useSceneManager } from "../simulation/SceneContext"
+import { Avatar, avatarTypeFor } from "./components/Avatar"
+import { SectionHeading } from "./components/SectionHeading"
+import { selectAgent } from "./components/selectAgent"
+import { SCROLL_AREA_BLOCK } from "./components/styles"
+import { TokenUsageRow } from "./components/TokenUsageRow"
+import PricingModal from "./PricingModal"
+import ResetModal from "./ResetModal"
 
-import { getAgentSet, getAllAgents } from '../data/agents';
-import { useCoreStore } from '../integration/store/coreStore';
-import { useTeamStore, useActiveTeam } from '../integration/store/teamStore';
-import { useSceneManager } from '../simulation/SceneContext';
-import { USER_COLOR } from '../theme/brand';
-import ResetModal from './ResetModal';
-import PricingModal from './PricingModal';
-import { useShallow } from 'zustand/react/shallow';
-
-export function formatTokens(num: number): string {
-  if (num >= 1000000) {
-    return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-  }
-  if (num >= 1000) {
-    return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
-  }
-  return num.toString();
+const PHASE_BADGE: Record<ProjectPhase, { label: string; className: string }> = {
+  idle: { label: "Ready to start", className: "border-input bg-muted text-muted-foreground" },
+  working: { label: "Working", className: "bg-user text-user-foreground" },
+  done: { label: "Done", className: "bg-success text-success-foreground" },
 }
 
-const ProjectView: React.FC = () => {
-  const { userBrief, phase, hasLogs, resetProject, totalEstimatedCost, totalTokenUsage, agentTokenUsage, agentEstimatedCost } = useCoreStore(useShallow((s) => ({
-    userBrief: s.userBrief,
-    phase: s.phase,
-    hasLogs: s.actionLog.length > 0,
-    resetProject: s.resetProject,
-    totalEstimatedCost: s.totalEstimatedCost,
-    totalTokenUsage: s.totalTokenUsage,
-    agentTokenUsage: s.agentTokenUsage,
-    agentEstimatedCost: s.agentEstimatedCost,
-  })));
-  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
-  const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
-  const activeTeam = useActiveTeam();
-  const scene = useSceneManager();
+type RosterStatus = { label: string; className: string }
 
-  const handleResetConfirm = () => {
-    // 1. Reset the 3D scene (teleport agents, clear chat)
-    scene?.resetScene();
-    // 3. Clear project state
-    resetProject();
-    setIsResetModalOpen(false);
-  };
+function getRosterStatus(
+  agent: AgentNode,
+  system: AgenticSystem,
+  phase: ProjectPhase,
+  tasks: Task[],
+): RosterStatus | null {
+  const isLead = agent.index === system.leadAgent.index
+  if (isLead && phase === "idle")
+    return { label: "Awaiting brief", className: "bg-user/10 text-user" }
+  if (isLead && phase === "done")
+    return { label: "Project ready", className: "bg-yellow-100 text-yellow-800" }
+  if (tasks.some((task) => task.assignedAgentId === agent.index && task.status === "on_hold"))
+    return { label: "Needs review", className: "bg-user/10 text-user" }
+  if (tasks.some((task) => task.assignedAgentId === agent.index && task.status === "in_progress"))
+    return { label: "Working", className: "bg-emerald-50 text-emerald-700" }
+  return null
+}
+
+/** Keyboard-reachable way to select agents, which otherwise can only be picked in the 3D canvas. */
+function TeamRoster({ agents, system }: { agents: readonly AgentNode[]; system: AgenticSystem }) {
+  const { phase, tasks } = useCoreStore(
+    useShallow((state) => ({ phase: state.phase, tasks: state.tasks })),
+  )
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto p-6 bg-white/50">
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-xl font-black text-darkDelegation leading-tight">Project Info</h2>
-          <div className="flex items-center gap-2">
-            <div
-              className="px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-colors border border-transparent"
-              style={{
-                backgroundColor: phase === 'working' ? USER_COLOR : (phase === 'done' ? '#22c55e' : '#f4f4f5'),
-                color: phase === 'idle' ? '#a1a1aa' : 'white',
-                borderColor: phase === 'idle' ? '#e4e4e7' : 'transparent'
-              }}
+    <ul className="space-y-1">
+      {agents.map((agent) => {
+        const status = getRosterStatus(agent, system, phase, tasks)
+        return (
+          <li key={agent.index}>
+            <Button
+              variant="ghost"
+              onClick={() => selectAgent(agent.index)}
+              className="h-auto w-full justify-start gap-3 rounded-xl px-2 py-1.5"
             >
-              <div className={`w-1.5 h-1.5 rounded-full ${phase === 'working' ? 'bg-white animate-pulse' : 'bg-white opacity-40'}`} />
-              {phase === 'idle' ? 'Ready to Start' : phase}
-            </div>
-          </div>
-        </div>
-      </div>
+              <Avatar type={avatarTypeFor(system, agent.index)} color={agent.color} size={28} />
+              <span className="min-w-0 flex-1 truncate text-left text-xs font-bold tracking-tight text-foreground">
+                {agent.name}
+              </span>
+              {status && (
+                <Badge className={cn("text-[11px] font-bold", status.className)}>
+                  {status.label}
+                </Badge>
+              )}
+            </Button>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
 
-      <div className="h-px bg-zinc-100 w-full mb-6" />
+/**
+ * Inspector body when no agent is selected: project status, brief, roster and spend. The
+ * "Review deliverable" button is the way back in after "Review later" left the deliverable pending.
+ */
+function ProjectView() {
+  const {
+    userBrief,
+    phase,
+    hasLogs,
+    resetProject,
+    totalEstimatedCost,
+    totalTokenUsage,
+    agentTokenUsage,
+    agentEstimatedCost,
+  } = useCoreStore(
+    useShallow((state) => ({
+      userBrief: state.userBrief,
+      phase: state.phase,
+      hasLogs: state.actionLog.length > 0,
+      resetProject: state.resetProject,
+      totalEstimatedCost: state.totalEstimatedCost,
+      totalTokenUsage: state.totalTokenUsage,
+      agentTokenUsage: state.agentTokenUsage,
+      agentEstimatedCost: state.agentEstimatedCost,
+    })),
+  )
+  const canReopenReview = useCoreStore(
+    (state) => state.pendingOutputPrompt !== "" && !state.isReviewingOutput,
+  )
+  const setReviewingOutput = useCoreStore((state) => state.setReviewingOutput)
+  const hasKey = useUiStore((state) => !!state.llmConfig.apiKey)
+  const setBYOKOpen = useUiStore((state) => state.setBYOKOpen)
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false)
+  const [isPricingModalOpen, setIsPricingModalOpen] = useState(false)
+  const { system: activeTeam, agents, byIndex } = useTeamRoster()
+  const scene = useSceneManager()
 
-      {/* Reset Project Button */}
-      {hasLogs && (
-        <div className="mb-8 w-full">
-          <button
-            onClick={() => setIsResetModalOpen(true)}
-            className={`w-full flex items-center justify-center gap-2 px-4 py-4 rounded-2xl transition-all active:scale-[0.98] group ${phase === 'done'
-                ? 'bg-darkDelegation hover:bg-black text-white shadow-xl shadow-darkDelegation/10'
-                : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-400 hover:text-zinc-600'
-              }`}
+  const usageRows = useMemo(
+    () =>
+      Object.entries(agentTokenUsage)
+        .map(([agentIndex, usage]) => ({ agent: byIndex.get(Number(agentIndex)), usage }))
+        .filter(
+          (row): row is { agent: AgentNode; usage: typeof row.usage } =>
+            !!row.agent && row.usage.totalTokens > 0,
+        )
+        .sort((a, b) => b.usage.totalTokens - a.usage.totalTokens),
+    [agentTokenUsage, byIndex],
+  )
+
+  const handleResetConfirm = () => {
+    scene?.resetScene()
+    resetProject()
+    setIsResetModalOpen(false)
+  }
+
+  const phaseBadge = PHASE_BADGE[phase]
+
+  return (
+    <ScrollArea className={cn("h-full bg-background/50", SCROLL_AREA_BLOCK)}>
+      <div className="flex flex-col p-6">
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="text-xl leading-tight font-black text-foreground">Project info</h2>
+          <Badge
+            className={cn(
+              "gap-1.5 rounded-xl px-2.5 py-1 text-[11px] font-black",
+              phaseBadge.className,
+            )}
           >
-            <RefreshCcw size={14} strokeWidth={3} className="transition-transform group-hover:rotate-180 duration-500" />
-            <span className="text-[10px] font-black uppercase tracking-widest">Start New Project</span>
-          </button>
+            <span
+              className={cn(
+                "size-1.5 rounded-full bg-current",
+                phase === "working" ? "animate-pulse" : "opacity-40",
+              )}
+              aria-hidden
+            />
+            {phaseBadge.label}
+          </Badge>
         </div>
-      )}
 
-      {/* Brief */}
-      <div className="mb-10">
-        <div className="flex items-center gap-2 mb-4">
-          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">User Brief</p>
-          <div className="h-px flex-1 bg-zinc-100" />
-        </div>
-        {userBrief ? (
-          <div className="space-y-4">
-            <div className="markdown-content text-xs text-zinc-600 leading-relaxed font-medium bg-white/40 p-4 rounded-xl border border-zinc-100/50 max-h-[300px] overflow-y-auto custom-scrollbar">
-              <ReactMarkdown>
-                {userBrief}
-              </ReactMarkdown>
-            </div>
-          </div>
-        ) : (
-          <p className="text-xs text-zinc-400 italic">No active brief. Talk to the Lead Agent to define your project.</p>
+        <div className="mb-6 h-px w-full bg-border" aria-hidden />
+
+        {!hasKey && (
+          <Alert className="mb-6 rounded-xl">
+            <KeyRound />
+            <AlertTitle>Add a Gemini API key</AlertTitle>
+            <AlertDescription>
+              <p>The agents run on Google Gemini with your own key.</p>
+              <Button size="cta" onClick={() => setBYOKOpen(true)} className="mt-2 h-8 px-3">
+                Add API key
+              </Button>
+            </AlertDescription>
+          </Alert>
         )}
-      </div>
 
-      {/* Token Usage */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2 flex-1">
-            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Token Usage</p>
-            <div className="h-px flex-1 bg-zinc-100" />
-          </div>
-          <button
-            onClick={() => setIsPricingModalOpen(true)}
-            className="flex items-center gap-2 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 hover:border-emerald-200 rounded-lg transition-all active:scale-95 group ml-4 cursor-pointer"
+        {canReopenReview && (
+          <Button
+            size="cta"
+            onClick={() => setReviewingOutput(true)}
+            className="mb-6 h-12 w-full rounded-2xl shadow-xl shadow-primary/10"
           >
-            <span className="text-[10px] font-black uppercase tracking-tight text-emerald-600">
-              Total Est. ${totalEstimatedCost.toFixed(3)}
-            </span>
-            <Info size={11} className="text-emerald-500 group-hover:text-emerald-600" />
-          </button>
-        </div>
+            <FileText strokeWidth={3} />
+            Review deliverable
+          </Button>
+        )}
 
-        <div className="bg-zinc-50 rounded-xl p-5 border border-zinc-100 mb-6">
-          <div className="flex flex-col gap-1 mb-6">
-            <span className="text-4xl font-mono font-black text-darkDelegation tracking-tighter">
+        {hasLogs && (
+          <Button
+            variant={phase === "done" ? "default" : "secondary"}
+            size="cta"
+            onClick={() => setIsResetModalOpen(true)}
+            className={cn(
+              "group mb-8 h-12 w-full rounded-2xl",
+              phase === "done"
+                ? "shadow-xl shadow-primary/10"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <RefreshCcw
+              strokeWidth={3}
+              className="transition-transform duration-500 group-hover:rotate-180"
+            />
+            Start new project
+          </Button>
+        )}
+
+        <section className="mb-10">
+          <SectionHeading label="User brief" className="mb-4" />
+          {userBrief ? (
+            <Markdown className="max-h-[300px] overflow-y-auto rounded-xl border border-border/50 bg-background/40 p-4 text-xs leading-relaxed font-medium text-foreground/80">
+              {userBrief}
+            </Markdown>
+          ) : (
+            <p className="text-xs text-muted-foreground italic">
+              No active brief. Talk to the lead agent to define your project.
+            </p>
+          )}
+        </section>
+
+        <section className="mb-10">
+          <SectionHeading label="Team" className="mb-3" />
+          <TeamRoster agents={agents} system={activeTeam} />
+        </section>
+
+        <section className="mb-8">
+          <SectionHeading
+            label="Token usage"
+            className="mb-4"
+            action={
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsPricingModalOpen(true)}
+                className="ml-2 h-7 gap-2 rounded-lg border-emerald-100 bg-emerald-50 px-2.5 text-emerald-700 hover:border-emerald-200 hover:bg-emerald-100 hover:text-emerald-700"
+              >
+                <span className="text-[11px] font-black tracking-tight">
+                  Total est. ${totalEstimatedCost.toFixed(3)}
+                </span>
+                <Info className="size-3" aria-hidden />
+              </Button>
+            }
+          />
+
+          <div className="mb-6 rounded-xl border border-border bg-muted/50 p-5">
+            <p className="mb-6 font-mono text-4xl font-black tracking-tighter text-foreground">
               {formatTokens(totalTokenUsage.totalTokens)}
-            </span>
+            </p>
+            <TokenUsageRow usage={totalTokenUsage} />
           </div>
-          <div className="flex items-center gap-1.5 text-[11px] font-bold font-mono">
-            <span className="text-zinc-700">{formatTokens(totalTokenUsage.promptTokens)} <span className="text-zinc-400 font-medium">input</span></span>
-            <span className="text-zinc-300">+</span>
-            <span className="text-zinc-700">{formatTokens(totalTokenUsage.completionTokens)} <span className="text-zinc-400 font-medium">output</span></span>
-          </div>
-        </div>
 
-        <div className="space-y-1">
-          {Object.entries(agentTokenUsage)
-            .sort(([, a], [, b]) => b.totalTokens - a.totalTokens)
-            .map(([idx, usage]) => {
-              const agentIndex = parseInt(idx);
-              const agents = getAllAgents(activeTeam);
-              const agent = agentIndex === -1
-                ? { name: 'System', color: '#71717a' }
-                : agents.find(a => a.index === agentIndex);
-
-              if (!agent || usage.totalTokens === 0) return null;
-
-              return (
-                <div key={idx} className="flex items-center justify-between py-2 px-2 hover:bg-zinc-100/50 rounded-lg transition-colors group">
-                  <div className="flex items-center gap-3">
-                    <div className="w-1.5 h-1.5 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.1)]" style={{ backgroundColor: agent.color }} />
-                    <span className="text-[11px] font-bold text-zinc-600 uppercase tracking-tight group-hover:text-darkDelegation transition-colors">
-                      {agent.name}
+          <ul className="space-y-1">
+            {usageRows.map(({ agent, usage }) => (
+              <li
+                key={agent.index}
+                className="group flex items-center justify-between rounded-lg px-2 py-2 transition-colors hover:bg-muted/50"
+              >
+                <div className="flex items-center gap-3">
+                  <span
+                    className="size-1.5 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.1)]"
+                    style={{ backgroundColor: agent.color }}
+                    aria-hidden
+                  />
+                  <span className="text-xs font-bold tracking-tight text-foreground/80 transition-colors group-hover:text-foreground">
+                    {agent.name}
+                  </span>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex items-center gap-2">
+                    {agentEstimatedCost[agent.index] > 0 && (
+                      <span className="font-mono text-[11px] font-bold text-emerald-700">
+                        ${agentEstimatedCost[agent.index].toFixed(4)}
+                      </span>
+                    )}
+                    <span className="font-mono text-xs font-black text-foreground">
+                      {formatTokens(usage.totalTokens)}
                     </span>
                   </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <div className="flex items-center gap-2">
-                      {agentEstimatedCost[agentIndex] > 0 && (
-                        <span className="text-[9px] font-mono font-bold text-emerald-600/70">
-                          ${agentEstimatedCost[agentIndex].toFixed(4)}
-                        </span>
-                      )}
-                      <span className="text-[11px] font-mono font-black text-darkDelegation">
-                        {formatTokens(usage.totalTokens)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 text-[9px] font-bold font-mono text-zinc-400">
-                      <span>{formatTokens(usage.promptTokens)} <span className="font-medium opacity-60">input</span></span>
-                      <span className="text-zinc-200">+</span>
-                      <span>{formatTokens(usage.completionTokens)} <span className="font-medium opacity-60">output</span></span>
-                    </div>
-                  </div>
+                  <TokenUsageRow usage={usage} size="sm" className="text-muted-foreground" />
                 </div>
-              );
-            })}
-        </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <ResetModal
+          isOpen={isResetModalOpen}
+          onClose={() => setIsResetModalOpen(false)}
+          onConfirm={handleResetConfirm}
+        />
+        {isPricingModalOpen && <PricingModal onClose={() => setIsPricingModalOpen(false)} />}
       </div>
+    </ScrollArea>
+  )
+}
 
-      <ResetModal
-        isOpen={isResetModalOpen}
-        onClose={() => setIsResetModalOpen(false)}
-        onConfirm={handleResetConfirm}
-      />
-
-      {isPricingModalOpen && (
-        <PricingModal onClose={() => setIsPricingModalOpen(false)} />
-      )}
-    </div>
-  );
-};
-
-export default ProjectView;
+export default ProjectView

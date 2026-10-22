@@ -1,20 +1,33 @@
-import { AgentActionContext } from '../ToolRegistry';
-import { useCoreStore } from '../../../integration/store/coreStore';
+import { isLeadAgent } from "../../../data/agents"
+import { fail, readString, type ToolSpec } from "./types"
 
-export function setUserBrief(agent: AgentActionContext, args: { brief: string }): boolean {
-  const store = useCoreStore.getState();
-  const { brief } = args;
+export const setUserBrief: ToolSpec<{ brief: string }> = {
+  definition: {
+    type: "function",
+    function: {
+      name: "set_user_brief",
+      description: "Start project with brief.",
+      parameters: {
+        type: "object",
+        properties: { brief: { type: "string" } },
+        required: ["brief"],
+      },
+    },
+  },
 
-  // VALIDATION: Only Lead Agent (index 1) can set the brief
-  if (agent.data.index !== 1) {
-    console.warn(`[ToolRegistry] Agent ${agent.data.name} attempted set_user_brief, but is not the Lead Agent.`);
-    return false;
-  }
-  
-  if (store.phase !== 'idle') return false;
+  isOffered: (agent, team, phase) => phase === "idle" && isLeadAgent(team, agent.index),
 
-  store.startProject(brief);
-  store.addLogEntry({ agentIndex: agent.data.index, action: 'defined project brief', taskId: undefined });
-  
-  return true;
+  parseArgs(raw) {
+    const brief = readString(raw, "brief", 4_000)
+    return !brief.ok ? brief : { ok: true, value: { brief: brief.value } }
+  },
+
+  run({ agent, team, project }, { brief }) {
+    if (!isLeadAgent(team, agent.index)) return fail("Only the lead agent can set the brief.")
+    if (project.snapshot().phase !== "idle") return fail("The project has already started.")
+
+    project.startProject(brief)
+    project.logAction({ agentIndex: agent.index, action: "defined project brief" })
+    return { ok: true }
+  },
 }

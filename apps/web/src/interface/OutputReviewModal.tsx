@@ -1,165 +1,157 @@
-import { useState, useEffect } from 'react'
-import { useCoreStore } from '../integration/store/coreStore'
-import { useActiveTeam } from '../integration/store/teamStore'
-import { useSceneManager } from '../simulation/SceneContext'
-import { Type, X, Check, AlertCircle } from 'lucide-react'
+import { Check, FileText, RotateCcw } from "lucide-react"
+import { useEffect, useState } from "react"
+import { toast } from "sonner"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Textarea } from "@/components/ui/textarea"
+import { useCoreStore } from "../integration/store/coreStore"
+import { useActiveTeam } from "../integration/store/teamStore"
+import { useSceneManager } from "../simulation/SceneContext"
 
+const REVIEW_TOAST_ID = "deliverable-review"
+
+/**
+ * Lets the user edit and approve the lead's final deliverable. The draft reloads from the store
+ * whenever the review (re)opens or the lead revises it.
+ */
 export function OutputReviewModal() {
-  const isReviewingOutput = useCoreStore((s) => s.isReviewingOutput)
-  const setReviewingOutput = useCoreStore((s) => s.setReviewingOutput)
-  const pendingOutputPrompt = useCoreStore((s) => s.pendingOutputPrompt)
-  const resetProject = useCoreStore((s) => s.resetProject)
+  const isReviewingOutput = useCoreStore((state) => state.isReviewingOutput)
+  const setReviewingOutput = useCoreStore((state) => state.setReviewingOutput)
+  const pendingDeliverable = useCoreStore((state) => state.pendingOutputPrompt)
+  const setPendingDeliverable = useCoreStore((state) => state.setPendingOutputPrompt)
+  const finalizeOutput = useCoreStore((state) => state.finalizeOutput)
+  const resetProject = useCoreStore((state) => state.resetProject)
 
   const activeTeam = useActiveTeam()
   const scene = useSceneManager()
-  const [prompt, setPrompt] = useState(pendingOutputPrompt)
+  const [draft, setDraft] = useState(pendingDeliverable)
   const [isConfirmingReset, setIsConfirmingReset] = useState(false)
 
-  // Sync internal state when store changes
-  useEffect(() => {
-    if (isReviewingOutput) {
-      setPrompt(pendingOutputPrompt)
+  const draftSource = isReviewingOutput ? pendingDeliverable : null
+  const [syncedSource, setSyncedSource] = useState<string | null>(null)
+  if (draftSource !== syncedSource) {
+    setSyncedSource(draftSource)
+    if (draftSource !== null) {
+      setDraft(draftSource)
       setIsConfirmingReset(false)
     }
-  }, [isReviewingOutput, pendingOutputPrompt])
-
-  if (!isReviewingOutput) return null
-
-  const handleApprove = () => {
-    scene?.getLeadBrain()?.finalizeOutput(prompt)
   }
 
-  const handleCancelAndReset = () => {
-    setIsConfirmingReset(true)
+  useEffect(() => {
+    if (isReviewingOutput || !pendingDeliverable) toast.dismiss(REVIEW_TOAST_ID)
+  }, [isReviewingOutput, pendingDeliverable])
+
+  /** Closing is non-destructive: keep the edited draft and offer a way back in. */
+  const reviewLater = () => {
+    setPendingDeliverable(draft)
+    setReviewingOutput(false)
+    toast("Final deliverable is waiting for your review", {
+      id: REVIEW_TOAST_ID,
+      duration: Infinity,
+      action: { label: "Review", onClick: () => setReviewingOutput(true) },
+    })
   }
 
   const confirmReset = () => {
+    scene?.resetScene()
     resetProject()
-    setIsConfirmingReset(false)
-    setReviewingOutput(false)
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[110] flex items-center justify-center bg-darkDelegation/40 backdrop-blur-md p-4"
-      onClick={handleCancelAndReset}
-    >
-      <div
-        className="bg-white border border-black/10 rounded-[32px] w-180 max-w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden scale-in"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-8 py-6 border-b border-zinc-100 bg-white">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-darkDelegation flex items-center justify-center text-white shadow-lg">
-              <Type size={24} />
-            </div>
-            <div>
-              <h2 className="text-sm font-black uppercase tracking-widest text-darkDelegation flex items-center gap-2">
-                Review Final Deliverable
-              </h2>
-              <p className="text-[11px] text-zinc-400 mt-0.5">
-                The lead agent has synthesized the team's work. Edit it before delivery.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={handleCancelAndReset}
-            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-zinc-100 text-zinc-400 hover:text-zinc-700 transition-all active:scale-90"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto px-8 py-8 space-y-8 bg-zinc-50/30">
-          {/* Deliverable Editor */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
-                DELIVERABLE
-              </label>
-              <div className="px-2 py-0.5 bg-zinc-100 rounded text-[9px] font-bold text-zinc-400 tracking-tighter">
-                EDITABLE
-              </div>
-            </div>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              className="w-full h-72 bg-white border border-zinc-200 rounded-2xl p-4 text-sm text-zinc-700 leading-relaxed font-mono focus:ring-2 focus:ring-darkDelegation outline-none resize-none shadow-sm"
-              placeholder="Final deliverable (Markdown)..."
-            />
-          </div>
-
-          <div className="bg-darkDelegation rounded-[24px] p-6 text-white space-y-4 shadow-xl">
-            <div>
-              <p className="text-[9px] text-zinc-500 uppercase font-bold tracking-widest">Team</p>
-              <p className="text-xs font-black">{activeTeam.teamName}</p>
-            </div>
-            <p className="pt-4 border-t border-white/10 text-[10px] leading-relaxed text-zinc-400 italic">
-              "This is the final phase. Edit the deliverable as needed. Once approved, the project will be marked complete."
-            </p>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="px-8 py-6 border-t border-zinc-100 flex justify-end items-center bg-white gap-3">
-          <button
-            onClick={handleCancelAndReset}
-            className="px-6 py-3 bg-white border border-zinc-200 text-zinc-500 rounded-2xl text-[10px] font-black uppercase tracking-[0.15em] hover:bg-zinc-50 hover:text-red-500 hover:border-red-500 transition-all active:scale-[0.98]"
-          >
-            Cancel & Reset Project
-          </button>
-
-          <button
-            onClick={handleApprove}
-            className="px-8 py-3 bg-darkDelegation text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.15em] hover:bg-black active:scale-[0.98] transition-all shadow-lg shadow-black/10 flex items-center gap-2"
-          >
-            <Check size={14} strokeWidth={3} />
-            Approve & Deliver
-          </button>
-        </div>
-      </div>
-
-      {/* Confirmation Modal Overlay */}
-      {isConfirmingReset && (
-        <div
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-darkDelegation/40 backdrop-blur-md p-4 cursor-default"
-          onClick={(e) => {
-            e.stopPropagation()
-            setIsConfirmingReset(false)
-          }}
+    <>
+      <Dialog open={isReviewingOutput} onOpenChange={(open) => !open && reviewLater()}>
+        <DialogContent
+          className="flex max-h-[90dvh] w-[45rem] flex-col gap-0 overflow-hidden rounded-3xl p-0 sm:max-w-[45rem]"
+          onInteractOutside={(event) => event.preventDefault()}
         >
-          <div
-            className="bg-white border border-black/10 rounded-[24px] w-96 p-8 shadow-2xl flex flex-col items-center text-center gap-6 animate-in fade-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center text-red-500">
-              <AlertCircle size={32} />
+          <DialogHeader className="flex-row items-center gap-4 border-b border-border px-8 py-6 pr-14 text-left">
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
+              <FileText className="size-6" />
             </div>
-            <div>
-              <h3 className="text-sm font-black uppercase tracking-widest text-darkDelegation">Are you absolutely sure?</h3>
-              <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
-                All progress will be lost and the project will be reset to its initial state. This action cannot be undone.
-              </p>
+            <div className="min-w-0">
+              <DialogTitle className="text-sm font-black">Review final deliverable</DialogTitle>
+              <DialogDescription className="mt-1 text-xs leading-relaxed">
+                {activeTeam.teamName} has synthesized its work. Edit it as needed; once approved,
+                the project is marked complete.
+              </DialogDescription>
             </div>
-            <div className="flex flex-col w-full gap-2 mt-2">
-              <button
-                onClick={confirmReset}
-                className="w-full py-4 bg-red-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.15em] hover:bg-red-600 active:scale-[0.98] transition-all"
+          </DialogHeader>
+
+          <ScrollArea className="min-h-0 flex-1 bg-muted/30">
+            <div className="space-y-3 px-8 py-8">
+              <div className="flex items-center justify-between">
+                <Label
+                  htmlFor="deliverable-draft"
+                  className="text-xs font-black text-muted-foreground"
+                >
+                  Deliverable
+                </Label>
+                <Badge variant="secondary" className="text-[11px] font-bold text-muted-foreground">
+                  Editable Markdown
+                </Badge>
+              </div>
+              <Textarea
+                id="deliverable-draft"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                className="field-sizing-fixed h-72 resize-none rounded-2xl bg-background p-4 font-mono text-sm leading-relaxed shadow-sm"
+                placeholder="Final deliverable (Markdown)..."
+              />
+            </div>
+          </ScrollArea>
+
+          <DialogFooter className="items-center gap-3 border-t border-border px-8 py-6 sm:justify-between">
+            <Button
+              variant="ghost-destructive"
+              onClick={() => setIsConfirmingReset(true)}
+              className="rounded-2xl text-xs font-black"
+            >
+              <RotateCcw />
+              Discard run
+            </Button>
+            <div className="flex flex-col-reverse gap-3 sm:flex-row">
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={reviewLater}
+                className="h-11 rounded-2xl px-6 text-xs font-black"
               >
-                Yes, Reset Project
-              </button>
-              <button
-                onClick={() => setIsConfirmingReset(false)}
-                className="w-full py-4 bg-zinc-100 text-zinc-500 rounded-2xl text-[10px] font-black uppercase tracking-[0.15em] hover:bg-zinc-200 active:scale-[0.98] transition-all"
+                Review later
+              </Button>
+              <Button
+                size="lg"
+                onClick={() => finalizeOutput(draft)}
+                className="h-11 rounded-2xl px-8 text-xs font-black shadow-lg shadow-black/10"
               >
-                No, Go Back
-              </button>
+                <Check strokeWidth={3} />
+                Approve & deliver
+              </Button>
             </div>
-          </div>
-        </div>
-      )}
-    </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={isConfirmingReset}
+        onOpenChange={setIsConfirmingReset}
+        icon={<RotateCcw />}
+        title="Discard this run?"
+        description="All progress will be lost and the project will reset to its initial state. This cannot be undone."
+        confirmLabel="Discard run"
+        cancelLabel="Keep reviewing"
+        onConfirm={confirmReset}
+      />
+    </>
   )
 }
