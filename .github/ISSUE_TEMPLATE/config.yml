@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability (private)
+    url: https://github.com/volken-dev/3d-office/security/advisories/new
+    about: Please report vulnerabilities privately via GitHub Security Advisories, not as a public issue.
