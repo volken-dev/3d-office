@@ -3,7 +3,7 @@ name: Create Release
 on:
   push:
     tags:
-      - 'v*' # Activa el proceso cuando subes tags como v0.1.0
+      - 'v*' # Runs when a version tag such as v0.1.0 is pushed
 
 permissions:
   contents: write
@@ -13,12 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
-          # Busca el fichero dentro de la carpeta /releases/ que coincida exactamente con el nombre del tag
+          # Uses the notes file in releases/ whose name matches the tag exactly
           body_path: ./releases/${{ github.ref_name }}.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

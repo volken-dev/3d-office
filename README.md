@@ -22,19 +22,26 @@ This project is designed for **software teams and developers** looking to explor
 
 ## Getting Started
 
-1. **Install dependencies:**
+Requires [Bun](https://bun.com) 1.3+.
 
 ```bash
-npm install
+bun install
+bun dev
 ```
 
-2. **Run the development server:**
+Then open `http://localhost:3000/the-delegation`.
 
-```bash
-npm run dev
-```
+### Repository layout
 
-3. **Open the app:** Navigate to the local URL shown in your terminal (usually `http://localhost:3000/the-delegation`).
+This is a [Turborepo](https://turborepo.com) monorepo using Bun workspaces:
+
+| Path | What it is |
+|---|---|
+| `apps/web` | Next.js app (static export, deployed to GitHub Pages) |
+| `apps/api` | Hono API server (prepared, not yet used by the web app) |
+| `packages/shared` | API contract types and schemas shared by web and api |
+
+Common tasks run from the repo root through Turborepo: `bun dev`, `bun run build`, `bun run lint`, `bun run typecheck`. Target one package with `bunx turbo run <task> --filter=web`.
 
 ## Features
 
@@ -66,9 +73,11 @@ npm run dev
 ## Tech Stack Deep Dive
 
 - **Engine:** [Three.js](https://threejs.org/) (WebGPU & TSL) for advanced rendering and compute.
+- **App:** [Next.js](https://nextjs.org/) (static export), [shadcn/ui](https://ui.shadcn.com/) and [Tailwind CSS](https://tailwindcss.com/).
 - **UI:** [React](https://react.dev/) & [React Flow](https://reactflow.dev/) for node-based team visualization.
 - **AI:** [Gemini API](https://deepmind.google/technologies/gemini/) is the core LLM provider.
 - **State:** [Zustand](https://github.com/pmndrs/zustand) for a unified, reactive store across the 3D world and React UI.
+- **Tooling:** [Bun](https://bun.com) workspaces and [Turborepo](https://turborepo.com).
 - **3D Assets:** Custom models and animations rigged in [Blender](https://blender.org), using an instanced animation system.
 
 ## Roadmap
