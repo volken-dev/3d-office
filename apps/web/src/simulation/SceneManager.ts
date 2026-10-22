@@ -10,10 +10,12 @@ import { getActiveAgentSet, useTeamStore } from "../integration/store/teamStore"
 import { useUiStore } from "../integration/store/uiStore"
 import { AgentBehavior } from "../types"
 import { CharacterController } from "./CharacterController"
+import { modelIdsUsedBy } from "./characters/characterAppearance"
+import { DEFAULT_CHARACTER_MODEL_ID } from "./characters/characterModels"
+import { loadCharacterModels } from "./characters/loadCharacterModels"
 import {
   ALPHA_LERP_RATE,
   BUBBLE_Y_OFFSET,
-  CHARACTER_MODEL_URL,
   CHAT_STANDOFF,
   OFFICE_MODEL_URL,
   OVERLAP_ALPHA,
@@ -104,20 +106,21 @@ export class SceneManager {
   }
 
   /**
-   * Renderer init and both model downloads/decodes overlap; only the setup after them is ordered.
-   * The world is set up before the characters because character spawns need its POIs.
+   * Renderer init and every model download/decode overlap; only the setup after them is ordered.
+   * The world is set up before the characters because character spawns need its POIs. Only the
+   * character models this team uses are loaded, plus the default model every missing one falls back to.
    */
   private async init() {
     const loader = createSceneLoader()
-    const [, officeGltf, characterGltf] = await Promise.all([
+    const [, officeGltf, characterModels] = await Promise.all([
       this.engine.init(),
       loader.load(OFFICE_MODEL_URL),
-      loader.load(CHARACTER_MODEL_URL),
+      loadCharacterModels(loader, this.characterModelsFor(this.team)),
     ]).finally(() => loader.dispose())
     if (this.isDisposed) return
 
     this.worldManager.setup(officeGltf, this.team.color)
-    this.characterManager.setup(characterGltf)
+    this.characterManager.setup(characterModels)
 
     this.controller = new CharacterController(
       this.characterManager,
@@ -153,6 +156,10 @@ export class SceneManager {
 
     this.startWatchingUiStore()
     this.engine.renderer.setAnimationLoop(this.animate)
+    const stillMissing = this.characterModelsFor(this.team).some(
+      (modelId) => !this.characterManager.hasModel(modelId),
+    )
+    if (stillMissing) this.applyTeamChange()
   }
 
   private registerDrivers() {
@@ -247,12 +254,44 @@ export class SceneManager {
     )
   }
 
+  /** The character models a team needs: the ones its characters use, plus the default fallback. */
+  private characterModelsFor(team: AgenticSystem): string[] {
+    const used = modelIdsUsedBy(team, getAllAgents(team).length + 1)
+    return used.includes(DEFAULT_CHARACTER_MODEL_ID) ? used : [DEFAULT_CHARACTER_MODEL_ID, ...used]
+  }
+
   /**
-   * A different team, or agents added/removed: new simulation, characters and drivers, everyone
-   * back at spawn. While still loading, init() builds everything from this.team instead.
+   * A different team, or agents added/removed. Character models the new team uses that are not
+   * loaded yet are fetched first; if the team changes again meanwhile, the stale load is ignored.
    */
   private applyTeamChange() {
     const team = this.team
+    const missing = this.characterModelsFor(team).filter(
+      (modelId) => !this.characterManager.hasModel(modelId),
+    )
+    if (!this.controller || missing.length === 0) {
+      this.rebuildForTeam(team)
+      return
+    }
+    const loader = createSceneLoader()
+    loadCharacterModels(loader, missing)
+      .then((models) => {
+        if (this.isDisposed || this.team !== team) return
+        this.characterManager.addModels(models)
+        this.rebuildForTeam(team)
+      })
+      .catch((error: unknown) => {
+        console.error("[SceneManager] Character models failed to load:", error)
+        if (!this.isDisposed && this.team === team) this.rebuildForTeam(team)
+      })
+      .finally(() => loader.dispose())
+  }
+
+  /**
+   * New simulation, characters and drivers for the team, everyone back at spawn. While still
+   * loading, init() builds everything from this.team instead.
+   */
+  private rebuildForTeam(team: AgenticSystem) {
     this.simulation?.dispose()
     this.simulation = new AgentSimulation(team)
     this.worldManager.updateThemeColor(team.color)

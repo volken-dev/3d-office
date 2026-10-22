@@ -167,7 +167,8 @@ export class CharacterStateMachine {
 
     if (!stateDefinition.loop) {
       const duration =
-        stateDefinition.durationOverride ?? driver.getAnimationDuration(stateDefinition.animation)
+        stateDefinition.durationOverride ??
+        driver.getAnimationDuration(index, stateDefinition.animation)
       this.stateTimer[index] = duration > 0 ? duration : 1.0
     }
   }

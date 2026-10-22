@@ -96,7 +96,7 @@ export interface ICharacterDriver {
   setExpression(index: number, key: ExpressionKey): void
   setSpeaking(index: number, isSpeaking: boolean): void
   getAgentState(index: number): AgentBehavior
-  getAnimationDuration(name: AnimationName): number
+  getAnimationDuration(index: number, name: AnimationName): number
   getCPUPositions(): Float32Array | null
 }
 

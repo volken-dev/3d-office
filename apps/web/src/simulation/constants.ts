@@ -13,7 +13,6 @@ export const POI_PICK_RADIUS = 0.4
 /** Path to Draco decoders (hosted in public/vendor/). */
 export const DRACO_LIB_PATH = assetUrl("vendor/draco/")
 export const OFFICE_MODEL_URL = assetUrl("models/office.glb")
-export const CHARACTER_MODEL_URL = assetUrl("models/character.glb")
 
 export const ATLAS_COLS = 2
 export const ATLAS_ROWS = 4

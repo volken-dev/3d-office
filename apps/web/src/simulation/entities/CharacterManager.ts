@@ -25,6 +25,14 @@ import { getAllCharacters } from "../../data/agents"
 import { AgentBehavior, AnimationName, type ExpressionKey, type PoiDef } from "../../types"
 import { AgentStateBuffer } from "../behavior/AgentStateBuffer"
 import { ExpressionBuffer } from "../behavior/ExpressionBuffer"
+import { appearanceFor } from "../characters/characterAppearance"
+import {
+  type AccessoryId,
+  type CharacterModelDef,
+  DEFAULT_CHARACTER_MODEL_ID,
+  type PartRule,
+  partRuleFor,
+} from "../characters/characterModels"
 import { isMesh, isSkinnedMesh } from "../sceneGraphGuards"
 import type { PoiManager } from "../world/PoiManager"
 
@@ -53,8 +61,10 @@ const ZERO_MATRIX = new THREE.Matrix4().multiplyScalar(0)
 
 /** Per-instance accessory id written to the `accessoryType` attribute and compared in the shaders. */
 const ACCESSORY_NONE = 0
-const ACCESSORY_HEADPHONES = 1
-const ACCESSORY_CAP = 2
+const ACCESSORY_IDS: Record<AccessoryId, number> = { headphones: 1, cap: 2 }
+/** Surface of every part of a "matte" model. */
+const MATTE_ROUGHNESS = 1
+const MATTE_METALNESS = 0.25
 
 /** Characters on screen: the user plus every agent in the team. */
 function characterCount(team: AgenticSystem): number {
@@ -87,6 +97,44 @@ function toInstancedGeometry(
   return instancedGeometry
 }
 
+function standardMaterialOf(
+  material: THREE.Material | THREE.Material[],
+): THREE.MeshStandardMaterial | null {
+  return material instanceof THREE.MeshStandardMaterial ? material : null
+}
+
+/** One drawable part of a model, with the rule from its model definition that says how to draw it. */
+interface RigPart {
+  name: string
+  geometry: THREE.BufferGeometry
+  colorMap: THREE.Texture | null
+  sourceMaterial: THREE.MeshStandardMaterial | null
+  rule: PartRule
+}
+
+/** Where a clip sits in the rig's baked buffer (by AnimationName index) and how long it lasts. */
+interface ClipTiming {
+  index: number
+  duration: number
+}
+
+/** A loaded character model: its parts, skeleton and animations baked to bone-matrix buffers. */
+interface CharacterRig {
+  model: CharacterModelDef
+  parts: RigPart[]
+  boneCount: number
+  headBoneIndex: number
+  bakedAnimationsBuffer: THREE.StorageBufferAttribute
+  metaBuffer: THREE.StorageBufferAttribute
+  clips: Partial<Record<AnimationName, ClipTiming>>
+}
+
+/** A model definition with its downloaded GLB, ready to bake. */
+export interface LoadedCharacterModel {
+  model: CharacterModelDef
+  gltf: GLTF
+}
+
 interface InstanceStorage {
   positionStorage: Vec4StorageNode
   velocityStorage: Vec4StorageNode
@@ -96,6 +144,7 @@ interface InstanceStorage {
 interface MeshAttributes extends InstanceStorage {
   colorAttribute: THREE.InstancedBufferAttribute
   accessoryAttribute: THREE.InstancedBufferAttribute
+  rigSlotAttribute: THREE.InstancedBufferAttribute
   expressionBuffer: ExpressionBuffer
 }
 
@@ -113,6 +162,8 @@ export class CharacterManager {
   private velocityAttribute: THREE.StorageInstancedBufferAttribute | null = null
   private colorAttribute: THREE.InstancedBufferAttribute | null = null
   private accessoryAttribute: THREE.InstancedBufferAttribute | null = null
+  /** Per instance: index of its rig in `activeRigs`, compared in each rig's shaders. */
+  private rigSlotAttribute: THREE.InstancedBufferAttribute | null = null
 
   /** CPU+GPU waypoint and behaviour state per instance. */
   private agentStateBuffer: AgentStateBuffer | null = null
@@ -132,19 +183,14 @@ export class CharacterManager {
   private computeNode: THREE.ComputeNode | null = null
 
   private instancedMeshes: THREE.Mesh[] = []
-  private meshData: {
-    name: string
-    geometry: THREE.BufferGeometry
-    colorMap: THREE.Texture | null
-  }[] = []
-
-  private animationsMeta: {
-    [key: string]: { offset: number; frameCount: number; duration: number; index: number }
-  } = {}
-  private bakedAnimationsBuffer: THREE.StorageBufferAttribute | null = null
-  private metaBuffer: THREE.StorageBufferAttribute | null = null
-  private boneCount = 0
-  private headBoneIndex = -1
+  /** Every model baked so far, by model id. */
+  private readonly rigs = new Map<string, CharacterRig>()
+  /** The rigs the current team uses, in slot order; only these have instanced meshes. */
+  private activeRigs: CharacterRig[] = []
+  /** The rig each character is drawn with, by character index. */
+  private instanceRigs: CharacterRig[] = []
+  /** Model ids the instanced meshes were built for, to know when a team change needs a rebuild. */
+  private builtRigKey = ""
 
   private walkSpeedUniform = uniform(BASE_WALK_SPEED)
   private readonly scratchForward = new THREE.Vector3()
@@ -163,42 +209,70 @@ export class CharacterManager {
     this.poiManager = poiManager
   }
 
+  /** Bakes the models the current team needs and creates the instanced meshes. */
+  public setup(models: readonly LoadedCharacterModel[]) {
+    this.addModels(models)
+    this.initInstances()
+    this.isLoaded = true
+  }
+
+  /** Bakes more models (for a team that uses characters not loaded yet); call before `setTeam`. */
+  public addModels(models: readonly LoadedCharacterModel[]) {
+    for (const { model, gltf } of models) {
+      if (!this.rigs.has(model.id)) this.rigs.set(model.id, this.buildRig(model, gltf))
+    }
+  }
+
+  /** Whether this model is baked and can be drawn. */
+  public hasModel(modelId: string): boolean {
+    return this.rigs.has(modelId)
+  }
+
   /**
-   * Bakes the character GLB's animations and creates the instanced meshes. Throws if the model has
-   * no meshes or no animations. A missing clip falls back to idle, then to the first clip.
+   * Bakes one model's animations in AnimationName order, so an animation index means the same clip in every rig,
+   * and records each clip's duration per rig. Throws if the model has no meshes or no animations; a missing clip
+   * falls back to idle, then to the first clip.
    */
-  public setup(gltf: GLTF) {
-    const model = gltf.scene
+  private buildRig(model: CharacterModelDef, gltf: GLTF): CharacterRig {
+    const root = gltf.scene
 
     const skinnedMeshes: THREE.SkinnedMesh[] = []
     const allMeshes: THREE.Mesh[] = []
-    model.traverse((child) => {
+    root.traverse((child) => {
       if (!isMesh(child)) return
       allMeshes.push(child)
       if (isSkinnedMesh(child)) skinnedMeshes.push(child)
     })
 
-    if (allMeshes.length === 0) throw new Error("Character model contains no meshes")
+    if (allMeshes.length === 0) throw new Error(`Character model "${model.id}" contains no meshes`)
 
-    this.meshData = allMeshes.map((mesh) => ({
-      name: mesh.name,
-      geometry: mesh.geometry,
-      colorMap: colorMapOf(mesh.material),
-    }))
+    const parts = allMeshes.map((mesh): RigPart => {
+      const sourceMaterial = standardMaterialOf(mesh.material)
+      return {
+        name: mesh.name,
+        geometry: mesh.geometry,
+        colorMap: colorMapOf(mesh.material),
+        sourceMaterial,
+        rule: partRuleFor(model, mesh.name, sourceMaterial?.name ?? ""),
+      }
+    })
 
     const firstSkinnedMesh = skinnedMeshes[0]
+    let boneCount = 0
+    let headBoneIndex = -1
     if (firstSkinnedMesh) {
-      this.boneCount = firstSkinnedMesh.skeleton.bones.length
+      boneCount = firstSkinnedMesh.skeleton.bones.length
       const headBone = firstSkinnedMesh.skeleton.bones.find(
         (bone) => bone.name.toLowerCase() === "head",
       )
-      this.headBoneIndex = headBone ? firstSkinnedMesh.skeleton.bones.indexOf(headBone) : -1
+      headBoneIndex = headBone ? firstSkinnedMesh.skeleton.bones.indexOf(headBone) : -1
     }
 
     const animations = gltf.animations
     const animationNames = Object.values(AnimationName)
     const bakedDataList: Float32Array[] = []
     const metaArray = new Float32Array(animationNames.length * 4)
+    const clips: Partial<Record<AnimationName, ClipTiming>> = {}
     let currentOffset = 0
 
     animationNames.forEach((name, animationIndex) => {
@@ -209,24 +283,18 @@ export class CharacterManager {
           clip =
             animations.find((animation) => animation.name === AnimationName.IDLE) || animations[0]
       }
-      if (!clip) throw new Error("Character model contains no animations")
+      if (!clip) throw new Error(`Character model "${model.id}" contains no animations`)
 
-      const baked = this.bakeAnimation(firstSkinnedMesh, clip, model)
+      const baked = this.bakeAnimation(firstSkinnedMesh, clip, root)
       bakedDataList.push(baked.data)
-
-      this.animationsMeta[name] = {
-        offset: currentOffset,
-        frameCount: baked.frameCount,
-        duration: baked.duration,
-        index: animationIndex,
-      }
+      clips[name] = { index: animationIndex, duration: baked.duration }
 
       metaArray[animationIndex * 4 + 0] = currentOffset
       metaArray[animationIndex * 4 + 1] = baked.frameCount
       metaArray[animationIndex * 4 + 2] = baked.duration
       metaArray[animationIndex * 4 + 3] = 0
 
-      currentOffset += baked.frameCount * this.boneCount
+      currentOffset += baked.frameCount * boneCount
     })
 
     const totalSize = bakedDataList.reduce((total, data) => total + data.length, 0)
@@ -237,17 +305,44 @@ export class CharacterManager {
       writeOffset += data.length
     }
 
-    this.bakedAnimationsBuffer = new THREE.StorageBufferAttribute(combinedData, FLOATS_PER_MATRIX)
-    this.metaBuffer = new THREE.StorageBufferAttribute(metaArray, 4)
+    return {
+      model,
+      parts,
+      boneCount,
+      headBoneIndex,
+      bakedAnimationsBuffer: new THREE.StorageBufferAttribute(combinedData, FLOATS_PER_MATRIX),
+      metaBuffer: new THREE.StorageBufferAttribute(metaArray, 4),
+      clips,
+    }
+  }
 
-    this.initInstances()
-    this.isLoaded = true
+  /** The rig for a model, falling back to the default model when that one is not loaded. */
+  private rigFor(modelId: string): CharacterRig | undefined {
+    return this.rigs.get(modelId) ?? this.rigs.get(DEFAULT_CHARACTER_MODEL_ID)
+  }
+
+  /** Assigns every character its rig for the current team and lists the rigs in use, in slot order. */
+  private assignRigs() {
+    this.instanceRigs = []
+    const active: CharacterRig[] = []
+    for (let characterIndex = 0; characterIndex < this.instanceCount; characterIndex++) {
+      const rig = this.rigFor(appearanceFor(this.team, characterIndex).modelId)
+      if (!rig) continue
+      this.instanceRigs[characterIndex] = rig
+      if (!active.includes(rig)) active.push(rig)
+    }
+    this.activeRigs = active
+  }
+
+  private activeRigKey(): string {
+    return this.activeRigs.map((rig) => rig.model.id).join(",")
   }
 
   /**
-   * Switches the characters to another team. Colours and accessories are rewritten in place
-   * when the character count is unchanged, so no GPU resources or pipelines are rebuilt.
-   * Either way every character is reset to its initial spawn state.
+   * Switches the characters to another team. When the character count and the set of models in use are
+   * unchanged, colours, accessories and models are rewritten in place, so no GPU resources or pipelines are
+   * rebuilt. Either way every character is reset to its initial spawn state. Load any new models with
+   * `addModels` first; a character whose model is missing is drawn with the default model.
    */
   public setTeam(team: AgenticSystem) {
     this.team = team
@@ -256,8 +351,9 @@ export class CharacterManager {
       this.instanceCount = count
       return
     }
-    if (count !== this.instanceCount) {
-      this.instanceCount = count
+    this.instanceCount = count
+    this.assignRigs()
+    if (count !== this.positionAttribute?.count || this.activeRigKey() !== this.builtRigKey) {
       this.cleanupInstances()
       this.initInstances()
       return
@@ -325,7 +421,8 @@ export class CharacterManager {
   }
 
   private initInstances() {
-    if (this.meshData.length === 0) return
+    this.assignRigs()
+    if (this.activeRigs.length === 0) return
 
     const count = this.instanceCount
     const positionAttribute = new THREE.StorageInstancedBufferAttribute(
@@ -338,10 +435,12 @@ export class CharacterManager {
     )
     const colorAttribute = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3)
     const accessoryAttribute = new THREE.InstancedBufferAttribute(new Float32Array(count), 1)
+    const rigSlotAttribute = new THREE.InstancedBufferAttribute(new Float32Array(count), 1)
     this.positionAttribute = positionAttribute
     this.velocityAttribute = velocityAttribute
     this.colorAttribute = colorAttribute
     this.accessoryAttribute = accessoryAttribute
+    this.rigSlotAttribute = rigSlotAttribute
     this.cpuPositions = new Float32Array(count * 4)
 
     const positionStorage = storage(positionAttribute, "vec4", count)
@@ -360,8 +459,10 @@ export class CharacterManager {
       agentStateBuffer,
       colorAttribute,
       accessoryAttribute,
+      rigSlotAttribute,
       expressionBuffer,
     })
+    this.builtRigKey = this.activeRigKey()
   }
 
   /**
@@ -374,6 +475,7 @@ export class CharacterManager {
     const velocityAttribute = this.velocityAttribute
     const colorAttribute = this.colorAttribute
     const accessoryAttribute = this.accessoryAttribute
+    const rigSlotAttribute = this.rigSlotAttribute
     const cpuPositions = this.cpuPositions
     const agentStateBuffer = this.agentStateBuffer
     const expressionBuffer = this.expressionBuffer
@@ -382,6 +484,7 @@ export class CharacterManager {
       !velocityAttribute ||
       !colorAttribute ||
       !accessoryAttribute ||
+      !rigSlotAttribute ||
       !cpuPositions ||
       !agentStateBuffer ||
       !expressionBuffer
@@ -392,6 +495,7 @@ export class CharacterManager {
     const velocities = velocityAttribute.array
     const colors = colorAttribute.array
     const accessories = accessoryAttribute.array
+    const rigSlots = rigSlotAttribute.array
     positions.fill(0)
     velocities.fill(0)
     this.positionWrites++
@@ -437,13 +541,10 @@ export class CharacterManager {
       colors[characterIndex * 3 + 1] = scratchColor.g
       colors[characterIndex * 3 + 2] = scratchColor.b
 
-      if (characterIndex === system.user.index) {
-        accessories[characterIndex] = ACCESSORY_NONE
-      } else if (characterIndex === system.leadAgent.index) {
-        accessories[characterIndex] = ACCESSORY_HEADPHONES
-      } else {
-        accessories[characterIndex] = ACCESSORY_CAP
-      }
+      const { accessory } = appearanceFor(system, characterIndex)
+      accessories[characterIndex] = accessory ? ACCESSORY_IDS[accessory] : ACCESSORY_NONE
+      const rig = this.instanceRigs[characterIndex]
+      rigSlots[characterIndex] = rig ? this.activeRigs.indexOf(rig) : -1
     }
 
     cpuPositions.set(positions)
@@ -451,16 +552,17 @@ export class CharacterManager {
     velocityAttribute.needsUpdate = true
     colorAttribute.needsUpdate = true
     accessoryAttribute.needsUpdate = true
+    rigSlotAttribute.needsUpdate = true
 
     for (let characterIndex = 0; characterIndex < this.instanceCount; characterIndex++) {
       agentStateBuffer.setAlpha(characterIndex, 1)
       this.setPhysicsMode(characterIndex, AgentBehavior.IDLE)
 
-      const idleMeta = this.animationsMeta[AnimationName.IDLE]
-      if (idleMeta) {
+      const idleClip = this.instanceRigs[characterIndex]?.clips[AnimationName.IDLE]
+      if (idleClip) {
         agentStateBuffer.setAnimation(
           characterIndex,
-          idleMeta.index,
+          idleClip.index,
           true,
           -Math.random() * IDLE_DESYNC_SECONDS,
         )
@@ -515,127 +617,130 @@ export class CharacterManager {
     })().compute(this.instanceCount)
   }
 
-  /**
-   * Creates one instanced mesh per model part. The body is drawn first (and renderOrder 0) so it
-   * writes depth before the eyes and mouth are drawn over it. Only the body and accessories take
-   * the instance colour; eyes and mouth sample the expression atlas offset and use polygon offset
-   * to avoid z-fighting while still being occluded by walls. Static accessories are rigidly
-   * skinned to the head bone.
-   */
-  private createInstancedMesh({
-    colorAttribute,
-    accessoryAttribute,
-    expressionBuffer,
-    agentStateBuffer,
-    ...instanceStorage
-  }: MeshAttributes) {
-    const sortedMeshData = [...this.meshData].sort((a, b) => {
-      const aIsBody = a.name.toLowerCase().includes("body")
-      const bIsBody = b.name.toLowerCase().includes("body")
-      if (aIsBody && !bIsBody) return -1
-      if (!aIsBody && bIsBody) return 1
-      return 0
+  /** Creates the instanced meshes of every rig in use; each draws only the instances assigned to its slot. */
+  private createInstancedMesh(attributes: MeshAttributes) {
+    this.activeRigs.forEach((rig, slot) => {
+      for (const part of rig.parts) this.createPartMesh(rig, slot, part, attributes)
     })
+  }
 
-    for (const { name, geometry, colorMap } of sortedMeshData) {
-      const instancedGeometry = toInstancedGeometry(geometry, this.instanceCount)
+  /**
+   * One instanced mesh for one model part, drawn by its part rule:
+   * - colour from the team colour ("instance", multiplied by the part's texture if it has one) or from the
+   *   part's own texture or material colour ("authored"), plus the authored glow for emissive rules;
+   * - expression parts sample the atlas offset and draw as an overlay (no depth write, polygon offset) so they
+   *   sit on the body without z-fighting while walls still hide them;
+   * - accessory parts show only on characters wearing that accessory and are rigidly skinned to the head bone.
+   * Base parts render first (renderOrder 0) so they write depth before overlays and accessories.
+   */
+  private createPartMesh(
+    rig: CharacterRig,
+    slot: number,
+    { geometry, colorMap, sourceMaterial, rule }: RigPart,
+    {
+      colorAttribute,
+      accessoryAttribute,
+      rigSlotAttribute,
+      expressionBuffer,
+      agentStateBuffer,
+      ...instanceStorage
+    }: MeshAttributes,
+  ) {
+    const instancedGeometry = toInstancedGeometry(geometry, this.instanceCount)
+    instancedGeometry.setAttribute("instanceColor", colorAttribute)
+    instancedGeometry.setAttribute("accessoryType", accessoryAttribute)
+    instancedGeometry.setAttribute("rigSlot", rigSlotAttribute)
 
-      instancedGeometry.setAttribute("instanceColor", colorAttribute)
-      instancedGeometry.setAttribute("accessoryType", accessoryAttribute)
+    const instanceColor = attribute<"vec3">("instanceColor", "vec3")
+    const accessoryType = attribute<"float">("accessoryType", "float")
+    const rigSlot = attribute<"float">("rigSlot", "float")
+    const expressionData = expressionBuffer.storageNode.element(instanceIndex)
+    const animationParams = agentStateBuffer.storageNode.element(instanceIndex.mul(2).add(1))
+    const instanceAlpha = animationParams.z
 
-      const material = new THREE.MeshStandardNodeMaterial()
-      material.roughness = 1
-      material.metalness = 0.25
+    const material = new THREE.MeshStandardNodeMaterial()
+    material.transparent = true
+    material.depthTest = true
+    if (rig.model.surface === "authored" && sourceMaterial) {
+      material.roughness = sourceMaterial.roughness
+      material.metalness = sourceMaterial.metalness
+      material.side = sourceMaterial.side
+    } else {
+      material.roughness = MATTE_ROUGHNESS
+      material.metalness = MATTE_METALNESS
+    }
 
-      const instanceColor = attribute<"vec3">("instanceColor", "vec3")
+    const accessoryId = rule.accessory ? ACCESSORY_IDS[rule.accessory] : undefined
+    const wearsAccessory =
+      accessoryId === undefined ? undefined : accessoryType.equal(float(accessoryId))
+    const partAlpha = wearsAccessory
+      ? wearsAccessory.select(instanceAlpha, float(0))
+      : instanceAlpha
+    if (wearsAccessory) material.opacityNode = partAlpha
 
-      const expressionData = expressionBuffer.storageNode.element(instanceIndex)
-      const animationParams = agentStateBuffer.storageNode.element(instanceIndex.mul(2).add(1))
-      const instanceAlpha = animationParams.z
-      const accessoryType = attribute<"float">("accessoryType", "float")
-
-      const isEyes = name.toLowerCase().includes("eyes")
-      const isMouth = name.toLowerCase().includes("mouth")
-      const isHeadphones = name.toLowerCase().includes("headphones")
-      const isCap = name.toLowerCase().includes("cap")
-
-      const featureUvNode = isEyes
+    const expressionUv =
+      rule.expression === "eyes"
         ? uv().add(expressionData.xy)
-        : isMouth
+        : rule.expression === "mouth"
           ? uv().add(expressionData.zw)
           : null
 
-      material.transparent = true
-
-      const isAccessory = isHeadphones || isCap
-      const isBody = name.toLowerCase().includes("body")
-
-      const accessoryOpacityNode = isHeadphones
-        ? accessoryType.equal(float(ACCESSORY_HEADPHONES)).select(instanceAlpha, float(0))
-        : isCap
-          ? accessoryType.equal(float(ACCESSORY_CAP)).select(instanceAlpha, float(0))
-          : null
-      if (accessoryOpacityNode) material.opacityNode = accessoryOpacityNode
-
-      if (isBody || isAccessory) {
-        material.depthWrite = true
-        material.depthTest = true
-
-        const baseAlpha =
-          accessoryOpacityNode ??
-          (colorMap ? texture(colorMap).a.mul(instanceAlpha) : instanceAlpha)
-
-        if (colorMap) {
-          const textureColor = texture(colorMap)
-          material.colorNode = vec4(textureColor.rgb.mul(instanceColor), baseAlpha)
-        } else {
-          material.colorNode = vec4(instanceColor, baseAlpha)
-        }
-      } else {
-        material.depthWrite = false
-        material.depthTest = true
-        material.polygonOffset = true
-        material.polygonOffsetFactor = -1
-        material.polygonOffsetUnits = -1
-
-        if (colorMap) {
-          const textureColor = featureUvNode ? texture(colorMap, featureUvNode) : texture(colorMap)
-          material.colorNode = vec4(textureColor.rgb, textureColor.a.mul(instanceAlpha))
-        } else {
-          material.opacityNode = float(0)
-        }
-      }
-
-      if (isAccessory && this.headBoneIndex !== -1 && !geometry.attributes.skinIndex) {
-        const vertexCount = geometry.attributes.position.count
-        const skinIndices = new Float32Array(vertexCount * 4).fill(this.headBoneIndex)
-        const skinWeights = new Float32Array(vertexCount * 4).fill(0)
-        for (let i = 0; i < vertexCount; i++) skinWeights[i * 4] = 1.0
-        instancedGeometry.setAttribute("skinIndex", new THREE.BufferAttribute(skinIndices, 4))
-        instancedGeometry.setAttribute("skinWeight", new THREE.BufferAttribute(skinWeights, 4))
-      }
-
-      const isVisible = isHeadphones
-        ? accessoryType.equal(float(ACCESSORY_HEADPHONES))
-        : isCap
-          ? accessoryType.equal(float(ACCESSORY_CAP))
-          : float(1)
-      const vertexNode = this.createVertexNode(
-        isVisible.and(instanceAlpha.greaterThan(0)),
-        instanceStorage,
-        agentStateBuffer,
-      )
-      material.positionNode = vertexNode
-      material.castShadowPositionNode = vertexNode
-
-      const instancedMesh = new THREE.Mesh(instancedGeometry, material)
-      instancedMesh.frustumCulled = false
-      instancedMesh.castShadow = true
-      instancedMesh.receiveShadow = true
-      instancedMesh.renderOrder = isBody ? 0 : 1
-      this.scene.add(instancedMesh)
-      this.instancedMeshes.push(instancedMesh)
+    if (rule.expression) {
+      material.depthWrite = false
+      material.polygonOffset = true
+      material.polygonOffsetFactor = -1
+      material.polygonOffsetUnits = -1
+    } else {
+      material.depthWrite = true
     }
+
+    if (rule.color === "instance") {
+      const textureColor = colorMap ? texture(colorMap) : null
+      material.colorNode = textureColor
+        ? vec4(
+            textureColor.rgb.mul(instanceColor),
+            wearsAccessory ? partAlpha : textureColor.a.mul(instanceAlpha),
+          )
+        : vec4(instanceColor, partAlpha)
+    } else if (colorMap) {
+      const textureColor = expressionUv ? texture(colorMap, expressionUv) : texture(colorMap)
+      material.colorNode = vec4(textureColor.rgb, textureColor.a.mul(partAlpha))
+    } else if (rule.expression || !sourceMaterial) {
+      material.opacityNode = float(0)
+    } else {
+      const { r, g, b } = sourceMaterial.color
+      material.colorNode = vec4(vec3(r, g, b), partAlpha)
+    }
+
+    const emissive = sourceMaterial?.emissive
+    if (rule.emissive && emissive && emissive.getHex() !== 0) {
+      material.emissiveNode = vec3(emissive.r, emissive.g, emissive.b)
+    }
+
+    if (rule.accessory && rig.headBoneIndex !== -1 && !geometry.attributes.skinIndex) {
+      const vertexCount = geometry.attributes.position.count
+      const skinIndices = new Float32Array(vertexCount * 4).fill(rig.headBoneIndex)
+      const skinWeights = new Float32Array(vertexCount * 4).fill(0)
+      for (let i = 0; i < vertexCount; i++) skinWeights[i * 4] = 1.0
+      instancedGeometry.setAttribute("skinIndex", new THREE.BufferAttribute(skinIndices, 4))
+      instancedGeometry.setAttribute("skinWeight", new THREE.BufferAttribute(skinWeights, 4))
+    }
+
+    const inThisSlot = rigSlot.equal(float(slot))
+    const isVisible = (wearsAccessory ? inThisSlot.and(wearsAccessory) : inThisSlot).and(
+      instanceAlpha.greaterThan(0),
+    )
+    const vertexNode = this.createVertexNode(isVisible, instanceStorage, agentStateBuffer, rig)
+    material.positionNode = vertexNode
+    material.castShadowPositionNode = vertexNode
+
+    const instancedMesh = new THREE.Mesh(instancedGeometry, material)
+    instancedMesh.frustumCulled = false
+    instancedMesh.castShadow = true
+    instancedMesh.receiveShadow = true
+    instancedMesh.renderOrder = rule.expression || rule.accessory ? 1 : 0
+    this.scene.add(instancedMesh)
+    this.instancedMeshes.push(instancedMesh)
   }
 
   /**
@@ -647,6 +752,7 @@ export class CharacterManager {
     isVisibleNode: THREE.Node,
     { positionStorage, velocityStorage }: Omit<InstanceStorage, "agentStateBuffer">,
     agentStateBuffer: AgentStateBuffer,
+    rig: CharacterRig,
   ) {
     return Fn(() => {
       const instancePosition = positionStorage.element(instanceIndex).xyz
@@ -677,13 +783,13 @@ export class CharacterManager {
 
       const finalPosition = positionLocal.toVar()
 
-      if (this.bakedAnimationsBuffer && this.metaBuffer) {
+      {
         const bakedAnimationStorage = new THREE.StorageBufferNode<"mat4">(
-          this.bakedAnimationsBuffer,
+          rig.bakedAnimationsBuffer,
           "mat4",
-          this.bakedAnimationsBuffer.count,
+          rig.bakedAnimationsBuffer.count,
         )
-        const metaStorage = storage(this.metaBuffer, "vec4", this.metaBuffer.count)
+        const metaStorage = storage(rig.metaBuffer, "vec4", rig.metaBuffer.count)
 
         const animationIndex = agentData.y.toUint()
 
@@ -707,7 +813,7 @@ export class CharacterManager {
         const skinWeight = attribute<"vec4">("skinWeight")
         const skinMatrix = mat4(ZERO_MATRIX).toVar()
 
-        const boneCount = this.boneCount
+        const boneCount = rig.boneCount
         function addInfluence(boneIndexNode: THREE.Node<"float">, weightNode: THREE.Node<"float">) {
           If(weightNode.greaterThan(0), () => {
             const address = animationOffset
@@ -838,16 +944,16 @@ export class CharacterManager {
 
   public setAnimation(index: number, name: AnimationName, loop: boolean = true) {
     if (this.agentStateBuffer && index >= 0 && index < this.instanceCount) {
-      const animationMeta = this.animationsMeta[name]
-      if (animationMeta) {
-        this.agentStateBuffer.setAnimation(index, animationMeta.index, loop, this.currentTime)
+      const clip = this.instanceRigs[index]?.clips[name]
+      if (clip) {
+        this.agentStateBuffer.setAnimation(index, clip.index, loop, this.currentTime)
       }
     }
   }
 
-  /** Returns the baked clip duration in seconds. Returns 1.0 if the animation is not found. */
-  public getAnimationDuration(name: AnimationName): number {
-    return this.animationsMeta[name]?.duration ?? 1.0
+  /** The clip's duration in seconds for this character's model; 1.0 if the clip is not found. */
+  public getAnimationDuration(index: number, name: AnimationName): number {
+    return this.instanceRigs[index]?.clips[name]?.duration ?? 1.0
   }
 
   public setExpression(index: number, name: ExpressionKey) {

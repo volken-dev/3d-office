@@ -323,7 +323,7 @@ export class CharacterController implements ICharacterDriver {
     return this.characterManager.getAgentState(index)
   }
 
-  public getAnimationDuration(name: AnimationName): number {
-    return this.characterManager.getAnimationDuration(name)
+  public getAnimationDuration(index: number, name: AnimationName): number {
+    return this.characterManager.getAnimationDuration(index, name)
   }
 }

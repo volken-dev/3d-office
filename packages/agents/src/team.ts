@@ -11,6 +11,8 @@ export interface AgentNode {
   model: string
   humanInTheLoop?: boolean
   position?: { x: number; y: number }
+  /** Id of the 3D character model this agent is drawn with; the scene picks a default when unset or unknown. */
+  character?: string
   subagents?: AgentNode[]
 }
 
@@ -88,6 +90,7 @@ function isValidAgentNode(value: unknown, depth = 0): value is AgentNode {
     typeof value.description === "string" &&
     typeof value.color === "string" &&
     typeof value.model === "string" &&
+    (value.character === undefined || typeof value.character === "string") &&
     (value.subagents === undefined ||
       (Array.isArray(value.subagents) &&
         value.subagents.every((subagent) => isValidAgentNode(subagent, depth + 1))))
