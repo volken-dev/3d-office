@@ -4,7 +4,7 @@ import { getAgentSet, getAllAgents, getAllCharacters } from '../data/agents';
 import { useUiStore } from '../integration/store/uiStore';
 import InfoModal from './InfoModal';
 
-import { MessageSquareWarning, PartyPopper, Siren, Loader2 } from 'lucide-react';
+import { MessageSquareWarning, PartyPopper, Siren } from 'lucide-react';
 import { Task, useCoreStore } from '../integration/store/coreStore';
 import { useTeamStore, useActiveTeam } from '../integration/store/teamStore';
 import { USER_COLOR, USER_COLOR_LIGHT, USER_COLOR_SOFT } from '../theme/brand';
@@ -54,12 +54,8 @@ function getAgentPhaseLabel(
   leadAgentIndex: number,
   tasks: Task[],
   phase: string,
-  isGeneratingAsset: boolean,
   fallback: string,
 ): PhaseLabel {
-  if (isGeneratingAsset && agentIndex === leadAgentIndex) {
-    return { text: 'Delivering...', className: 'text-indigo-400 animate-pulse' };
-  }
   if (agentIndex === leadAgentIndex && phase === 'done') {
     return { text: 'Project Ready!', className: 'text-yellow-400' };
   }
@@ -92,7 +88,6 @@ const UIOverlay: React.FC = () => {
   const {
     tasks,
     phase,
-    isGeneratingAsset,
   } = useCoreStore();
   const system = useActiveTeam();
   const npcAgents = getAllAgents(system);
@@ -118,11 +113,7 @@ const UIOverlay: React.FC = () => {
 
         // Check specific conditions
         // - Lead Agent (index 1) idle: siren
-        if (agent.index === system.leadAgent.index && isGeneratingAsset) {
-          alertIcon = <Loader2 size={18} className="animate-spin" />;
-          alertColor = '#818cf8'; // Indigo-400
-        }
-        else if (agent.index === system.leadAgent.index && phase === 'idle') {
+        if (agent.index === system.leadAgent.index && phase === 'idle') {
           alertIcon = <Siren size={18} />;
           alertColor = '#ffffff'; // White for siren
         }
@@ -162,7 +153,7 @@ const UIOverlay: React.FC = () => {
         // Priority 1: Selected Agent
         if (selectedAgent && selectedPosition) {
           const isLeadAgentProjectReady = selectedAgent.index === system.leadAgent.index && phase === 'done';
-          const label = getAgentPhaseLabel(selectedAgent.index, system.leadAgent.index, tasks, phase, isGeneratingAsset, '');
+          const label = getAgentPhaseLabel(selectedAgent.index, system.leadAgent.index, tasks, phase, '');
 
           return (
             <div
@@ -210,7 +201,7 @@ const UIOverlay: React.FC = () => {
         // Priority 2: Hovered Agent with dynamic phase label (only if not selected)
         if (hoveredAgent && hoverPosition && hoveredNpcIndex !== selectedNpcIndex) {
           const isLeadAgentProjectReady = hoveredAgent.index === system.leadAgent.index && phase === 'done';
-          const label = getAgentPhaseLabel(hoveredAgent.index, system.leadAgent.index, tasks, phase, isGeneratingAsset, '');
+          const label = getAgentPhaseLabel(hoveredAgent.index, system.leadAgent.index, tasks, phase, '');
 
           return (
             <div

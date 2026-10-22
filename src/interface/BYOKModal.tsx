@@ -1,7 +1,7 @@
 import { Eye, EyeOff, Trash2, X } from 'lucide-react';
 import React, { useState } from 'react';
 import { useUiStore } from '../integration/store/uiStore';
-import { DEFAULT_MODELS } from '../core/llm/constants';
+import { DEFAULT_MODEL } from '../core/llm/constants';
 
 interface BYOKModalProps {
   onClose: () => void;
@@ -19,7 +19,7 @@ const BYOKModal: React.FC<BYOKModalProps> = ({ onClose }) => {
   const handleSave = () => {
     const config = {
       apiKey: apiKey.trim(),
-      model: llmConfig.model || DEFAULT_MODELS.text,
+      model: llmConfig.model || DEFAULT_MODEL,
     };
     setLlmConfig(config);
     try {
@@ -33,7 +33,7 @@ const BYOKModal: React.FC<BYOKModalProps> = ({ onClose }) => {
   const handleClear = () => {
     const emptyConfig = {
       apiKey: '',
-      model: llmConfig.model || DEFAULT_MODELS.text,
+      model: llmConfig.model || DEFAULT_MODEL,
     };
     setApiKey('');
     setLlmConfig(emptyConfig);

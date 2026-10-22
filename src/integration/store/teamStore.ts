@@ -1,7 +1,10 @@
 
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { AgenticSystem, DEFAULT_AGENTIC_SET_ID, getAgentSet } from '../../data/agents';
+import { AGENTIC_SETS, AgenticSystem, DEFAULT_AGENTIC_SET_ID, getAgentSet } from '../../data/agents';
+
+/** Built-in team ids from before the switch to software-development teams. */
+const LEGACY_TEAM_IDS = ['unboring-net', 'photo-studio', 'music-studio', 'film-studio', 'strategy-coach', 'pr-agency'];
 
 export type AgentSet = AgenticSystem;
 
@@ -62,6 +65,22 @@ export const useTeamStore = create<TeamState>()(
     {
       name: 'team-storage',
       storage: createJSONStorage(() => localStorage),
+      version: 1,
+      migrate: (persisted: any, version) => {
+        if (version < 1 && persisted) {
+          // v1 dropped media output types: remove saved edits of the old built-in teams
+          // and strip the obsolete output fields from user-created teams.
+          const customSystems: AgenticSystem[] = (persisted.customSystems ?? [])
+            .filter((s: any) => !LEGACY_TEAM_IDS.includes(s.id))
+            .map(({ outputType, outputModel, ...rest }: any) => rest);
+          const knownIds = [...customSystems, ...AGENTIC_SETS].map((s) => s.id);
+          const selectedAgentSetId = knownIds.includes(persisted.selectedAgentSetId)
+            ? persisted.selectedAgentSetId
+            : DEFAULT_AGENTIC_SET_ID;
+          return { ...persisted, customSystems, selectedAgentSetId };
+        }
+        return persisted;
+      },
     }
   )
 );

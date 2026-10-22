@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { getAllAgents } from '../../data/agents';
 import { AgentState, CharacterState } from '../../types';
 import { useTeamStore, getActiveAgentSet } from './teamStore';
-import { DEFAULT_MODELS } from '../../core/llm/constants';
+import { DEFAULT_MODEL } from '../../core/llm/constants';
 
 export const useUiStore = create<CharacterState>()(
   (set) => ({
@@ -40,7 +40,7 @@ export const useUiStore = create<CharacterState>()(
       } catch { }
       return {
         apiKey: '',
-        model: DEFAULT_MODELS.text
+        model: DEFAULT_MODEL
       };
     })(),
 

@@ -12,12 +12,12 @@ export interface ChatAvailability {
  * the current project phase and the agent's task state.
  */
 export function useChatAvailability(agentIndex: number | null): ChatAvailability {
-  const { phase, tasks, isGeneratingAsset } = useCoreStore()
+  const phase = useCoreStore((s) => s.phase)
+  const tasks = useCoreStore((s) => s.tasks)
   const agentStatus = useUiStore((s) => (agentIndex !== null ? s.agentStatuses[agentIndex] : 'idle'))
   const system = useActiveTeam()
 
   if (agentIndex === null) return { canChat: false, reason: '' }
-  if (isGeneratingAsset) return { canChat: false, reason: 'Delivering...' }
   if (phase === 'done') return { canChat: false, reason: 'Project completed' }
 
   const isLead = agentIndex === system.leadAgent.index

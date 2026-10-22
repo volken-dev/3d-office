@@ -2,7 +2,7 @@ import { Cpu, Save, Target, Trash2, User, X, Check, Pipette, Zap, CircleUser } f
 import React, { useState, useMemo, useEffect } from 'react';
 import { AgentNode, AgenticSystem, getAllCharacters } from '../../data/agents';
 import { USER_COLOR, USER_COLOR_LIGHT, USER_COLOR_SOFT } from '../../theme/brand';
-import { useCoreStore } from '../../integration/store/coreStore';
+import { AVAILABLE_MODELS } from '../../core/llm/constants';
 import { useTeamStore } from '../../integration/store/teamStore';
 import { Avatar } from '../components/Avatar';
 import { ColorPicker } from './ColorPicker';
@@ -27,7 +27,6 @@ export const AgentConfigPanel: React.FC<AgentConfigPanelProps> = ({
   mode = 'edit'
 }) => {
   const isView = mode === 'view';
-  const { availableModels } = useCoreStore();
   const { saveCustomSystem } = useTeamStore();
 
   const [editData, setEditData] = useState<AgentNode>(agent);
@@ -190,7 +189,7 @@ export const AgentConfigPanel: React.FC<AgentConfigPanelProps> = ({
                   onChange={(e) => updateDraft({ model: e.target.value })}
                   className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-black/5 cursor-pointer lowercase"
                 >
-                  {availableModels.map(m => <option key={m} value={m} className="lowercase">{m}</option>)}
+                  {AVAILABLE_MODELS.map(m => <option key={m} value={m} className="lowercase">{m}</option>)}
                 </select>
               ), 'The specific Gemini model this agent will use.')}
             </div>

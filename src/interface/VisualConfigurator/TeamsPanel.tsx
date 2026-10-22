@@ -1,7 +1,7 @@
 import { Plus } from 'lucide-react';
 import React, { useMemo } from 'react';
 import { AGENTIC_SETS, AgenticSystem } from '../../data/agents';
-import { DEFAULT_MODELS } from '../../core/llm/constants';
+import { DEFAULT_MODEL } from '../../core/llm/constants';
 import { useTeamStore } from '../../integration/store/teamStore';
 import { TeamCard } from './TeamCard';
 
@@ -30,8 +30,7 @@ export const TeamsPanel: React.FC<TeamsPanelProps> = ({ onSelectTeam, selectedTe
       teamType: 'Custom',
       teamDescription: 'A custom agentic team.',
       color: '#A855F7',
-      outputType: 'text',
-      outputModel: DEFAULT_MODELS.text,
+      outputAutoApprove: true,
       user: {
         index: 0,
         model: 'Human',
@@ -43,7 +42,7 @@ export const TeamsPanel: React.FC<TeamsPanelProps> = ({ onSelectTeam, selectedTe
         name: 'Lead Agent',
         description: 'Coordinate the team to finish the project.',
         color: '#A855F7',
-        model: DEFAULT_MODELS.text,
+        model: DEFAULT_MODEL,
         position: { x: 0, y: 150 },
         subagents: []
       }

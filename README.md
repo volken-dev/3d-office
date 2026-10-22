@@ -7,7 +7,7 @@
 </p>
 
 > [!IMPORTANT]
-> **\*** This experience requires **BYOK (Bring Your Own Key)**. You will need a **[Gemini API key](https://aistudio.google.com/app/apikey)** to run the simulation. Deep integration enables native support for text, and multimodal generation (**Nano Banana**, **Lyria 3**, **Veo 3.1**). You can also **clone or fork** this repository to run it locally.
+> **\*** This experience requires **BYOK (Bring Your Own Key)**. You will need a **[Gemini API key](https://aistudio.google.com/app/apikey)** to run the simulation. You can also **clone or fork** this repository to run it locally.
 <div align="center">
   <img src="public/images/the-delegation-UI.jpg" width="100%" alt="The Delegation Hero">
 </div>
@@ -18,7 +18,7 @@
 
 # A no-code 3D playground to explore, design, and interact with Agentic AI systems
 
-This project is designed for **AI enthusiasts, educators, and creative developers** looking to understand multi-agent collaboration in a living 3D office without writing a single line of code.
+This project is designed for **software teams and developers** looking to explore multi-agent collaboration on engineering work (specs, design docs, debugging, code review) in a living 3D office without writing a single line of code.
 
 ## Getting Started
 
@@ -41,8 +41,8 @@ npm run dev
 ### Agentic AI System (v0.2.0)
 
 - **Team Editor (React Flow):** Create your own [multi-agent design patterns](https://developers.googleblog.com/developers-guide-to-multi-agent-patterns-in-adk/) using an interactive node-based interface.
-- **6 Predefined Teams:** Industry-specific templates (Creative Agency, Film Studio, PR Agency, etc.) to get you started.
-- **Multimodal Outputs:** Generate professional assets including text, image (Nano Banana), music (Lyria 3), and video (Veo 3.1) directly from your agent teams.
+- **5 Software-Development Teams:** Templates to get you started: Feature Squad, Architecture Council, Bug Hunters, Code Review Board and a solo Staff Engineer.
+- **Markdown Deliverables:** Each team delivers a Markdown document (spec, design doc, incident write-up, review) that you can review, edit and copy.
 - **Per-Agent LLM:** Assign different [Gemini Models](https://ai.google.dev/gemini-api/docs/models) to specific roles (e.g., Flash for speed, Pro for reasoning).
 - **Cost & Token Tracking:** Real-time estimation of usage costs and token consumption for transparency.
 - **PR-style Workflows:** Learn about Pull Request and Review workflows where agents with `human-in-the-loop` properties require your approval to proceed.
@@ -67,10 +67,7 @@ npm run dev
 
 - **Engine:** [Three.js](https://threejs.org/) (WebGPU & TSL) for advanced rendering and compute.
 - **UI:** [React](https://react.dev/) & [React Flow](https://reactflow.dev/) for node-based team visualization.
-- **AI:** [Gemini API](https://deepmind.google/technologies/gemini/) is the core LLM provider. We follow official prompting best practices for:
-    - **Images:** [Nano Banana Prompt Guide](https://cloud.google.com/blog/products/ai-machine-learning/ultimate-prompting-guide-for-nano-banana)
-    - **Video:** [Veo 3.1 Prompt Guide](https://cloud.google.com/blog/products/ai-machine-learning/ultimate-prompting-guide-for-veo-3-1)
-    - **Music:** [Lyria 3 Prompt Guide](https://deepmind.google/models/lyria/prompt-guide/)
+- **AI:** [Gemini API](https://deepmind.google/technologies/gemini/) is the core LLM provider.
 - **State:** [Zustand](https://github.com/pmndrs/zustand) for a unified, reactive store across the 3D world and React UI.
 - **3D Assets:** Custom models and animations rigged in [Blender](https://blender.org), using an instanced animation system.
 

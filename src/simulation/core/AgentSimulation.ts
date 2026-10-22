@@ -131,7 +131,7 @@ export class AgentSimulation {
     const state = useCoreStore.getState();
     const allTasksFinished = state.tasks.length > 0 && state.tasks.every(t => t.status === 'done');
     
-    if (state.phase === 'working' && allTasksFinished && !state.isGeneratingAsset) {
+    if (state.phase === 'working' && allTasksFinished) {
       const lead = this.getAgent(this.system.leadAgent.index);
       if (lead && !lead.isThinking) {
         await lead.concludeProject();

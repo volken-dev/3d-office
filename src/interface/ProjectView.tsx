@@ -1,4 +1,4 @@
-import { Info, RefreshCcw, ScrollText, FileText, Image, Music, Video } from 'lucide-react';
+import { Info, RefreshCcw } from 'lucide-react';
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 
@@ -23,7 +23,6 @@ export function formatTokens(num: number): string {
 const ProjectView: React.FC = () => {
   const {
     userBrief,
-    referenceImages,
     phase,
     actionLog,
     resetProject,
@@ -95,19 +94,6 @@ const ProjectView: React.FC = () => {
                 {userBrief}
               </ReactMarkdown>
             </div>
-
-            {(activeTeam.outputType === 'image' || activeTeam.outputType === 'video') && referenceImages.length > 0 && (
-              <div className="flex flex-col gap-2">
-                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Brief Logic References</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {referenceImages.map((img, idx) => (
-                    <div key={idx} className="aspect-square rounded-xl overflow-hidden border border-zinc-100 shadow-sm bg-zinc-50">
-                      <img src={img} alt={`Ref ${idx}`} className="w-full h-full object-cover" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         ) : (
           <p className="text-xs text-zinc-400 italic">No active brief. Talk to the Lead Agent to define your project.</p>

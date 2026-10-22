@@ -5,7 +5,6 @@ export interface LLMMessage {
   content: string;
   name?: string; // Required for tool responses in some APIs
   tool_calls?: LLMToolCall[];
-  images?: string[]; // Optional base64 images
   metadata?: {
     internal?: boolean;
     [key: string]: any;

@@ -11,7 +11,6 @@ import { Avatar } from './components/Avatar';
 import AgentStatusPanel from './AgentStatusPanel';
 import ChatPanel from './ChatPanel';
 import ProjectView from './ProjectView';
-import { ReferenceImages } from './components/ReferenceImages';
 
 interface InspectorPanelProps {
   isFloating?: boolean;
@@ -151,12 +150,6 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({ isFloating }) => {
                         ? "Review the user brief with the team."
                         : `I've finished the task "${tasksOnHold[0]?.title ?? 'Work'}". I've submitted my work for your review.`}
                     </p>
-
-                    {isLeadAgentIdle && (system.outputType === 'image' || system.outputType === 'video') && (
-                      <div className="mt-1 pt-3 border-t border-zinc-200/50">
-                        <ReferenceImages />
-                      </div>
-                    )}
 
                     <button
                       onClick={isLeadAgentIdle ? handleStartChat : () => useUiStore.getState().setActiveAuditTaskId(tasksOnHold[0]?.id)}

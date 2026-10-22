@@ -1,11 +1,11 @@
 import { USER_COLOR } from '../theme/brand';
-import { DEFAULT_MODELS } from '../core/llm/constants';
+import { DEFAULT_MODEL } from '../core/llm/constants';
 
 export const USER_ID = 'user';
 export const USER_NAME = 'User';
 export const MAX_AGENTS = 5;
 export { USER_COLOR };
-export const DEFAULT_AGENTIC_SET_ID = 'single-agent';
+export const DEFAULT_AGENTIC_SET_ID = 'feature-squad';
 export interface AgentNode {
   id: string;
   index: number;
@@ -18,15 +18,12 @@ export interface AgentNode {
   subagents?: AgentNode[];
 }
 
-export type OutputType = 'text' | 'image' | 'music' | 'video';
 export interface AgenticSystem {
   id: string;
   teamName: string;
   teamType: string;
   teamDescription: string;
   color: string;
-  outputType: OutputType;
-  outputModel: string;
   outputAutoApprove?: boolean;
   user: {
     index: number;
@@ -38,289 +35,219 @@ export interface AgenticSystem {
 
 export const AGENTIC_SETS: AgenticSystem[] = [
   {
-    id: 'unboring-net',
-    teamName: 'unboring.net',
-    teamType: 'Agency',
-    teamDescription: 'A full-service creative agency covering branding, design, development and go-to-market strategy.',
+    id: 'feature-squad',
+    teamName: 'Feature Squad',
+    teamType: 'Product Engineering',
+    teamDescription: 'A cross-functional squad that turns a feature request into a spec, implementation plan and test strategy.',
     color: '#4285F4',
-    outputType: 'text',
-    outputModel: DEFAULT_MODELS.text,
-    outputAutoApprove: true,
+    outputAutoApprove: false,
     user: { index: 0, model: 'Human', position: { x: 0, y: 0 } },
     leadAgent: {
-      id: 'agency-orchestrator',
+      id: 'tech-lead',
       index: 1,
-      name: 'Creative Director',
-      description: 'Orchestrates branding, design, and development to deliver integrated creative solutions.',
+      name: 'Tech Lead',
+      description: 'Breaks features into well-scoped engineering tasks, coordinates the squad and owns the final technical plan.',
       color: '#4285F4',
-      model: DEFAULT_MODELS.text,
+      model: DEFAULT_MODEL,
       humanInTheLoop: true,
       position: { x: 0, y: 130 },
       subagents: [
         {
-          id: 'agency-developer',
+          id: 'product-manager',
           index: 2,
-          name: 'Developer',
-          description: 'Architects and develops robust digital platforms and interactive experiences.',
-          color: '#34A853',
-          model: DEFAULT_MODELS.text,
-          position: { x: -300, y: 280 }
-        },
-        {
-          id: 'agency-designer',
-          index: 3,
-          name: 'Designer',
-          description: 'Crafts visual identities, user interfaces, and premium brand aesthetics.',
-          color: '#FBBC05',
-          model: DEFAULT_MODELS.text,
-          position: { x: 0, y: 280 }
-        },
-        {
-          id: 'agency-copywriter',
-          index: 4,
-          name: 'Copywriter',
-          description: 'Crafts compelling narratives and strategic messaging for brands.',
-          color: '#EA4335',
-          humanInTheLoop: true,
-          model: DEFAULT_MODELS.text,
-          position: { x: 300, y: 280 }
-        }
-      ]
-    }
-  },
-  {
-    id: 'photo-studio',
-    teamName: 'Nano Banana Lab',
-    teamType: 'Visual',
-    teamDescription: 'Pro image generation using the [Subject] + [Action] + [Context] + [Comp] + [Style] formula.',
-    color: '#FBBF24',
-    outputType: 'image',
-    outputModel: DEFAULT_MODELS.image,
-    outputAutoApprove: false,
-    user: { index: 0, model: 'Human', position: { x: 0, y: 0 } },
-    leadAgent: {
-      id: 'art-director',
-      index: 1,
-      name: 'Art Director',
-      description: 'Synthesizes descriptions into valid Nano Banana prompts.',
-      color: '#FBBF24',
-      humanInTheLoop: true,
-      model: DEFAULT_MODELS.text,
-      position: { x: 0, y: 130 },
-      subagents: [
-        {
-          id: 'scene-designer',
-          index: 2,
-          name: 'Scene Designer',
-          description: 'Focuses on Subject and Action within the scene.',
-          color: '#F59E0B',
-          humanInTheLoop: true,
-          model: DEFAULT_MODELS.text,
-          position: { x: -150, y: 280 }
-        },
-        {
-          id: 'lighting-stylist',
-          index: 3,
-          name: 'Lighting Stylist',
-          description: 'Focuses on Composition, Lighting, and Style/Materiality.',
-          color: '#E0E672',
-          humanInTheLoop: true,
-          model: DEFAULT_MODELS.text,
-          position: { x: 150, y: 280 }
-        }
-      ]
-    }
-  },
-  {
-    id: 'music-studio',
-    teamName: 'Lyria Factory',
-    teamType: 'Music Production',
-    teamDescription: 'High-fidelity audio production following Lyria guidelines.',
-    color: '#43E47C',
-    outputType: 'music',
-    outputModel: DEFAULT_MODELS.music,
-    outputAutoApprove: false,
-    user: { index: 0, model: 'Human', position: { x: 0, y: 0 } },
-    leadAgent: {
-      id: 'master-producer',
-      index: 1,
-      name: 'Master Producer',
-      description: 'Orchestrates the 4 pillars of sound into a cohesive track.',
-      color: '#43E47C',
-      model: DEFAULT_MODELS.text,
-      humanInTheLoop: true,
-      position: { x: 0, y: 130 },
-      subagents: [
-        {
-          id: 'genre-expert',
-          index: 2,
-          name: 'Genre Expert',
-          description: 'Defines style, mood, and global aesthetic (e.g., Synthwave, Lofi).',
-          color: '#74D295',
-          model: DEFAULT_MODELS.text,
+          name: 'Product Manager',
+          description: 'Defines user stories, acceptance criteria and scope boundaries for the feature.',
+          color: '#A142F4',
+          model: DEFAULT_MODEL,
           humanInTheLoop: true,
           position: { x: -450, y: 280 }
         },
         {
-          id: 'tempo-architect',
+          id: 'frontend-engineer',
           index: 3,
-          name: 'Tempo Architect',
-          description: 'Specifies BPM, rhythmical complexity, and time signatures.',
-          color: '#92D540',
-          model: DEFAULT_MODELS.text,
-          humanInTheLoop: true,
+          name: 'Frontend Engineer',
+          description: 'Designs UI components, client state, routing and accessibility for the feature.',
+          color: '#FBBC05',
+          model: DEFAULT_MODEL,
           position: { x: -150, y: 280 }
         },
         {
-          id: 'instrumentalist',
+          id: 'backend-engineer',
           index: 4,
-          name: 'Instrumentalist',
-          description: 'Selects timbres, arrangement, and orchestration layers.',
-          color: '#40D5AD',
-          model: DEFAULT_MODELS.text,
-          humanInTheLoop: true,
+          name: 'Backend Engineer',
+          description: 'Designs APIs, data models, migrations and service integrations for the feature.',
+          color: '#34A853',
+          model: DEFAULT_MODEL,
           position: { x: 150, y: 280 }
         },
         {
-          id: 'dynamics-engineer',
+          id: 'qa-engineer',
           index: 5,
-          name: 'Dynamics Engineer',
-          description: 'Controls volume, texture, contrast, and emotional progression.',
-          color: '#50BB55',
-          model: DEFAULT_MODELS.text,
-          humanInTheLoop: true,
+          name: 'QA Engineer',
+          description: 'Writes the test plan: unit, integration and end-to-end cases, plus edge cases and regressions to watch.',
+          color: '#EA4335',
+          model: DEFAULT_MODEL,
           position: { x: 450, y: 280 }
         }
       ]
     }
   },
   {
-    id: 'film-studio',
-    teamName: 'Veo Studio',
-    teamType: 'Cinematic',
-    teamDescription: 'Full cinematic production: Visuals + Soundstage (Veo 3.1 style).',
-    color: '#E64347',
-    outputType: 'video',
-    outputModel: DEFAULT_MODELS.video,
+    id: 'architecture-council',
+    teamName: 'Architecture Council',
+    teamType: 'System Design',
+    teamDescription: 'Senior engineers who produce a design doc with trade-offs for a new system or major change.',
+    color: '#0EA5E9',
     outputAutoApprove: false,
     user: { index: 0, model: 'Human', position: { x: 0, y: 0 } },
     leadAgent: {
-      id: 'film-director',
+      id: 'principal-architect',
       index: 1,
-      name: 'Film Director',
-      description: 'Orchestrates visuals and soundstage with global cinematic vision.',
-      color: '#E64347',
-      model: DEFAULT_MODELS.text,
+      name: 'Principal Architect',
+      description: 'Frames the problem, weighs alternatives and writes the final design doc with a clear recommendation.',
+      color: '#0EA5E9',
+      model: DEFAULT_MODEL,
       humanInTheLoop: true,
       position: { x: 0, y: 130 },
       subagents: [
         {
-          id: 'visual-lead',
+          id: 'systems-engineer',
           index: 2,
-          name: 'Visual Lead',
-          description: 'Manages cinematography and VFX direction.',
-          color: '#F17DC5',
-          model: DEFAULT_MODELS.text,
-          humanInTheLoop: true,
-          position: { x: -200, y: 280 },
-          subagents: [
-            {
-              id: 'cinematographer',
-              index: 4,
-              name: 'Cinematographer',
-              description: 'Defines camera work, shot composition, and subject action.',
-              color: '#E643C5',
-              model: DEFAULT_MODELS.text,
-              position: { x: -200, y: 430 }
-            }
-          ]
+          name: 'Systems Engineer',
+          description: 'Proposes service boundaries, APIs, data flow and consistency model.',
+          color: '#6366F1',
+          model: DEFAULT_MODEL,
+          position: { x: -300, y: 280 }
         },
         {
-          id: 'audio-lead',
+          id: 'data-engineer',
           index: 3,
-          name: 'Audio Lead',
-          description: 'Manages the soundstage: Dialogue, SFX, and Ambience.',
-          color: '#7CE630',
-          model: DEFAULT_MODELS.text,
+          name: 'Data Engineer',
+          description: 'Designs storage, schemas, indexing, retention and migration strategy.',
+          color: '#14B8A6',
+          model: DEFAULT_MODEL,
+          position: { x: 0, y: 280 }
+        },
+        {
+          id: 'sre',
+          index: 4,
+          name: 'SRE',
+          description: 'Covers deployment, scaling, observability, failure modes and cost.',
+          color: '#F97316',
+          model: DEFAULT_MODEL,
           humanInTheLoop: true,
-          position: { x: 200, y: 280 },
-          subagents: [
-            {
-              id: 'sound-designer',
-              index: 5,
-              name: 'Sound Designer',
-              description: 'Specifies SFX (SFX:), Ambient Noise (Ambient noise:), and Dialogue (" ").',
-              color: '#50BB55',
-              model: DEFAULT_MODELS.text,
-              position: { x: 200, y: 430 }
-            }
-          ]
+          position: { x: 300, y: 280 }
         }
       ]
     }
   },
   {
-    id: 'strategy-coach',
-    teamName: 'Strategy Coach',
-    teamType: 'Strategic',
-    teamDescription: 'A high-level strategic advisor for project direction and roadmap.',
-    color: '#64748B',
-    outputType: 'text',
-    outputModel: DEFAULT_MODELS.text,
+    id: 'bug-hunters',
+    teamName: 'Bug Hunters',
+    teamType: 'Debugging',
+    teamDescription: 'A sequential pipeline from bug report to root cause, fix plan and regression tests.',
+    color: '#DC2626',
     outputAutoApprove: true,
     user: { index: 0, model: 'Human', position: { x: 0, y: 0 } },
     leadAgent: {
-      id: 'visionary-advisor',
+      id: 'triage-lead',
       index: 1,
-      name: 'Visionary Advisor',
-      description: 'Handles project direction, roadmap, and ecosystem growth strategy.',
-      color: '#64748B',
-      model: DEFAULT_MODELS.text,
-      humanInTheLoop: true,
-      position: { x: 0, y: 130 }
-    }
-  },
-  {
-    id: 'pr-agency',
-    teamName: 'PR Agency',
-    teamType: 'Public Relations',
-    teamDescription: 'A sequential pipeline for media outreach: from strategy to press drafting.',
-    color: '#E34B99',
-    outputType: 'text',
-    outputModel: DEFAULT_MODELS.text,
-    outputAutoApprove: false,
-    user: { index: 0, model: 'Human', position: { x: 0, y: 0 } },
-    leadAgent: {
-      id: 'pr-director',
-      index: 1,
-      name: 'PR Director',
-      description: 'Oversees media relations, strategic communications, and brand reputation.',
-      color: '#E34B99',
-      model: DEFAULT_MODELS.text,
+      name: 'Triage Lead',
+      description: 'Clarifies the bug report, assesses severity and delivers the final incident write-up.',
+      color: '#DC2626',
+      model: DEFAULT_MODEL,
       humanInTheLoop: true,
       position: { x: 0, y: 130 },
       subagents: [
         {
-          id: 'media-strategist',
+          id: 'debugger',
           index: 2,
-          name: 'Media Strategist',
-          description: 'Identifies key media outlets and manages journalist outreach.',
-          color: '#E6D979',
-          model: DEFAULT_MODELS.text,
+          name: 'Debugger',
+          description: 'Forms hypotheses, narrows down reproduction steps and identifies the root cause.',
+          color: '#F59E0B',
+          model: DEFAULT_MODEL,
           position: { x: 0, y: 260 },
           subagents: [
             {
-              id: 'press-writer',
+              id: 'fix-engineer',
               index: 3,
-              name: 'Press Writer',
-              description: 'Drafts press releases and media kits based on strategic goals.',
-              color: '#5E888E',
-              model: DEFAULT_MODELS.text,
+              name: 'Fix Engineer',
+              description: 'Proposes the minimal code fix and the regression tests that prove it.',
+              color: '#22C55E',
+              model: DEFAULT_MODEL,
+              humanInTheLoop: true,
               position: { x: 0, y: 390 }
             }
           ]
         }
       ]
+    }
+  },
+  {
+    id: 'code-review-board',
+    teamName: 'Code Review Board',
+    teamType: 'Code Review',
+    teamDescription: 'Reviews a pasted diff or design from correctness, security and performance angles.',
+    color: '#7C3AED',
+    outputAutoApprove: true,
+    user: { index: 0, model: 'Human', position: { x: 0, y: 0 } },
+    leadAgent: {
+      id: 'review-lead',
+      index: 1,
+      name: 'Review Lead',
+      description: 'Collects the change under review, dispatches reviewers and merges their findings into one prioritized review.',
+      color: '#7C3AED',
+      model: DEFAULT_MODEL,
+      humanInTheLoop: true,
+      position: { x: 0, y: 130 },
+      subagents: [
+        {
+          id: 'correctness-reviewer',
+          index: 2,
+          name: 'Correctness Reviewer',
+          description: 'Finds logic bugs, unhandled edge cases and missing tests.',
+          color: '#2563EB',
+          model: DEFAULT_MODEL,
+          position: { x: -300, y: 280 }
+        },
+        {
+          id: 'security-reviewer',
+          index: 3,
+          name: 'Security Reviewer',
+          description: 'Finds injection, auth, secrets-handling and data-exposure issues.',
+          color: '#E11D48',
+          model: DEFAULT_MODEL,
+          position: { x: 0, y: 280 }
+        },
+        {
+          id: 'performance-reviewer',
+          index: 4,
+          name: 'Performance Reviewer',
+          description: 'Finds hot-path inefficiencies, N+1 queries, memory growth and blocking work.',
+          color: '#059669',
+          model: DEFAULT_MODEL,
+          position: { x: 300, y: 280 }
+        }
+      ]
+    }
+  },
+  {
+    id: 'staff-engineer',
+    teamName: 'Staff Engineer',
+    teamType: 'Advisor',
+    teamDescription: 'A single senior engineer for quick technical questions, estimates and roadmap advice.',
+    color: '#64748B',
+    outputAutoApprove: true,
+    user: { index: 0, model: 'Human', position: { x: 0, y: 0 } },
+    leadAgent: {
+      id: 'staff-engineer-advisor',
+      index: 1,
+      name: 'Staff Engineer',
+      description: 'Gives pragmatic technical direction: approach, risks, estimates and next steps.',
+      color: '#64748B',
+      model: DEFAULT_MODEL,
+      humanInTheLoop: true,
+      position: { x: 0, y: 130 }
     }
   }
 ];

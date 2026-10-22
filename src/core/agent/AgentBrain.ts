@@ -2,10 +2,10 @@ import { LLMMessage } from '../llm/types';
 import { GeminiProvider } from '../llm/providers/GeminiProvider';
 import { useUiStore } from '../../integration/store/uiStore';
 import { useCoreStore } from '../../integration/store/coreStore';
-import { useTeamStore } from '../../integration/store/teamStore';
+import { getActiveAgentSet } from '../../integration/store/teamStore';
 import { ToolRegistry } from './ToolRegistry';
 import { PromptBuilder } from './PromptBuilder';
-import { AGENTIC_SETS, AgentNode } from '../../data/agents';
+import { AgentNode } from '../../data/agents';
 
 export interface BrainHost {
   data: AgentNode;
@@ -41,41 +41,19 @@ export class AgentBrain {
       if (!llmConfig.apiKey) throw new Error('Gemini API key is required');
       const provider = new GeminiProvider(llmConfig.apiKey);
       const model = this.host.data.model || llmConfig.model;
-      const teamId = useTeamStore.getState().selectedAgentSetId;
-      const activeTeam = useTeamStore.getState().customSystems.find(s => s.id === teamId)
-        || AGENTIC_SETS.find(s => s.id === teamId);
-
-      const hasVisionSupport = activeTeam?.outputType === 'image' || activeTeam?.outputType === 'video';
 
       // 1. Manage Message History
       if (!options.isChat) {
-        const userMsg: LLMMessage = {
+        this.history.push({
           role: 'user',
           content: prompt,
           metadata: options.silent ? { internal: true } : undefined
-        };
-        
-        // Attach reference images if VISION is supported for this project type
-        if (hasVisionSupport && core.referenceImages.length > 0) {
-          userMsg.images = core.referenceImages;
-        }
-
-        this.history.push(userMsg);
+        });
         this.syncToStore();
       }
 
       // 2. Prepare context
-      let messages: LLMMessage[] = this.history.slice(-10);
-
-      // In chat mode, ensure the latest user message also carries images if it's the brief phase
-      if (options.isChat && hasVisionSupport && core.referenceImages.length > 0) {
-        messages = messages.map((m, idx) => {
-          if (idx === messages.length - 1 && m.role === 'user') {
-            return { ...m, images: core.referenceImages };
-          }
-          return m;
-        });
-      }
+      const messages: LLMMessage[] = this.history.slice(-10);
       const allAgents = this.host.simulation.getAllAgents();
       const systemPrompt = PromptBuilder.buildSystemPrompt(this.host.data, core.phase, core.userBrief, allAgents);
       const toolDefs = options.tools || ToolRegistry.getDefinitions(this.host.data.index, core.phase, this.host.data.subagents?.length || 0);
@@ -159,7 +137,7 @@ export class AgentBrain {
       for (const tc of toolCalls) {
         const handled = ToolRegistry.process(this.host as any, tc);
         if (tc.name === 'deliver_project' && handled) {
-          this.handleFinalAssetGeneration(tc.args.output);
+          this.handleDelivery(tc.args.output);
         }
       }
 
@@ -190,115 +168,22 @@ export class AgentBrain {
     return this.think('All tasks are complete! Use the deliver_project tool to fulfill the final delivery with the project result.', { silent: true });
   }
 
-  private async handleFinalAssetGeneration(prompt: string) {
+  private handleDelivery(output: string) {
     const core = useCoreStore.getState();
-    const teamId = useTeamStore.getState().selectedAgentSetId;
-    const activeTeam = useTeamStore.getState().customSystems.find(s => s.id === teamId)
-      || AGENTIC_SETS.find(s => s.id === teamId);
-
-    if (!activeTeam) return;
-
-    // Check if we need manual approval
-    if (activeTeam.outputAutoApprove === false) {
-      core.setPendingOutputPrompt(prompt);
-
-      // Prepare default params based on output type
-      const defaultParams: any = { model: activeTeam.outputModel };
-      if (activeTeam.outputType === 'image') {
-        defaultParams.aspectRatio = '16:9';
-        defaultParams.imageSize = '1K';
-      } else if (activeTeam.outputType === 'video') {
-        defaultParams.resolution = '720p';
-        defaultParams.aspectRatio = '16:9';
-        defaultParams.durationSeconds = 4;
-      }
-
-      core.setPendingOutputParams(defaultParams);
+    if (getActiveAgentSet().outputAutoApprove === false) {
+      core.setPendingOutputPrompt(output);
       core.setReviewingOutput(true);
       return;
     }
-
-    // Standard auto-approve flow
-    await this.processFinalAsset(prompt, { model: activeTeam.outputModel });
+    this.finalizeOutput(output);
   }
 
-  public async processFinalAsset(prompt: string, options: any) {
+  public finalizeOutput(output: string) {
     const core = useCoreStore.getState();
-    const teamId = useTeamStore.getState().selectedAgentSetId;
-    const activeTeam = useTeamStore.getState().customSystems.find(s => s.id === teamId)
-      || AGENTIC_SETS.find(s => s.id === teamId);
-
-    if (!activeTeam) return;
-
-    core.setIsGeneratingAsset(true);
     core.setReviewingOutput(false);
-
-    try {
-      const llmConfig = useUiStore.getState().llmConfig;
-      if (!llmConfig.apiKey) throw new Error('Gemini API key is required');
-      const provider = new GeminiProvider(llmConfig.apiKey) as any;
-      const model = options.model || activeTeam.outputModel || llmConfig.model;
-
-      core.addLogEntry({
-        agentIndex: -1,
-        action: `Generating final ${activeTeam.outputType} using ${model}...`,
-        taskId: undefined
-      });
-
-      let assetContent: string = '';
-      let usage: any = undefined;
-
-      if (activeTeam.outputType === 'image') {
-        const result = await provider.generateImage(prompt, model, (msg: string) => {
-          console.log(`[System:Image] ${msg}`);
-        }, options, core.referenceImages);
-        assetContent = result.data || '';
-        usage = result.usage;
-      } else if (activeTeam.outputType === 'music') {
-        const result = await provider.generateAudio(prompt, model, (msg: string) => {
-          console.log(`[System:Audio] ${msg}`);
-        });
-        assetContent = result.data || '';
-        usage = result.usage;
-      } else if (activeTeam.outputType === 'video') {
-        const result = await provider.generateVideo(prompt, model, (msg: string) => {
-          console.log(`[System:Video] ${msg}`);
-        }, options, core.referenceImages);
-        assetContent = result.videoUrl || '';
-        usage = result.usage;
-      } else if (activeTeam.outputType === 'text') {
-        // For text, the prompt is the final output
-        core.setFinalOutput(prompt);
-        core.setPhase('done');
-        core.setFinalOutputOpen(true);
-        core.setIsGeneratingAsset(false);
-        return;
-      }
-
-      core.addResponseLog({
-        agentIndex: -1,
-        agentName: 'System',
-        content: `Final ${activeTeam.outputType} generated successfully.`,
-        usage: usage,
-        raw: { model, ...usage },
-        taskId: undefined
-      });
-
-      core.setFinalOutput(prompt);
-      core.setFinalAsset(activeTeam.outputType === 'music' ? 'audio' : activeTeam.outputType as any, assetContent);
-      core.setPhase('done');
-      core.setFinalOutputOpen(true);
-    } catch (error) {
-      console.error('[AgentBrain] Final asset generation failed:', error);
-      core.setIsGeneratingAsset(false);
-      const errMsg = error instanceof Error ? error.message : String(error);
-      useUiStore.getState().setBYOKOpen(true, errMsg);
-      core.addLogEntry({
-        agentIndex: 0,
-        action: `Error generating final ${activeTeam.outputType}: ${errMsg}`,
-        taskId: undefined
-      });
-    }
+    core.setFinalOutput(output);
+    core.setPhase('done');
+    core.setFinalOutputOpen(true);
   }
 
   public appendHistory(message: LLMMessage) {

@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { LLMMessage, LLMTokenUsage, LLMToolCall, LLMToolDefinition } from '../../core/llm/types';
-import { DEFAULT_MODELS, AVAILABLE_MODELS } from '../../core/llm/constants';
 import { calculateCost } from '../../core/llm/pricing';
 import { useTeamStore } from './teamStore';
 import { useUiStore } from './uiStore';
@@ -69,22 +68,16 @@ export type ProjectPhase = 'idle' | 'working' | 'done'
 interface CoreState {
   // ── Project ──────────────────────────────────────────────────
   userBrief: string
-  referenceImages: string[]
   phase: ProjectPhase
   finalOutput: string | null
-  availableModels: string[]
   totalTokenUsage: LLMTokenUsage
   agentTokenUsage: Record<number, LLMTokenUsage>
   totalEstimatedCost: number
   agentEstimatedCost: Record<number, number>
-  finalAssetType: 'text' | 'image' | 'audio' | 'video'
-  finalAssetContent: string | null
-  isGeneratingAsset: boolean
   
   // ── Output Review ────────────────────────────────────────────
   isReviewingOutput: boolean
   pendingOutputPrompt: string
-  pendingOutputParams: any
 
   // ── Tasks ────────────────────────────────────────────────────
   tasks: Task[]
@@ -108,17 +101,11 @@ interface CoreState {
 
   // ── Actions — Project —————————————————————————————————────────
   setUserBrief: (brief: string) => void;
-  addReferenceImage: (base64: string) => void;
-  removeReferenceImage: (index: number) => void;
-  clearReferenceImages: () => void;
   setPhase: (phase: ProjectPhase) => void;
   startProject: (brief: string) => void;
   setFinalOutput: (output: string) => void;
-  setFinalAsset: (type: 'image' | 'audio' | 'video', content: string) => void;
-  setIsGeneratingAsset: (isGenerating: boolean) => void;
   setReviewingOutput: (val: boolean) => void;
   setPendingOutputPrompt: (prompt: string) => void;
-  setPendingOutputParams: (params: any) => void;
 
   // ── Actions — Tasks ───────────────────────────────────────────
   addTask: (task: Omit<Task, 'id' | 'revisions' | 'createdAt' | 'updatedAt'>) => Task;
@@ -158,20 +145,14 @@ export const useCoreStore = create<CoreState>()(
   persist(
     (set) => ({
       userBrief: '',
-      referenceImages: [],
       phase: 'idle',
       finalOutput: null,
-      availableModels: [...AVAILABLE_MODELS.text],
       totalTokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
       agentTokenUsage: {},
       totalEstimatedCost: 0,
       agentEstimatedCost: {},
-      finalAssetType: 'text',
-      finalAssetContent: null,
-      isGeneratingAsset: false,
       isReviewingOutput: false,
       pendingOutputPrompt: '',
-      pendingOutputParams: {},
       tasks: [],
       actionLog: [],
       debugLog: [],
@@ -202,31 +183,16 @@ export const useCoreStore = create<CoreState>()(
         agentTokenUsage: {},
         totalEstimatedCost: 0,
         agentEstimatedCost: {},
-        finalAssetType: 'text',
-        finalAssetContent: null,
-        isGeneratingAsset: false,
         isReviewingOutput: false,
         pendingOutputPrompt: '',
-        pendingOutputParams: {},
-        referenceImages: [],
       }),
 
       setUserBrief: (brief) => set({ userBrief: brief }),
-      addReferenceImage: (base64) => set((s) => ({ 
-        referenceImages: [...s.referenceImages, base64].slice(0, 3) 
-      })),
-      removeReferenceImage: (index) => set((s) => ({ 
-        referenceImages: s.referenceImages.filter((_, i) => i !== index) 
-      })),
-      clearReferenceImages: () => set({ referenceImages: [] }),
       setPhase: (phase) => set({ phase }),
-      startProject: (brief) => set({ userBrief: brief, phase: 'working', finalAssetType: 'text', finalAssetContent: null }),
+      startProject: (brief) => set({ userBrief: brief, phase: 'working' }),
       setFinalOutput: (output) => set({ finalOutput: output }),
-      setFinalAsset: (type, content) => set({ finalAssetType: type, finalAssetContent: content, isGeneratingAsset: false }),
-      setIsGeneratingAsset: (isGenerating) => set({ isGeneratingAsset: isGenerating }),
       setReviewingOutput: (val) => set({ isReviewingOutput: val }),
       setPendingOutputPrompt: (prompt) => set({ pendingOutputPrompt: prompt }),
-      setPendingOutputParams: (params) => set({ pendingOutputParams: params }),
 
       addTask: (task) => {
         const newTask: Task = {
@@ -395,10 +361,8 @@ export const useCoreStore = create<CoreState>()(
           let nextAgentCost = { ...s.agentEstimatedCost };
 
           if (entry.usage) {
-            const modelName = entry.raw?.model || useUiStore.getState().llmConfig.model;
-            // For multimodal outputs, we might need to pass the duration/count if available in raw
-            const durationOrCount = entry.raw?.duration || entry.raw?.count;
-            const callCost = calculateCost(entry.usage.promptTokens, entry.usage.completionTokens, modelName, durationOrCount);
+            const modelName = entry.raw?.modelVersion || useUiStore.getState().llmConfig.model;
+            const callCost = calculateCost(entry.usage.promptTokens, entry.usage.completionTokens, modelName);
             
             nextTotalCost += callCost;
             nextAgentCost[entry.agentIndex] = (s.agentEstimatedCost[entry.agentIndex] || 0) + callCost;

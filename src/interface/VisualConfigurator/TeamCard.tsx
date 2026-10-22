@@ -1,7 +1,6 @@
 import { Edit2, Pipette, Trash2, Users, X } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AgenticSystem, DEFAULT_AGENTIC_SET_ID, getAllAgents } from '../../data/agents';
-import { DEFAULT_MODELS, AVAILABLE_MODELS, ModelType } from '../../core/llm/constants';
 import { USER_COLOR } from '../../theme/brand';
 import { useTeamStore } from '../../integration/store/teamStore';
 import { useSceneManager } from '../../simulation/SceneContext';
@@ -48,9 +47,7 @@ export const TeamCard: React.FC<TeamCardProps> = ({
         teamType: system.teamType || '',
         teamDescription: system.teamDescription || 'A custom agentic team.',
         color: system.color || '#A855F7',
-        outputType: system.outputType || 'text',
-        outputModel: system.outputModel || DEFAULT_MODELS.text,
-        outputAutoApprove: system.outputAutoApprove !== undefined ? system.outputAutoApprove : (system.outputType === 'text')
+        outputAutoApprove: system.outputAutoApprove !== false
       });
       setErrorMsg(null);
       setShowDeleteConfirm(false);
@@ -67,9 +64,7 @@ export const TeamCard: React.FC<TeamCardProps> = ({
       localEditData.teamType !== (system.teamType || '') ||
       localEditData.teamDescription !== (system.teamDescription || '') ||
       localEditData.color !== (system.color || '#A855F7') ||
-      localEditData.outputType !== (system.outputType || 'text') ||
-      localEditData.outputModel !== (system.outputModel || DEFAULT_MODELS.text) ||
-      localEditData.outputAutoApprove !== (system.outputAutoApprove);
+      localEditData.outputAutoApprove !== (system.outputAutoApprove !== false);
   }, [localEditData, system]);
 
   const isFormValid = !!(localEditData.teamName?.trim() &&
@@ -257,49 +252,13 @@ export const TeamCard: React.FC<TeamCardProps> = ({
                   onBlur={(e) => e.target.style.borderColor = '#f4f4f5'}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <label className="text-[7px] font-black uppercase text-zinc-400 ml-1">Output Type</label>
-                  <select
-                    value={localEditData.outputType || 'text'}
-                    onChange={(e) => {
-                      const newType = e.target.value as keyof typeof DEFAULT_MODELS;
-                      setLocalEditData(prev => ({
-                        ...prev,
-                        outputType: newType,
-                        outputModel: DEFAULT_MODELS[newType] || prev.outputModel,
-                        outputAutoApprove: newType === 'text'
-                      }));
-                    }}
-                    className="w-full bg-white border border-zinc-100 text-[11px] font-bold rounded-xl px-2.5 py-1.5 outline-none cursor-pointer"
-                  >
-                    <option value="text">TEXT</option>
-                    <option value="image">IMAGE</option>
-                    <option value="music">MUSIC</option>
-                    <option value="video">VIDEO</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[7px] font-black uppercase text-zinc-400 ml-1">Output Model</label>
-                  <select
-                    value={localEditData.outputModel || DEFAULT_MODELS.text}
-                    onChange={(e) => setLocalEditData(prev => ({ ...prev, outputModel: e.target.value }))}
-                    className="w-full bg-white border border-zinc-100 text-[10px] font-bold rounded-xl px-2.5 py-1.5 outline-none cursor-pointer lowercase"
-                  >
-                    {(AVAILABLE_MODELS[localEditData.outputType as ModelType] || []).map(model => (
-                      <option key={model} value={model}>{model}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
               <div className="flex items-center justify-between p-2.5 bg-zinc-50 border border-zinc-100/50 rounded-xl mt-0.5">
                 <div className="flex flex-col">
                   <div className="flex items-center gap-1">
                     <span className="text-[8px] font-black uppercase text-darkDelegation tracking-wider">Auto-Approve Output</span>
-                    <InfoBubble text="When enabled, the team will generate the final asset immediately after finishing all tasks without waiting for your review." />
+                    <InfoBubble text="When enabled, the lead agent delivers the final result as soon as all tasks are done, without waiting for your review." />
                   </div>
-                  <span className="text-[7px] text-zinc-400 font-bold leading-tight">Generate asset without review</span>
+                  <span className="text-[7px] text-zinc-400 font-bold leading-tight">Deliver without review</span>
                 </div>
                 <button
                   type="button"
