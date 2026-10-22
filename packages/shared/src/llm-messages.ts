@@ -252,7 +252,10 @@ export const STOP_REASONS = [
 export const StopReasonSchema = z.enum(STOP_REASONS)
 export type StopReason = z.infer<typeof StopReasonSchema>
 
-/** Token counts for one call. Cache reads and writes are reported apart from uncached input. */
+/**
+ * Token counts for one call. The classes are disjoint: `inputTokens` is uncached input only, so adapters
+ * whose provider counts cached tokens inside its input total (OpenAI) subtract them.
+ */
 export const UsageSchema = z.object({
   inputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
