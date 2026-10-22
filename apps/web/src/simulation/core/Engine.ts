@@ -1,11 +1,14 @@
 import * as THREE from "three/webgpu"
 
-/** Rendering above this ratio costs a lot of fill rate for little visible gain. */
-const MAX_PIXEL_RATIO = 1.5
-const MIN_PIXEL_RATIO = 0.75
+/** Retina-sharp; above 2 the fill-rate cost buys no visible gain. */
+const MAX_PIXEL_RATIO = 2
+/** Never render below one buffer pixel per CSS pixel: lower than this reads as blurry. */
+const MIN_PIXEL_RATIO = 1
 const PIXEL_RATIO_STEP = 0.25
 /** Average frame time over a sample window above which resolution is lowered (~40 fps). */
 const SLOW_FRAME_SECONDS = 1 / 40
+/** Average frame time below which resolution is raised again (~55 fps); the gap avoids flapping. */
+const FAST_FRAME_SECONDS = 1 / 55
 const SAMPLE_WINDOW_SECONDS = 2
 /** Ignore startup (asset loading, shader compilation) when measuring. */
 const WARMUP_SECONDS = 3
@@ -16,6 +19,7 @@ export class Engine {
   public timer: THREE.Timer
 
   private pixelRatio: number
+  private readonly maxPixelRatio: number
   private elapsed = 0
   private sampleTime = 0
   private sampleFrames = 0
@@ -26,7 +30,11 @@ export class Engine {
    */
   constructor(container: HTMLElement) {
     this.renderer = new THREE.WebGPURenderer({ antialias: true })
-    this.pixelRatio = Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO)
+    this.maxPixelRatio = Math.max(
+      MIN_PIXEL_RATIO,
+      Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO),
+    )
+    this.pixelRatio = this.maxPixelRatio
     this.renderer.setPixelRatio(this.pixelRatio)
     this.renderer.setSize(container.clientWidth, container.clientHeight, false)
 
@@ -46,12 +54,13 @@ export class Engine {
   }
 
   /**
-   * Adaptive resolution: lowers the pixel ratio when the average frame time stays slow,
-   * so weaker GPUs trade sharpness for a smooth frame rate. Only ever steps down.
+   * Adaptive resolution: lowers the pixel ratio when the average frame time stays slow, so weaker
+   * GPUs trade sharpness for a smooth frame rate, and raises it again once frames are fast, so a
+   * passing slow patch (asset loading, a busy agent turn) doesn't leave the scene blurry for good.
    */
   public trackFrame(deltaSeconds: number) {
     this.elapsed += deltaSeconds
-    if (this.elapsed < WARMUP_SECONDS || this.pixelRatio <= MIN_PIXEL_RATIO) return
+    if (this.elapsed < WARMUP_SECONDS) return
 
     this.sampleTime += deltaSeconds
     this.sampleFrames++
@@ -60,10 +69,15 @@ export class Engine {
     const averageFrameSeconds = this.sampleTime / this.sampleFrames
     this.sampleTime = 0
     this.sampleFrames = 0
-    if (averageFrameSeconds > SLOW_FRAME_SECONDS) {
-      this.pixelRatio = Math.max(MIN_PIXEL_RATIO, this.pixelRatio - PIXEL_RATIO_STEP)
-      this.renderer.setPixelRatio(this.pixelRatio)
-    }
+    const nextPixelRatio =
+      averageFrameSeconds > SLOW_FRAME_SECONDS
+        ? Math.max(MIN_PIXEL_RATIO, this.pixelRatio - PIXEL_RATIO_STEP)
+        : averageFrameSeconds < FAST_FRAME_SECONDS
+          ? Math.min(this.maxPixelRatio, this.pixelRatio + PIXEL_RATIO_STEP)
+          : this.pixelRatio
+    if (nextPixelRatio === this.pixelRatio) return
+    this.pixelRatio = nextPixelRatio
+    this.renderer.setPixelRatio(this.pixelRatio)
   }
 
   public onResize(width: number, height: number) {
