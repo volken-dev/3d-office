@@ -13,4 +13,4 @@ Finish the current unit of work (issue #$ARGUMENTS). One task per session → on
 5. Push and open the PR with `gh pr create` targeting `main`, filling `.github/pull_request_template.md`: `Closes #$ARGUMENTS` (or `Refs #N` when the work closes nothing), the AUDIT ids addressed, and a **Verified** section saying what was run and what was seen. Tag at creation, mirroring the issue: its `Type:` label and `--assignee isaac-dev0`.
 6. Flag any tech debt you spotted as a new `Type: Tech Debt` issue.
 
-Don't push to `main` directly: merging to `main` deploys GitHub Pages.
+Don't push to `main` directly.

@@ -1,7 +1,7 @@
 import { assetUrl } from "@/lib/asset"
 import { cn } from "@/lib/utils"
 
-/** The Delegation wordmark, resolved through the base path so it works on GitHub Pages. */
+/** The Delegation wordmark. */
 export function BrandLogo({ className }: { className?: string }) {
   return (
     <img

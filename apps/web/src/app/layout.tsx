@@ -1,16 +1,14 @@
 import type { Metadata, Viewport } from "next"
 import { Inter } from "next/font/google"
-import { assetUrl, BASE_PATH } from "@/lib/asset"
 import "./globals.css"
 
-const SITE_ORIGIN = "https://arturitu.github.io"
-const SITE_URL = `${SITE_ORIGIN}${BASE_PATH}/`
+/** Public origin of the deployed site; when unset, social previews use relative URLs. */
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL
 const TITLE = "The Delegation"
 const DESCRIPTION =
   "A no-code 3D playground to explore, design, and interact with Agentic AI systems"
-/** Absolute on purpose: crawlers need full URLs, and a metadataBase with a path drops the base path when joined with '/og.jpg'. */
 const OG_IMAGE = {
-  url: `${SITE_ORIGIN}${assetUrl("og.jpg")}`,
+  url: "/og.jpg",
   type: "image/jpeg",
   width: 1200,
   height: 630,
@@ -19,12 +17,13 @@ const OG_IMAGE = {
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" })
 
 export const metadata: Metadata = {
+  metadataBase: SITE_URL ? new URL(SITE_URL) : undefined,
   title: TITLE,
   description: DESCRIPTION,
   referrer: "strict-origin-when-cross-origin",
   openGraph: {
     type: "website",
-    url: SITE_URL,
+    url: "/",
     title: TITLE,
     description: DESCRIPTION,
     images: [OG_IMAGE],

@@ -177,7 +177,7 @@ These five govern everything below. When a specific rule is missing, decide by t
     per commit.
 52. **PRs target `main`** using the PR template: `Closes #N` for each issue closed (`Refs #N` for
     partial work), a **Verified** section (what was run and what was seen), and any `AUDIT.md` ids
-    addressed. The PR title is the Conventional Commits summary. Merging to `main` deploys Pages.
+    addressed. The PR title is the Conventional Commits summary.
 53. **Every task has a GitHub issue; file it yourself** when none exists, without asking first,
     using the templates in `.github/ISSUE_TEMPLATE/`. **Tag at creation:** a `Type:` label (`Bug`,
     `Feature`, `Chore`, `Design`, `Tech Debt`, `Security`, `Infra`, `Performance`), plus
@@ -233,7 +233,7 @@ These are absolute. No exception without an explicit, in-session user instructio
     typed `hc` client).
 13. **Never modify without explicit instruction:** `CLAUDE.md`, this file, theme tokens,
     `.env*`, `bun.lock`.
-14. **Never run without confirmation:** a push to `main` (it deploys), a force push, or destructive
+14. **Never run without confirmation:** a push to `main`, a force push, or destructive
     git commands.
 15. **Never build new features** while the stabilise-first goal stands, without confirming.
 

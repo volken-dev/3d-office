@@ -1,6 +1,6 @@
 /**
  * Injects a Content-Security-Policy <meta> into every exported HTML page.
- * GitHub Pages cannot send response headers and `output: 'export'` cannot use nonces, so each inline
+ * A static host cannot be relied on to send response headers and `output: 'export'` cannot use nonces, so each inline
  * bootstrap script Next emits is allowed by its sha256 hash instead of 'unsafe-inline'.
  * Meta-delivered CSP ignores frame-ancestors, report-uri and sandbox; those need real headers.
  * The policy only governs elements parsed after it, so the meta is inserted right after

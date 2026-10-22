@@ -61,4 +61,4 @@ If you hit a decision the spec doesn't cover: STOP, don't guess. State the decis
 3. Flip the Status of any `AUDIT.md` item this closes.
 4. Open ONE PR (mirror `/ship`): push the branch, `gh pr create` targeting `main` with `Closes #N` for **every** issue, the summary, the deleted spec and follow-up issues, and the **Verified** section. Tag it like the issues.
 
-Don't push to `main` (it deploys) and don't merge.
+Don't push to `main` and don't merge.

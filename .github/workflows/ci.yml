@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: CI
 
 on:
   push:
@@ -10,11 +10,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: pages-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
+  check:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -46,35 +46,12 @@ jobs:
       - name: Lint
         run: bun run lint
 
-      # Static export to apps/web/out; the web postbuild step injects the CSP meta tag.
       - name: Build
         run: bun run build
 
       - name: Guard against leaked API keys
         run: |
-          if grep -rEl 'AIza[0-9A-Za-z_-]{35}' apps/web/out/; then
-            echo "A Google API key was found in the build output." >&2
+          if grep -rEl 'AIza[0-9A-Za-z_-]{35}|sk-ant-[0-9A-Za-z_-]{20,}|sk-[0-9A-Za-z_-]{32,}' apps/web/out/ apps/api/dist/ 2>/dev/null; then
+            echo "An API key was found in the build output." >&2
             exit 1
           fi
-
-      # The deploy-pages artifact flow skips Jekyll, so _next/ is served without a .nojekyll file.
-      - name: Upload artifact
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
-        with:
-          path: ./apps/web/out
-
-  deploy:
-    if: github.event_name != 'pull_request'
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

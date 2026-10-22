@@ -2,12 +2,8 @@
   <img src="apps/web/public/images/the-delegation.svg" width="256" alt="The Delegation Logo">
 </p>
 
-<p align="center">
-  <a href="https://arturitu.github.io/the-delegation/"><b>Launch The Delegation · Full Experience *</b></a>
-</p>
-
 > [!IMPORTANT]
-> **\*** This experience requires **BYOK (Bring Your Own Key)**. You will need a **[Gemini API key](https://aistudio.google.com/app/apikey)** to run the simulation. You can also **clone or fork** this repository to run it locally.
+> This experience requires **BYOK (Bring Your Own Key)**. You will need a **[Gemini API key](https://aistudio.google.com/app/apikey)** to run the simulation. You can also **clone or fork** this repository to run it locally.
 <div align="center">
   <img src="apps/web/public/images/the-delegation-UI.jpg" width="100%" alt="The Delegation Hero">
 </div>
@@ -29,7 +25,7 @@ bun install
 bun dev
 ```
 
-Then open `http://localhost:3000/the-delegation`.
+Then open `http://localhost:3000`.
 
 ### Repository layout
 
@@ -37,7 +33,7 @@ This is a [Turborepo](https://turborepo.com) monorepo using Bun workspaces:
 
 | Path | What it is |
 |---|---|
-| `apps/web` | Next.js app (static export, deployed to GitHub Pages) |
+| `apps/web` | Next.js app (static export) |
 | `apps/api` | Hono API server (prepared, not yet used by the web app) |
 | `packages/shared` | API contract types and schemas shared by web and api |
 

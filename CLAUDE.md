@@ -14,8 +14,8 @@
 The Delegation is a 3D office in the browser (Three.js WebGPU + TSL) where Gemini-powered LLM
 agents collaborate on software-development work: the user sets a brief, a lead agent proposes
 tasks, team agents pick them up, and the lead delivers a final output for the user to review.
-Users bring their own Gemini key (BYOK). The site is a static export deployed to GitHub Pages under
-`/the-delegation`.
+Users bring their own Gemini key (BYOK). The site is a static export served from the root of
+whatever host serves it; there is no deploy pipeline.
 
 **Current goal: stability and sound architecture before any new feature.** Close the reliability,
 security and architecture issues (and `AUDIT.md`'s open items) before building anything new. If a
@@ -29,7 +29,7 @@ Turborepo + Bun workspaces (`bun@1.3.11`, pinned in the root `package.json`).
 
 ```
 apps/
-├── web/        Next.js 16 App Router, output: 'export', basePath /the-delegation
+├── web/        Next.js 16 App Router, output: 'export'
 │   └── src/
 │       ├── app/          layout, page, client-app (the ssr:false boundary)
 │       ├── core/         framework-free domain: agent/ (AgentBrain, PromptBuilder, ToolRegistry,
@@ -84,8 +84,9 @@ bun run build       # static export to apps/web/out (+ CSP postbuild)
 `bun run dev:lan` in `apps/web` opts in to binding on the network. `.env*` files are gitignored
 except `.env.example`.
 
-CI (`.github/workflows/deploy.yml`) installs with `--frozen-lockfile`, audits, typechecks, lints,
-builds, greps `out/` for API keys and deploys `apps/web/out` to Pages on `main`.
+CI (`.github/workflows/ci.yml`) runs on pull requests and pushes to `main`: installs with
+`--frozen-lockfile`, audits, typechecks, lints, builds and greps the build output for API keys.
+Nothing deploys.
 
 ---
 
@@ -160,7 +161,7 @@ Carried over from Volken; these are how Isaac wants work done.
   `AUDIT.md`'s findings tables (flipping a Status is fine), theme tokens
   in `globals.css` / `theme/brand.ts`, `.env*`, `bun.lock`.
 - **Don't add a dependency without asking**, with a one-line justification (`/audit-deps`).
-- **Don't run without confirmation:** anything that deploys (pushing to `main` deploys Pages),
+- **Don't run without confirmation:** adding a deploy pipeline,
   `git push --force`, destructive git commands (`reset --hard`, `clean`, `checkout -- <file>`).
 - **Don't change the 3D scene's visuals** or the retry/budget policy as a side effect of other work.
 
