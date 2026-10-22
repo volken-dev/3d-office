@@ -11,11 +11,13 @@
 
 ## What this product is
 
-The Delegation is a 3D office in the browser (Three.js WebGPU + TSL) where Gemini-powered LLM
-agents collaborate on software-development work: the user sets a brief, a lead agent proposes
-tasks, team agents pick them up, and the lead delivers a final output for the user to review.
-Users bring their own Gemini key (BYOK). The site is a static export served from the root of
-whatever host serves it; there is no deploy pipeline.
+The Delegation is a 3D office in the browser (Three.js WebGPU + TSL) where LLM agents collaborate
+on software-development work: the user sets a brief, a lead agent proposes tasks, team agents pick
+them up, and the lead delivers a final output for the user to review. Agents run on Claude
+(`claude-opus-5-5` for leads, `claude-sonnet-5-5` for team agents by default), with OpenAI as an
+automatic backup during Anthropic outages. Every model call goes through the Hono gateway in
+`apps/api`, which holds the provider keys; the browser holds none. The web app is a static export
+served from the root of whatever host serves it; there is no deploy pipeline.
 
 **Current goal: stability and sound architecture before any new feature.** Close the reliability,
 security and architecture issues (and `AUDIT.md`'s open items) before building anything new. If a
@@ -32,21 +34,25 @@ apps/
 ├── web/        Next.js 16 App Router, output: 'export'
 │   └── src/
 │       ├── app/          layout, page, client-app (the ssr:false boundary)
-│       ├── core/         framework-free domain: agent/ (AgentBrain, PromptBuilder, ToolRegistry,
-│       │                 tools/), llm/ (providers, pricing, errors), orchestration/ (ports, policy),
-│       │                 project/ (types)
-│       ├── integration/  adapters from core to React/Zustand: store/ (coreStore, uiStore,
-│       │                 teamStore), orchestration/zustandDeps, settings/, hooks/
+│       ├── integration/  adapters from packages/agents to React/Zustand and the gateway: store/
+│       │                 (coreStore, uiStore, teamStore), orchestration/zustandDeps, llm/
+│       │                 (gatewayClient, gatewayStatus, legacyApiKey), hooks/
 │       ├── simulation/   the 3D scene: SceneManager, Engine, characters, pathfinding, AgentSimulation
 │       ├── interface/    React panels and modals
 │       ├── components/   ui/ (shadcn primitives) + shared components (Markdown, ExternalLink)
-│       ├── data/         team templates (agents.ts)
-│       ├── lib/          asset, storage, clipboard, format, api-client, utils (cn only)
+│       ├── data/         team templates and the user-including character roster (agents.ts)
+│       ├── lib/          asset, storage, clipboard, format, usage, api-client, utils (cn only)
 │       └── theme/        brand.ts
-├── api/        Hono app, runtime-agnostic (prepared, not yet used by the UI)
-│   └── src/    app.ts, env.ts, errors.ts, routes/, middleware/, llm/
+├── api/        Hono app, runtime-agnostic: the LLM gateway
+│   └── src/    app.ts (createApp), env.ts, errors.ts, routes/ (health, llm), middleware/,
+│               llm/routerForEnv
 packages/
-└── shared/     @the-delegation/shared: zod API contract (api.ts, llm.ts)
+├── agents/     @the-delegation/agents: framework-free orchestration. agent/ (AgentBrain,
+│               PromptBuilder, ToolRegistry, history, tools/), orchestration/ (ports, policy),
+│               project/types, llm/ (AgentMessage, LLMClient, LLMError), team.ts
+├── llm/        @the-delegation/llm: registry (models, prices, backups), adapter, errors,
+│               providers/ (anthropic, openai), router (fallback + circuit breaker)
+└── shared/     @the-delegation/shared: zod contracts (api.ts, llm-messages.ts)
 ```
 
 ### Decisions made on purpose — do not "fix" these
@@ -54,9 +60,18 @@ packages/
 - **Static export, client-only scene.** Everything touching `three/webgpu`, `window` or storage
   sits behind the `next/dynamic(..., { ssr: false })` boundary in `app/client-app.tsx`. Storage
   access goes through `lib/storage.ts`; assets resolve through `lib/asset.ts`.
-- **`core/` stays framework-free.** Agent logic depends on ports (`core/orchestration/ports.ts`),
-  not on Zustand or the scene. The Zustand adapter lives in `integration/`. New domain code goes in
-  `core/` behind a port; never import a store from `core/`.
+- **`packages/agents` stays framework-free.** Agent logic depends on ports
+  (`orchestration/ports.ts`), not on Zustand, React or the scene, so it can move behind the
+  gateway later. The Zustand adapter lives in `apps/web/src/integration/`. New domain code goes in
+  `packages/agents` behind a port; never import a store or React from it.
+- **Claude's tool-use contract holds everywhere.** History is append-only and sent whole; every
+  tool call is answered by a `tool_result` (failures with `isError`) in one user turn; assistant
+  turns are stored exactly as returned, opaque reasoning included; the system prompt and tool list
+  are byte-stable and volatile project state travels in a context turn. `MessagesRequestSchema`
+  rejects anything else, and the agents tests assert every request the loop builds passes it.
+- **Providers live in `packages/llm`.** The Anthropic adapter is first-class; OpenAI is only the
+  outage backup the router fails over to (429, overload, 5xx), never on refusals or bad requests.
+  Models, prices and backups come from the registry; there is no Gemini.
 - **One retry policy, in `AgentBrain`.** Exponential backoff, a cap on unproductive attempts, a
   per-project call and task budget, and an immediate pause on quota/auth errors. Do not add a
   second retry loop anywhere else (one was removed for silently racing this one).
@@ -64,8 +79,10 @@ packages/
   to that agent in that phase (`ToolRegistry.runToolCall`). LLM output is untrusted when rendered
   too: Markdown goes through `components/Markdown.tsx` only (no raw HTML, no remote images).
 - **React strict mode stays on.** It is the regression test for leaked simulations (REL-02).
-- **The API is prepared, not wired.** The app is BYOK today. Moving key custody server-side is a
-  tracked item (SEC-01, ARCH-07), not something to start incidentally.
+- **Keys live only on the gateway.** `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` are server
+  bindings; the web app calls `POST /api/llm/messages` through the typed `hc` client and never
+  sees a key. The gateway is not safe to expose publicly until sign-in and the per-user spend cap
+  land (#27).
 - **The 3D scene's look does not change** as a side effect of refactors.
 
 ---
@@ -74,19 +91,25 @@ packages/
 
 ```
 bun install
-bun run dev         # turbo: web on :3000 (localhost only), api
+bun run dev         # turbo: web on :3000 (localhost only), api on :8787
 bun run typecheck   # tsc --noEmit per package
 bun run lint        # biome check per package
+bun run test        # bun test per package (tests in each package's test/ dir)
 bun run format      # biome format --write per package
-bun run build       # static export to apps/web/out (+ CSP postbuild)
+bun run build       # static export to apps/web/out (+ CSP postbuild), api bundle
 ```
+
+Model calls need a Claude key on the gateway: copy `apps/api/.env.example` to `apps/api/.env` and
+set `ANTHROPIC_API_KEY` (and optionally `OPENAI_API_KEY` for the backup); point the web app at the
+gateway with `NEXT_PUBLIC_API_URL` in `apps/web/.env.local` (see its `.env.example`). The header's
+gateway indicator shows whether it is online, unreachable or missing its key.
 
 `bun run dev:lan` in `apps/web` opts in to binding on the network. `.env*` files are gitignored
 except `.env.example`.
 
 CI (`.github/workflows/ci.yml`) runs on pull requests and pushes to `main`: installs with
-`--frozen-lockfile`, audits, typechecks, lints, builds and greps the build output for API keys.
-Nothing deploys.
+`--frozen-lockfile`, audits, typechecks, lints, tests, builds and greps the build output for API
+keys (Google, Anthropic and OpenAI prefixes). Nothing deploys.
 
 ---
 
@@ -102,7 +125,8 @@ Internalised from `.claude/RULES.md` — read it for the full set.
 - **Full, descriptive names.** No single-letter or abbreviated identifiers (trivial loop counters
   and `(a, b)` comparators excepted). `agentIndex`, never `idx`; `task`, never `t`.
 - **No `console.log`** for application events; `console.warn`/`console.error` only on real error
-  paths (Biome's `noConsole` enforces this). Never log the user's API key or raw prompts.
+  paths (Biome's `noConsole` enforces this). Never log provider keys or raw prompts; upstream
+  error text goes to server logs with the request id, never to the client.
 - **Validate at every boundary with zod** — persisted storage on rehydrate, LLM tool arguments,
   API route input, env.
 - **No barrels and no junk-drawer files.** No new `index.ts` re-export files; no `utils.ts` /
@@ -175,24 +199,27 @@ Slash commands live in `.claude/commands/`. Plan and build: `/plan-feature` `/im
 
 ### Definition of done (before claiming a task complete)
 
-A task is DONE only when all of these pass — use `/health-check` for the first four:
+A task is DONE only when all of these pass — use `/health-check` for the first five:
 1. `bun run typecheck` — green
 2. `bun run lint` — green
-3. `bun run build` — green (the static export and CSP postbuild)
-4. `git status` clean of unintended files; not committing on `main`
-5. **Verified by running it**: the change was exercised the way a person meets it (the app in a
+3. `bun run test` — green
+4. `bun run build` — green (the static export and CSP postbuild)
+5. `git status` clean of unintended files; not committing on `main`
+6. **Verified by running it**: the change was exercised the way a person meets it (the app in a
    browser via `bun run dev`, or the API over HTTP), and the PR's **Verified** section says what was
    run and what was seen. Typecheck alone doesn't count. When something can't be exercised locally,
    say which part and why.
 
-There is no test runner yet (issue for ARCH-09). Never report success with a red gate; if a gate fails, show
-the exact `file:line`, not a summary.
+Never report success with a red gate; if a gate fails, show the exact `file:line`, not a summary.
 
 ### When you add an artifact, register it
 
-- New agent tool → add `register(<tool>)` to `TOOLS` in `apps/web/src/core/agent/ToolRegistry.ts`
-  (order is the order the model sees them)
-- New API route group → `.route('/<name>', <name>)` in `apps/api/src/app.ts`, with its request and
-  response schemas in `@the-delegation/shared`
+- New agent tool → add `register(<tool>)` to `TOOLS` in
+  `packages/agents/src/agent/ToolRegistry.ts` (order is the order the model sees them); its input
+  schema is a closed object (`additionalProperties: false`) so providers can enforce it strictly
+- New API route group → `.route('/<name>', <name>)` in `createApp` (`apps/api/src/app.ts`), with
+  its request and response schemas in `@the-delegation/shared`
+- New model → an entry in `packages/llm/src/registry.ts` with prices checked against the
+  provider's pricing page, and a backup for Anthropic models
 
 Run `/registration-parity` if unsure.

@@ -22,9 +22,10 @@ These five govern everything below. When a specific rule is missing, decide by t
 - **P2 — LLM output is untrusted input.** Tool-call arguments are parsed and authorised per agent
   and phase; rendered output goes through `components/Markdown.tsx`; board state passed into
   prompts is tagged and truncated as data, never spliced in as instructions.
-- **P3 — Keep the layers apart.** `core/` is framework-free and talks to the world through ports;
-  `integration/` adapts it to Zustand and React; `simulation/` renders. The UI never reaches into
-  `core/` internals, and `core/` never imports a store.
+- **P3 — Keep the layers apart.** `packages/agents` is framework-free and talks to the world through
+  ports; `packages/llm` owns the providers and runs only behind the gateway (`apps/api`);
+  `apps/web/src/integration/` adapts the agents to Zustand, React and the gateway; `simulation/`
+  renders. The UI never reaches into package internals, and `packages/agents` never imports a store.
 - **P4 — Spend is the user's money.** Every path that can call the LLM goes through the single
   retry/budget policy in `AgentBrain`. Nothing loops, retries, or re-sparks an agent outside it.
 - **P5 — Fix what you find; leave nothing broken silently.** If you discover a bug during any
@@ -35,14 +36,14 @@ These five govern everything below. When a specific rule is missing, decide by t
 
 ## 1. File, structure, and naming
 
-1. **One responsibility per file.** One tool per file in `core/agent/tools/`, one provider per
-   file in `core/llm/providers/`, one route group per file in `apps/api/src/routes/`, one panel or
-   modal per file in `interface/`.
-2. **No barrel files.** Never add an `index.ts` that re-exports a directory. (`packages/shared`
-   has one today; prefer subpath exports if it grows, and do not add new barrels.) The single
-   permitted barrel-like file is the shadcn `lib/utils.ts` exporting `cn()`.
+1. **One responsibility per file.** One tool per file in `packages/agents/src/agent/tools/`, one
+   provider per file in `packages/llm/src/providers/`, one route group per file in
+   `apps/api/src/routes/`, one panel or modal per file in `interface/`.
+2. **No barrel files.** Never add an `index.ts` that re-exports a directory. Packages expose modules
+   through subpath exports (`@the-delegation/llm/registry`, `@the-delegation/agents/team`). The
+   single permitted barrel-like file is the shadcn `lib/utils.ts` exporting `cn()`.
 3. **Never create `utils.ts`, `helpers.ts`, or `misc.ts`.** Name a file for what it does.
-4. **Match the surrounding file-naming convention.** `core/`, `simulation/` and `interface/` use
+4. **Match the surrounding file-naming convention.** `packages/agents`, `simulation/` and `interface/` use
    PascalCase for classes and components (`AgentBrain.ts`, `ChatPanel.tsx`) and camelCase for
    modules (`coreStore.ts`, `proposeTask.ts`); `components/ui/` and `lib/` use kebab-case (shadcn).
 5. **Full, descriptive names.** No single-letter or abbreviated identifiers. `agentIndex`, never
@@ -51,8 +52,8 @@ These five govern everything below. When a specific rule is missing, decide by t
 6. **Use `function` declarations for named and exported functions.** Reserve arrow functions for
    callbacks and inline expressions.
 7. **Tests live in a per-package `test/` dir mirroring `src/`** (`src/lib/format.ts` →
-   `test/lib/format.test.ts`), never beside the source. (No runner yet, ARCH-09; this is the
-   convention when one lands.)
+   `test/lib/format.test.ts`), never beside the source. They run with `bun test` through
+   `bun run test`, locally and in CI.
 
 ## 2. Code style
 
@@ -85,19 +86,27 @@ These five govern everything below. When a specific rule is missing, decide by t
 
 ## 4. Agents and the LLM
 
-16. **Tools follow the `ToolSpec` shape** (`core/agent/tools/types.ts`): a definition, an
+16. **Tools follow the `ToolSpec` shape** (`packages/agents/src/agent/tools/types.ts`): a closed
+    `inputSchema` (`additionalProperties: false`), an
     `isOffered(agent, team, phase)` gate, a `parseArgs` that validates every argument (`readString`
-    and friends in `types.ts`, with length caps), and a `run` that returns a `ToolResult`. A failure is returned to the model as `{ ok: false, error }`, never thrown.
+    and friends in `types.ts`, with length caps), and a `run` that returns a `ToolResult`. Success
+    carries a `summary` and failure an `error`; both go back to the model as a `tool_result`,
+    never thrown.
 17. **A tool is offered only where it may run.** `runToolCall` rejects a tool that wasn't in the
     offered set for that request; keep `isOffered` and authorisation in agreement.
 18. **Prompts:** the system part stays static; dynamic state (board, history) is passed as tagged,
     truncated data. Never interpolate user or model text into instructions.
 19. **History is append-only, owned by the store, and capped.** No mutable copies in `AgentBrain`.
+    Every tool call is answered by a `tool_result` in the next user turn; assistant turns are
+    stored exactly as returned (opaque reasoning included); the cap trims only at a boundary that
+    keeps calls and results together (`appendToHistory`). Display-only notices carry
+    `displayOnly` and are never sent to the model.
 20. **Every LLM call is cancellable and time-limited** (one `AbortController` per think, combined
     with a timeout). Reset, team switch, task removal and dispose abort in-flight calls.
-21. **Errors are classified** (`core/llm/errors.ts`): auth and missing-key errors open the key
-    dialog; quota pauses the run; everything else is a toast or a task error. Never open the key
-    dialog for a transient failure.
+21. **Errors are classified** (`packages/agents/src/llm/errors.ts`): rate limiting pauses the run;
+    a gateway that is not configured or not authorised pauses it for access and re-checks the
+    gateway status; everything else is a toast or a task error. On the gateway, provider failures
+    map to our error codes and messages (`apps/api/src/routes/llm.ts`); only outages fail over.
 22. **Agent identity:** do not add new code that assumes positional agent indices or that indices
     start at 1 (ARCH-03, CODE-04).
 
@@ -128,8 +137,9 @@ These five govern everything below. When a specific rule is missing, decide by t
 
 ## 7. Security
 
-34. **Never log or render the user's API key**, and never send it anywhere but the provider it is
-    for. The build greps `out/` for keys; keep it that way.
+34. **Provider keys exist only as gateway bindings.** Never log, render or return them, never put
+    them in a `NEXT_PUBLIC_*` variable, and never send one anywhere but its provider. CI greps the
+    build output for Google, Anthropic and OpenAI key prefixes; keep it that way.
 35. **Untrusted Markdown renders through `components/Markdown.tsx` only**: no raw HTML, no remote
     images, http(s)/mailto links only, external links through `ExternalLink`.
 36. **Keep the CSP intact** (`scripts/csp.mjs`). A new inline script or remote origin is a CSP
@@ -163,7 +173,7 @@ These five govern everything below. When a specific rule is missing, decide by t
 45. **No emoji and no exclamation marks** in product UI.
 46. **Voice:** second person, active voice, present tense, short sentences. Say what happened,
     then the next step. Never "Something went wrong".
-47. **Button labels are verb-first, sentence case** ("Add API key", "Review deliverable");
+47. **Button labels are verb-first, sentence case** ("Check again", "Review deliverable");
     pending states are present participles ("Saving...").
 48. **Banned words:** seamless, revolutionary, cutting-edge, leverage, empower, unlock,
     supercharge, delightful, world-class, next-generation, synergy.
@@ -204,7 +214,7 @@ These five govern everything below. When a specific rule is missing, decide by t
 60. **Verify every change by running it, and say how in the PR.** Typecheck and lint passing is
     not verification. Exercise the change the way a person meets it: the app in a browser via
     `bun run dev` (with StrictMode on), or the API over HTTP. Never verify by spending real
-    budget in a loop; a single real call with your own key is fine when the change needs it.
+    budget in a loop; a single real call through the gateway is fine when the change needs it.
 61. **Audits are working state.** A mid-stream audit (security, UX, performance) produces
     severity-rated findings with a resolution map, and the doc shrinks as findings close.
 
@@ -215,7 +225,7 @@ These five govern everything below. When a specific rule is missing, decide by t
 These are absolute. No exception without an explicit, in-session user instruction.
 
 1. **Never use `any`**, `var`, or an `as` / `as unknown as` cast to force a shape.
-2. **Never `console.log` application events**, and never log the user's key or raw prompts.
+2. **Never `console.log` application events**, and never log provider keys or raw prompts.
 3. **Never write inline `//` explanatory comments** (JSDoc, linked `TODO(...)` and tool directives
    only).
 4. **Never use single-letter or abbreviated names** outside the two exceptions in Rule 5.
@@ -224,8 +234,8 @@ These are absolute. No exception without an explicit, in-session user instructio
 7. **Never use em-dashes, bullet glyphs, emoji or exclamation marks in user-facing copy.**
 8. **Never add a second retry loop or an LLM call outside the `AgentBrain` policy.**
 9. **Never trust LLM output** as instructions, as HTML, or as valid tool arguments.
-10. **Never import a store, React, or the scene from `core/`.** (One known violation remains:
-    `AgentBrain` defaults to the Zustand deps, ARCH-01. Don't add a second.)
+10. **Never import a store, React, or the scene from `packages/agents`**, and never import a
+    provider SDK outside `packages/llm`.
 11. **Never model speculatively** — no state field, type, port or store slice that shipping code
     doesn't read.
 12. **Never add a dependency without confirmation**, and never add a banned one: ESLint, Prettier,

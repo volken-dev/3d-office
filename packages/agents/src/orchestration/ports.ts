@@ -73,7 +73,7 @@ export interface OrchestratorEvents {
 
 /**
  * Ports that agent orchestration depends on. The browser wires them to Zustand
- * (src/integration/orchestration); a server runtime can wire them to a database
+ * (apps/web/src/integration/orchestration); a server runtime can wire them to a database
  * and the Hono API without touching src/core.
  */
 export interface OrchestrationDeps {

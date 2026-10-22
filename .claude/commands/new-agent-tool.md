@@ -4,11 +4,11 @@ argument-hint: "<tool_name>  e.g. request_changes"
 allowed-tools: Read, Edit, Write, Bash
 ---
 
-Scaffold agent tool `$ARGUMENTS`, mirroring `apps/web/src/core/agent/tools/completeTask.ts`. This adds a capability the model can call, so confirm it isn't a new feature under the stabilise-first goal before writing code.
+Scaffold agent tool `$ARGUMENTS`, mirroring `packages/agents/src/agent/tools/completeTask.ts`. This adds a capability the model can call, so confirm it isn't a new feature under the stabilise-first goal before writing code.
 
-Read first: `tools/types.ts` (`ToolSpec`, `ToolContext`, `fail`, `readString`), `tools/completeTask.ts`, `ToolRegistry.ts`, `PromptBuilder.ts`, and `core/orchestration/ports.ts` (`ProjectStatePort`).
+Read first: `tools/types.ts` (`ToolSpec`, `ToolContext`, `fail`, `readString`), `tools/completeTask.ts`, `ToolRegistry.ts`, `PromptBuilder.ts`, and `packages/agents/src/orchestration/ports.ts` (`ProjectStatePort`).
 
-1. Create `apps/web/src/core/agent/tools/<camelCaseName>.ts` exporting `const <camelCaseName>: ToolSpec<Args>`:
+1. Create `packages/agents/src/agent/tools/<camelCaseName>.ts` exporting `const <camelCaseName>: ToolSpec<Args>`:
    - `definition`: `function.name` is the snake_case `$ARGUMENTS`; a terse description written for the model; a JSON schema with `required` set.
    - `isOffered(agent, team, phase)`: offer it only to the agents and phases that may run it (lead-only tools use `isLeadAgent(team, agent.index)`, as `deliverProject.ts` does).
    - `parseArgs`: validate every argument with `readString` (or a sibling helper added to `types.ts`) with a length cap. Never trust the model's types.

@@ -3,7 +3,7 @@
 </p>
 
 > [!IMPORTANT]
-> This experience requires **BYOK (Bring Your Own Key)**. You will need a **[Gemini API key](https://aistudio.google.com/app/apikey)** to run the simulation. You can also **clone or fork** this repository to run it locally.
+> Agents run on **Claude**, through the model gateway in `apps/api`. To run them locally you need an **[Anthropic API key](https://platform.claude.com/settings/keys)** set on the gateway (see [Backend](#backend)); an OpenAI key is optional and only used as a backup during Anthropic outages.
 <div align="center">
   <img src="apps/web/public/images/the-delegation-UI.jpg" width="100%" alt="The Delegation Hero">
 </div>
@@ -34,29 +34,32 @@ This is a [Turborepo](https://turborepo.com) monorepo using Bun workspaces:
 | Path | What it is |
 |---|---|
 | `apps/web` | Next.js app (static export) |
-| `apps/api` | Hono API server (prepared, not yet used by the web app) |
+| `apps/api` | Hono LLM gateway: holds the provider keys and serves every model call |
+| `packages/agents` | Framework-free agent orchestration: the agent loop, tools, prompts and policy |
+| `packages/llm` | Model registry, Anthropic and OpenAI adapters, and the fallback router |
 | `packages/shared` | API contract types and schemas shared by web and api |
 
-Common tasks run from the repo root through Turborepo: `bun dev`, `bun run build`, `bun run lint`, `bun run typecheck`. Target one package with `bunx turbo run <task> --filter=web`.
+Common tasks run from the repo root through Turborepo: `bun dev`, `bun run build`, `bun run lint`, `bun run typecheck`, `bun run test`. Target one package with `bunx turbo run <task> --filter=web`.
 
 ## Backend
 
-`apps/api` is a [Hono](https://hono.dev) app prepared for moving Gemini calls and key custody off the browser. The web app does not use it yet; it is still bring-your-own-key and ships as a static export.
+`apps/api` is the [Hono](https://hono.dev) LLM gateway. The web app sends every model call here; the gateway holds the provider keys, so the browser never sees one. Agents run on Claude, and the gateway fails over to OpenAI when Anthropic is rate limited, overloaded or down.
 
 ```bash
-cp apps/api/.env.example apps/api/.env   # set GEMINI_API_KEY and ALLOWED_ORIGINS
-bunx turbo run dev --filter=api          # http://127.0.0.1:8787/api
+cp apps/api/.env.example apps/api/.env      # set ANTHROPIC_API_KEY (OPENAI_API_KEY optional) and ALLOWED_ORIGINS
+cp apps/web/.env.example apps/web/.env.local  # set NEXT_PUBLIC_API_URL=http://localhost:8787
+bun dev                                     # web on :3000, gateway on :8787
 ```
 
 | Route | What it does |
 |---|---|
-| `GET /api/health` | Liveness check |
-| `POST /api/llm/completions` | Validates the body against `@the-delegation/shared`, calls Gemini with the server-side `GEMINI_API_KEY`, returns normalized output only |
+| `GET /api/health` | Liveness check; reports whether a Claude key and an OpenAI backup key are configured (never the keys) |
+| `POST /api/llm/messages` | Validates the provider-neutral request against `@the-delegation/shared`, serves it through the router (Claude first, OpenAI on outages) and returns the normalised reply, with which provider served it |
 
-- `src/app.ts` is runtime-agnostic (Bun, Workers or Node) and exports `AppType`; `src/index.ts` is the Bun entry. `bun run build` bundles it into a single `dist/index.js` for `bun run start`.
-- The request and response contract (zod schemas plus inferred types, error shape, model allowlist and size caps) lives in `packages/shared`.
-- The web app gets a typed client from `apps/web/src/lib/api-client.ts` (`hc<AppType>`, base URL from `NEXT_PUBLIC_API_URL`). It imports only types from `apps/api`, so no server code reaches the bundle.
-- CORS allows only the origins listed in `ALLOWED_ORIGINS`. The per-IP rate limiter is in-memory and meant for development only. There is no authentication yet, so do not deploy this endpoint publicly before adding auth and a shared rate limiter.
+- `src/app.ts` is runtime-agnostic (Bun, Workers or Node) and exports `createApp` and `AppType`; `src/index.ts` is the Bun entry.
+- Provider adapters, the model registry (models, prices, backups) and the fallback router live in `packages/llm`; the wire contract lives in `packages/shared`.
+- The web app reaches the gateway through the typed client in `apps/web/src/lib/api-client.ts` (`hc<AppType>`). It imports only types from `apps/api`, so no server code reaches the bundle.
+- CORS allows only the origins in `ALLOWED_ORIGINS`. The per-IP rate limiter is in-memory and meant for development only, and there is no sign-in yet: do not expose the gateway publicly until sign-in and per-user spend caps land.
 
 ## Features
 
@@ -65,7 +68,7 @@ bunx turbo run dev --filter=api          # http://127.0.0.1:8787/api
 - **Team Editor (React Flow):** Create your own [multi-agent design patterns](https://developers.googleblog.com/developers-guide-to-multi-agent-patterns-in-adk/) using an interactive node-based interface.
 - **5 Software-Development Teams:** Templates to get you started: Feature Squad, Architecture Council, Bug Hunters, Code Review Board and a solo Staff Engineer.
 - **Markdown Deliverables:** Each team delivers a Markdown document (spec, design doc, incident write-up, review) that you can review, edit and copy.
-- **Per-Agent LLM:** Assign different [Gemini Models](https://ai.google.dev/gemini-api/docs/models) to specific roles (e.g., Flash for speed, Pro for reasoning).
+- **Per-Agent LLM:** Each agent picks its model. Leads default to Claude Opus 5.5 and team agents to Claude Sonnet 5.5; GPT-6 models are available too, and Claude agents fail over to OpenAI during outages.
 - **Cost & Token Tracking:** Real-time estimation of usage costs and token consumption for transparency.
 - **PR-style Workflows:** Learn about Pull Request and Review workflows where agents with `human-in-the-loop` properties require your approval to proceed.
 - **Guardrails:** Controlled generation with the `Auto-approve output` option, ensuring quality before final asset production.
@@ -90,7 +93,7 @@ bunx turbo run dev --filter=api          # http://127.0.0.1:8787/api
 - **Engine:** [Three.js](https://threejs.org/) (WebGPU & TSL) for advanced rendering and compute.
 - **App:** [Next.js](https://nextjs.org/) (static export), [shadcn/ui](https://ui.shadcn.com/) and [Tailwind CSS](https://tailwindcss.com/).
 - **UI:** [React](https://react.dev/) & [React Flow](https://reactflow.dev/) for node-based team visualization.
-- **AI:** [Gemini API](https://deepmind.google/technologies/gemini/) is the core LLM provider.
+- **AI:** [Claude](https://platform.claude.com/docs) is the primary LLM provider, with the [OpenAI API](https://developers.openai.com/api/docs) as an outage backup, both behind a [Hono](https://hono.dev) gateway.
 - **State:** [Zustand](https://github.com/pmndrs/zustand) for a unified, reactive store across the 3D world and React UI.
 - **Tooling:** [Bun](https://bun.com) workspaces and [Turborepo](https://turborepo.com).
 - **3D Assets:** Custom models and animations rigged in [Blender](https://blender.org), using an instanced animation system.

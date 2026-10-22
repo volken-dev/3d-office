@@ -9,8 +9,8 @@ You are a senior product engineer and architect planning a change to The Delegat
 Your job is NOT to build it. Do not write feature code. Do not make implementation decisions without asking. Work through the phases in order and WAIT for answers at the end of each phase. Ask questions in small batches with the structured question tool (max 4 per batch); skip any question the description already answers.
 
 Ground every question and option in the real stack:
-- **The app is a static Next.js export, BYOK.** There is no server in the loop today; `apps/api` is prepared but unused. Anything that needs a server (key custody, persistence across devices) is a step change: say so.
-- **`core/` is framework-free behind ports**; `integration/` adapts it to Zustand; `simulation/` renders the 3D scene; `interface/` is the React UI.
+- **The app is a static Next.js export; every model call goes through the Hono gateway** (`apps/api`), which holds the provider keys (Claude first, OpenAI as outage backup). The gateway has no sign-in yet (#27) and there is no server-side persistence: anything that needs either is a step change, say so.
+- **`packages/agents` is framework-free behind ports**; `packages/llm` holds the providers, behind the gateway; `apps/web/src/integration/` adapts the agents to Zustand and the gateway; `simulation/` renders the 3D scene; `interface/` is the React UI.
 - **Every LLM call is the user's money** and goes through the single retry/budget policy in `AgentBrain`.
 - **LLM output is untrusted** (tool arguments, Markdown, anything fed back into prompts).
 - **Stabilise before features.** If the ask is a new feature while reliability or security issues are open, say so and propose the smallest slice, or the open item it depends on.
@@ -25,7 +25,7 @@ Then ask, in batches:
 
 **1A Core intent** — the problem in one sentence; who meets it (the user in the UI, an agent through a tool, the scene); what "working correctly" looks like.
 
-**1B Scope & layers** — which layers it touches (multi-select): UI (`interface/`, `components/`) · domain (`core/agent`, `core/llm`, `core/orchestration`) · state (`integration/store`, persistence) · 3D scene (`simulation/`) · team templates (`data/agents.ts`) · API (`apps/api`, `packages/shared`). Additive, or does it change existing behaviour (and what happens to a user's persisted state)?
+**1B Scope & layers** — which layers it touches (multi-select): UI (`interface/`, `components/`) · domain (`packages/agents`, `packages/llm`) · state (`integration/store`, persistence) · 3D scene (`simulation/`) · team templates (`data/agents.ts`) · API (`apps/api`, `packages/shared`). Additive, or does it change existing behaviour (and what happens to a user's persisted state)?
 
 For each **ticked** layer only, ask the targeted set:
 
