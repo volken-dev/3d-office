@@ -57,9 +57,9 @@ Status column: **Fixed** means the recommendation is in the code and was checked
 **Backend (prepared, not used by the UI)**
 - `apps/api`: runtime-agnostic Hono app (`/api/health`, `POST /api/llm/completions`) with request ids, secure headers, allowlist CORS, body-size limit, zod validation against `@the-delegation/shared`, a dev-only in-memory rate limiter and normalized upstream errors. `apps/web/src/lib/api-client.ts` is a typed `hc<AppType>` client; `.env.example` files document `GEMINI_API_KEY`, `ALLOWED_ORIGINS` and `NEXT_PUBLIC_API_URL`.
 
-### Claude-first LLM layer (`feat/llm-providers`)
+### Claude-first LLM layer
 
-Spec: `.claude/specs/llm-providers-claude-first.md`. Statuses above reflect this branch.
+Spec: `.claude/specs/llm-providers-claude-first.md` (sign-in and Workers hosting, items 10 and 13, are still open as #27 and #28).
 
 - **Providers:** `packages/llm` holds the model registry (Claude Opus 5.5 and Sonnet 5.5; GPT-6 Astra, 6.1 Sol and 6 Luna; prices checked 2026-10-23), the Anthropic adapter (adaptive thinking, explicit effort, strict closed tool schemas, prompt caching, server-side refusal fallback, thinking blocks replayed byte for byte with `drop_block` as a safety net), the OpenAI adapter (stateless Responses API, encrypted reasoning replayed) and a fallback router that fails Claude over to `gpt-6.1-sol` only on rate limits, overloads and outages, with a circuit breaker. Gemini and `@google/genai` are gone.
 - **Gateway (ARCH-07):** `POST /api/llm/messages` validates the provider-neutral contract (`@the-delegation/shared/llm-messages`, which also rejects unanswered tool calls), serves it through the router and maps provider failures to our own error codes without leaking upstream text. `GET /api/health` reports whether a Claude key and an OpenAI backup are configured. Sign-in, per-user spend caps (#27) and Workers hosting (#28) are still to do, so the gateway must not be exposed publicly yet.
@@ -70,7 +70,7 @@ Spec: `.claude/specs/llm-providers-claude-first.md`. Statuses above reflect this
 
 ### Still open
 
-Everything still open is a GitHub issue: [volken-dev/3d-office issues](https://github.com/volken-dev/3d-office/issues). REL-07/REL-10 #1, PERF-02 #3, PERF-03 #4, PERF-04 #5, UX-06 #7, UX-13 #8, UX-14 #9, UX-17 #10, ARCH-02 #11, ARCH-03 and CODE-04 #12, ARCH-04 #13, ARCH-05/06 #14, ARCH-07 #15 (gateway sign-in and spend cap #27, Workers hosting #28), ARCH-08 #16, MIG-07 #18, setup-bun pin #19. Bugs found during the rule-enforcement pass are #21 to #24. SEC-01 (#2), ARCH-01 (#11, first half), ARCH-09 (#17) and UX-04 (#6) are resolved on `feat/llm-providers` below.
+Everything still open is a GitHub issue: [volken-dev/3d-office issues](https://github.com/volken-dev/3d-office/issues). REL-07/REL-10 #1, PERF-02 #3, PERF-03 #4, PERF-04 #5, UX-06 #7, UX-13 #8, UX-14 #9, UX-17 #10, ARCH-02 #11, ARCH-03 and CODE-04 #12, ARCH-04 #13, ARCH-05/06 #14, ARCH-07 #15 (gateway sign-in and spend cap #27, Workers hosting #28), ARCH-08 #16, MIG-07 #18, setup-bun pin #19. Bugs found during the rule-enforcement pass are #21 to #24. SEC-01 (#2), ARCH-01 (#11, first half), ARCH-09 (#17) and UX-04 (#6) are resolved by the Claude-first LLM layer below.
 
 ---
 
@@ -342,7 +342,7 @@ Everything still open is a GitHub issue: [volken-dev/3d-office issues](https://g
 7. **Hono scaffold, not wired:** `shared/` contracts and `server/app.ts` with `/api/health` and `/api/llm/complete` (ARCH-07, first half). Add `createLLMProvider()` so the browser path goes through the gateway interface.
 
 ### Next (backend adoption: finishing the gateway, then persistence)
-1. **Done on `feat/llm-providers`:** ARCH-01 (ports and the framework-free `packages/agents`), ARCH-09 (tests), SEC-01 (keys only on the gateway), the provider seam of ARCH-07, and the Claude-first provider layer with OpenAI as outage backup.
+1. **Done:** ARCH-01 (ports and the framework-free `packages/agents`), ARCH-09 (tests), SEC-01 (keys only on the gateway), the provider seam of ARCH-07, and the Claude-first provider layer with OpenAI as outage backup.
 2. **Gateway access:** sign-in (GitHub OAuth proposed) and a per-user daily spend cap enforced on the gateway (#27), then the Workers entry, D1, the Workers rate limiter and secrets (#28). Only then can the gateway be public.
 3. **Orchestration out of the scene:** ARCH-02 (AgentSimulation/AgentHost out of `simulation/`), ARCH-08; then the agent loop can run server-side behind the gateway with server-side budgets.
 4. **Correct the orchestrator:** REL-07 and REL-10 (#1), plus streaming chat replies through the gateway.
