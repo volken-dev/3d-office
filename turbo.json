@@ -32,6 +32,12 @@
     },
     "format": {
       "cache": false
+    },
+    "test": {
+      "dependsOn": [
+        "^typecheck"
+      ],
+      "outputs": []
     }
   }
 }

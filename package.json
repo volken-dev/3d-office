@@ -21,7 +21,8 @@
     "lint:fix": "turbo run lint -- --write",
     "format": "turbo run format",
     "typecheck": "turbo run typecheck",
-    "clean": "turbo run clean && rm -rf .turbo node_modules"
+    "clean": "turbo run clean && rm -rf .turbo node_modules",
+    "test": "turbo run test"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
