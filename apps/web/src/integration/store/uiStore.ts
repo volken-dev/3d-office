@@ -1,7 +1,6 @@
 import type { AgentWorkStatus } from "@the-delegation/agents/project/types"
 import { create } from "zustand"
-import type { LLMConfig } from "../settings/llmConfigStorage"
-import { loadLlmConfig, saveLlmConfig } from "../settings/llmConfigStorage"
+import { type GatewayStatus, probeGateway } from "../llm/gatewayStatus"
 
 export interface UiState {
   /** True while the selected agent is answering a chat message. */
@@ -18,16 +17,12 @@ export interface UiState {
   agentStatuses: Record<number, AgentWorkStatus>
   setAgentStatus: (index: number, status: AgentWorkStatus) => void
 
-  isBYOKOpen: boolean
-  byokError: string | null
-  setBYOKOpen: (open: boolean, error?: string | null) => void
+  gatewayStatus: GatewayStatus
+  /** Probes the model gateway's health and records the result. Safe to call repeatedly. */
+  checkGateway: () => Promise<GatewayStatus>
 
   activeAuditTaskId: string | null
   setActiveAuditTaskId: (taskId: string | null) => void
-
-  llmConfig: LLMConfig
-  /** Updates and persists the BYOK config. Returns false if the browser refused to store it (kept for this session only). */
-  setLlmConfig: (config: Partial<LLMConfig>) => boolean
 
   setIsTyping: (isTyping: boolean) => void
   setSelectedNpc: (index: number | null) => void
@@ -45,8 +40,8 @@ export interface UiState {
   setChatting: (isChatting: boolean) => void
 }
 
-/** Transient UI state (selection, hover, chat, dialogs) plus the BYOK config, which persists through llmConfigStorage. */
-export const useUiStore = create<UiState>()((set, get) => ({
+/** Transient UI state: selection, hover, chat, dialogs and the model gateway status. */
+export const useUiStore = create<UiState>()((set) => ({
   isThinking: false,
 
   selectedNpcIndex: null,
@@ -64,18 +59,15 @@ export const useUiStore = create<UiState>()((set, get) => ({
         : { agentStatuses: { ...state.agentStatuses, [index]: status } },
     ),
 
-  isBYOKOpen: false,
-  byokError: null,
-  setBYOKOpen: (open, error = null) => set({ isBYOKOpen: open, byokError: error }),
+  gatewayStatus: "checking",
+  checkGateway: async () => {
+    const status = await probeGateway()
+    set((state) => (state.gatewayStatus === status ? state : { gatewayStatus: status }))
+    return status
+  },
 
   activeAuditTaskId: null,
   setActiveAuditTaskId: (taskId) => set({ activeAuditTaskId: taskId }),
-
-  llmConfig: loadLlmConfig(),
-  setLlmConfig: (config) => {
-    set((state) => ({ llmConfig: { ...state.llmConfig, ...config } }))
-    return saveLlmConfig(get().llmConfig)
-  },
 
   setIsTyping: (isTyping) => set((state) => (state.isTyping === isTyping ? state : { isTyping })),
 

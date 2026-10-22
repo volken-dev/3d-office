@@ -1,5 +1,5 @@
 import type { AgenticSystem, AgentNode } from "@the-delegation/agents/team"
-import { FileText, Info, KeyRound, RefreshCcw } from "lucide-react"
+import { FileText, Info, RefreshCcw, ServerOff } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useShallow } from "zustand/react/shallow"
 import { Markdown } from "@/components/Markdown"
@@ -21,6 +21,19 @@ import { SCROLL_AREA_BLOCK } from "./components/styles"
 import { TokenUsageRow } from "./components/TokenUsageRow"
 import PricingModal from "./PricingModal"
 import ResetModal from "./ResetModal"
+
+const GATEWAY_PROBLEMS = {
+  unreachable: {
+    title: "The model gateway is unreachable",
+    description:
+      "Agents call Claude through the model gateway. Check that it is running, then check again.",
+  },
+  not_configured: {
+    title: "The model gateway has no Claude key",
+    description:
+      "The gateway is running but cannot call Claude yet. Add its Claude API key, then check again.",
+  },
+} as const
 
 const PHASE_BADGE: Record<ProjectPhase, { label: string; className: string }> = {
   idle: { label: "Ready to start", className: "border-input bg-muted text-muted-foreground" },
@@ -112,8 +125,12 @@ function ProjectView() {
     (state) => state.pendingOutputPrompt !== "" && !state.isReviewingOutput,
   )
   const setReviewingOutput = useCoreStore((state) => state.setReviewingOutput)
-  const hasKey = useUiStore((state) => !!state.llmConfig.apiKey)
-  const setBYOKOpen = useUiStore((state) => state.setBYOKOpen)
+  const gatewayStatus = useUiStore((state) => state.gatewayStatus)
+  const checkGateway = useUiStore((state) => state.checkGateway)
+  const gatewayProblem =
+    gatewayStatus === "unreachable" || gatewayStatus === "not_configured"
+      ? GATEWAY_PROBLEMS[gatewayStatus]
+      : undefined
   const [isResetModalOpen, setIsResetModalOpen] = useState(false)
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false)
   const { system: activeTeam, agents, byIndex } = useTeamRoster()
@@ -163,14 +180,14 @@ function ProjectView() {
 
         <div className="mb-6 h-px w-full bg-border" aria-hidden />
 
-        {!hasKey && (
+        {gatewayProblem && (
           <Alert className="mb-6 rounded-xl">
-            <KeyRound />
-            <AlertTitle>Add a Gemini API key</AlertTitle>
+            <ServerOff />
+            <AlertTitle>{gatewayProblem.title}</AlertTitle>
             <AlertDescription>
-              <p>The agents run on Google Gemini with your own key.</p>
-              <Button size="cta" onClick={() => setBYOKOpen(true)} className="mt-2 h-8 px-3">
-                Add API key
+              <p>{gatewayProblem.description}</p>
+              <Button size="cta" onClick={() => void checkGateway()} className="mt-2 h-8 px-3">
+                Check again
               </Button>
             </AlertDescription>
           </Alert>

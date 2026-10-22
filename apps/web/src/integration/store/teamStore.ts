@@ -10,6 +10,7 @@ import {
   type TeamRoster,
 } from "../../data/agents"
 import { safeJSONStorage } from "../../lib/storage"
+import { withServedModels } from "./teamModels"
 
 /** Built-in team ids from before the switch to software-development teams. */
 const LEGACY_TEAM_IDS = [
@@ -51,7 +52,8 @@ function stripObsoleteFields(system: StoredAgenticSystem): AgenticSystem {
 
 /**
  * Drops invalid or legacy teams and falls back to the default team when the selection is unknown.
- * v1 dropped media output types, so their obsolete fields are stripped from user-created teams.
+ * v1 dropped media output types, so their obsolete fields are stripped from user-created teams; agent models the
+ * gateway does not serve (Gemini ids from earlier versions) are replaced with the Claude defaults.
  */
 function sanitize(persisted: unknown, dropLegacy: boolean): PersistedTeamState {
   const isObject = typeof persisted === "object" && persisted !== null
@@ -66,6 +68,7 @@ function sanitize(persisted: unknown, dropLegacy: boolean): PersistedTeamState {
     .filter(isValidAgenticSystem)
     .filter((system) => !dropLegacy || !LEGACY_TEAM_IDS.includes(system.id))
     .map(stripObsoleteFields)
+    .map(withServedModels)
   const knownIds = [...customSystems, ...AGENTIC_SETS].map((system) => system.id)
   const selectedAgentSetId =
     typeof storedSelection === "string" && knownIds.includes(storedSelection)

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
+import { removeLegacyApiKey } from "./integration/llm/legacyApiKey"
 import { useCoreStore } from "./integration/store/coreStore"
 import { useUiStore } from "./integration/store/uiStore"
 import { ActionLogPanel } from "./interface/ActionLogPanel"
@@ -34,6 +35,11 @@ export default function App() {
   const isDesktop = useMediaQuery(DESKTOP_QUERY)
   const [drawer, setDrawer] = useState<DrawerPanel>(null)
   const isDesign = viewMode === "design"
+
+  useEffect(() => {
+    removeLegacyApiKey()
+    void useUiStore.getState().checkGateway()
+  }, [])
 
   useEffect(() => {
     if (canvasRef.current && !managerRef.current) {

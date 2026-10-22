@@ -29,6 +29,9 @@ let closeChatTimer: ReturnType<typeof setTimeout> | undefined
 
 const events: OrchestrationDeps["events"] = {
   llmError({ agent, kind, message }) {
+    if (kind === "unavailable" || kind === "not_configured") {
+      void useUiStore.getState().checkGateway()
+    }
     const title =
       kind === "rate_limited"
         ? "The model provider is rate limiting requests"

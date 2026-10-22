@@ -1,18 +1,56 @@
-import { Expand, Info, KeyRound, PanelBottom, PanelLeft, PanelRight, Settings } from "lucide-react"
+import {
+  Expand,
+  Info,
+  LoaderCircle,
+  PanelBottom,
+  PanelLeft,
+  PanelRight,
+  Server,
+  ServerOff,
+  Settings,
+} from "lucide-react"
 import type React from "react"
 import { useState } from "react"
-import { useShallow } from "zustand/react/shallow"
 import { ExternalLink } from "@/components/ExternalLink"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import type { GatewayStatus } from "../integration/llm/gatewayStatus"
 import { useCoreStore } from "../integration/store/coreStore"
 import { useUiStore } from "../integration/store/uiStore"
-import BYOKModal from "./BYOKModal"
 import { BrandLogo, GitHubIcon } from "./components/BrandLogo"
 import InfoModal from "./InfoModal"
 
 const version = process.env.NEXT_PUBLIC_APP_VERSION
+
+const GATEWAY_INDICATOR: Record<
+  GatewayStatus,
+  { label: string; icon: React.ReactNode; className?: string; dotClassName: string }
+> = {
+  checking: {
+    label: "Model gateway: checking",
+    icon: <LoaderCircle className="animate-spin" />,
+    dotClassName: "bg-muted-foreground",
+  },
+  online: {
+    label: "Model gateway: online. Click to check again.",
+    icon: <Server />,
+    className: "text-emerald-600 hover:text-emerald-700",
+    dotClassName: "bg-emerald-400",
+  },
+  not_configured: {
+    label: "Model gateway: no Claude key. Click to check again.",
+    icon: <ServerOff />,
+    className: "text-amber-600 hover:text-amber-700",
+    dotClassName: "bg-amber-400",
+  },
+  unreachable: {
+    label: "Model gateway: unreachable. Click to check again.",
+    icon: <ServerOff />,
+    className: "text-destructive hover:text-destructive/80",
+    dotClassName: "bg-destructive",
+  },
+}
 
 function HeaderIconButton({
   label,
@@ -57,17 +95,13 @@ export interface HeaderPanelControls {
 }
 
 /**
- * Top bar: brand, team editor entry, panel toggles and the API key button. The key dialog is
- * mounted only while open so its form re-reads the saved key each time.
+ * Top bar: brand, team editor entry, panel toggles and the model gateway status, which re-checks the gateway
+ * when clicked.
  */
 function Header({ panels }: { panels: HeaderPanelControls }) {
-  const { hasKey, isBYOKOpen, setBYOKOpen } = useUiStore(
-    useShallow((state) => ({
-      hasKey: !!state.llmConfig.apiKey,
-      isBYOKOpen: state.isBYOKOpen,
-      setBYOKOpen: state.setBYOKOpen,
-    })),
-  )
+  const gatewayStatus = useUiStore((state) => state.gatewayStatus)
+  const checkGateway = useUiStore((state) => state.checkGateway)
+  const gateway = GATEWAY_INDICATOR[gatewayStatus]
   const setViewMode = useCoreStore((state) => state.setViewMode)
   const [isInfoOpen, setIsInfoOpen] = useState(false)
 
@@ -150,23 +184,20 @@ function Header({ panels }: { panels: HeaderPanelControls }) {
             <Expand />
           </HeaderIconButton>
           <HeaderIconButton
-            label={hasKey ? "API key (saved)" : "API key (not set)"}
-            onClick={() => setBYOKOpen(true)}
-            className={cn("relative", hasKey && "text-emerald-500 hover:text-emerald-600")}
+            label={gateway.label}
+            onClick={() => void checkGateway()}
+            className={cn("relative", gateway.className)}
           >
-            <KeyRound />
-            {hasKey && (
-              <span
-                className="absolute top-1 right-1 size-1.5 rounded-full bg-emerald-400"
-                aria-hidden
-              />
-            )}
+            {gateway.icon}
+            <span
+              className={cn("absolute top-1 right-1 size-1.5 rounded-full", gateway.dotClassName)}
+              aria-hidden
+            />
           </HeaderIconButton>
         </div>
       </div>
 
       <InfoModal isOpen={isInfoOpen} onClose={() => setIsInfoOpen(false)} />
-      {isBYOKOpen && <BYOKModal onClose={() => setBYOKOpen(false)} />}
     </header>
   )
 }

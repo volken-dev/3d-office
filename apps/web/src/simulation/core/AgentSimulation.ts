@@ -71,9 +71,7 @@ export class AgentSimulation {
 
     this.unsubscribers.push(
       useUiStore.subscribe((state, previousState) => {
-        if (previousState.isBYOKOpen && !state.isBYOKOpen) {
-          this.resume()
-        } else if (previousState.isChatting && !state.isChatting) {
+        if (previousState.isChatting && !state.isChatting) {
           const core = useCoreStore.getState()
           if (core.phase === "working" && core.tasks.length === 0)
             void this.triggerAutonomousStrategy()
@@ -82,24 +80,12 @@ export class AgentSimulation {
     )
   }
 
-  private get paused(): boolean {
-    return this.disposed || useUiStore.getState().isBYOKOpen
-  }
-
-  private resume() {
-    const { phase, tasks } = useCoreStore.getState()
-    if (phase !== "working") return
-    if (tasks.length === 0) void this.triggerAutonomousStrategy()
-    this.processScheduledTasks()
-    void this.checkProjectCompletion()
-  }
-
   /**
    * Starts every scheduled (or abandoned in-progress) task whose agent is free. The UI status is
    * read per task because starting one marks its agent busy for the rest of the loop.
    */
   public processScheduledTasks() {
-    if (this.paused) return
+    if (this.disposed) return
     const state = useCoreStore.getState()
     if (state.phase !== "working") return
 
@@ -116,7 +102,7 @@ export class AgentSimulation {
   }
 
   private async triggerAutonomousStrategy() {
-    if (this.paused) return
+    if (this.disposed) return
     const lead = this.getAgent(this.currentSystem.leadAgent.index)
     const ui = useUiStore.getState()
 
@@ -161,7 +147,7 @@ export class AgentSimulation {
   }
 
   private async checkProjectCompletion() {
-    if (this.paused) return
+    if (this.disposed) return
     const { phase, tasks } = useCoreStore.getState()
     if (phase !== "working" || tasks.length === 0 || !tasks.every((task) => task.status === "done"))
       return
