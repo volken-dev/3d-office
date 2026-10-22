@@ -174,10 +174,10 @@ server persistence and a streaming event channel to the scene, which is a larger
 1. **Sign-in provider.** GitHub OAuth is proposed (fits a developer audience, no passwords stored);
    confirm, or pick another provider.
 2. **Daily cap amount** per user, and whether you (the owner) are exempt.
-3. **Default models per role.** Opus 5.5 for every agent, or Opus 5.5 for leads and a cheaper Claude
-   model for team agents? (Kept explicit per agent either way.)
-4. **Backup model mapping.** Which OpenAI model backs each Claude model; verified against OpenAI docs
-   when the registry item is implemented.
+3. **Default models per role.** Decided 2026-10-23: `claude-opus-5-5` for lead agents,
+   `claude-sonnet-5-5` for team agents; every agent's model stays editable.
+4. **Backup model mapping.** Decided 2026-10-23: `gpt-6.1-sol` backs both Claude models (checked
+   against developers.openai.com: Responses API, function calling, effort low to max).
 5. **Web host and cookies.** GitHub Pages is gone (2026-10-23) and the web app's host is not chosen.
    Serving the static export from the same Worker as the API (Workers static assets) would make the
    session cookie first-party and remove credentialed CORS; a separate host needs
