@@ -2,6 +2,7 @@ import { MAX_AGENTS } from "@the-delegation/agents/team"
 import * as THREE from "three/webgpu"
 import type { CharacterStateKey, IAgentDriver } from "../../types"
 import type { CharacterController } from "../CharacterController"
+import { spawnPoiId } from "../world/poiIds"
 
 /** Seconds before an NPC's first idle decision: INITIAL_WAIT_MIN plus up to INITIAL_WAIT_RANGE. */
 const INITIAL_WAIT_MIN = 2
@@ -84,8 +85,7 @@ export class NpcAgentDriver implements IAgentDriver {
     positions: Float32Array,
     currentState: CharacterStateKey,
   ): void {
-    const spawnId = `idle-spawn-${this.agentIndex}`
-    const targetPoi = this.controller.poiManager.getPoi(spawnId)
+    const targetPoi = this.controller.poiManager.getPoi(spawnPoiId(this.agentIndex))
     if (!targetPoi) return
 
     const offset = this.agentIndex * 4
@@ -149,7 +149,7 @@ export class NpcAgentDriver implements IAgentDriver {
     )
 
     if (!isSeated && roll < GO_SIT_CHANCE && !this.isLead) {
-      const pois = this.controller.poiManager.getFreePois("sit_idle", this.agentIndex)
+      const pois = this.controller.poiManager.getFreePoisOfKind("seat", this.agentIndex)
       if (pois.length > 0) {
         const poi = pois[Math.floor(Math.random() * pois.length)]
         this.controller.walkToPoi(this.agentIndex, poi.id, undefined, currentPosition)
@@ -159,7 +159,7 @@ export class NpcAgentDriver implements IAgentDriver {
     }
 
     if (roll < WANDER_CHANCE) {
-      const areaPois = this.controller.poiManager.getFreePoisByPrefix("area-", this.agentIndex)
+      const areaPois = this.controller.poiManager.getFreePoisOfKind("area", this.agentIndex)
       if (areaPois.length > 0) {
         const areaPoi = areaPois[Math.floor(Math.random() * areaPois.length)]
 
