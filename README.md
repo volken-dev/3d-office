@@ -47,15 +47,30 @@ Exported models are sources, not what the browser loads. They live in `apps/web/
 
 1. Export from Blender with **File > Export > glTF 2.0**:
    - Format: **glTF Binary (.glb)**.
-   - Include: the objects you want, plus **Custom Properties** if the model uses extras.
+   - Include: the objects you want, plus **Custom Properties** (the office needs them for its points of interest).
    - Mesh: **Apply Modifiers**, **UVs** and **Normals** on; tangents and vertex colours off. **Compression off**: the pipeline compresses (it can still read Draco-compressed files).
    - Material: **Export**; images **Automatic** (PNG or JPEG).
    - Animation: **Skinning** on, shape keys off, actions exported as clips named after `AnimationName` (`Idle`, `Walk`, `Sit_Work`, ...). Missing clips fall back to `Idle`.
-   - Office naming the scene relies on: the walkable mesh is named `navmesh`, team-coloured meshes start with `colored`, points of interest are empties named `poi-<state>-<id>` (for example `poi-sit_work-desk_02`).
+   - Office naming the scene relies on: the walkable mesh's name contains `navmesh` (any case) and team-coloured meshes start with `colored`. Points of interest are described by custom properties, not names (see below).
 2. Save the `.glb` to `apps/web/assets-src/models/`. A new character also needs an entry in `apps/web/src/simulation/characters/characterModels.ts`.
 3. Run `bun run assets` in `apps/web` and commit both the source and the output.
 
 The script ([`apps/web/scripts/optimize-models.ts`](apps/web/scripts/optimize-models.ts), using [glTF Transform](https://gltf-transform.dev)) deduplicates, prunes unreferenced data (keeping names, empty POI nodes and extras), welds identical vertices, resamples animations, quantizes normals and skin weights, and applies Meshopt compression (`EXT_meshopt_compression`, decoded in the browser by three's `MeshoptDecoder`). Positions and UVs stay full precision so the scene looks exactly as exported. It always starts from the sources, so it is safe to rerun: unchanged sources give byte-identical output.
+
+#### Points of interest
+
+A point of interest is an empty in the office with a `poi` custom property (exported as glTF node `extras`, which three reads into `userData`). `PoiManager` validates them at load against `OfficePoiExtrasSchema` in [`packages/shared/src/office-pois.ts`](packages/shared/src/office-pois.ts) and throws, naming the node, if one is malformed. The node's name is free.
+
+| `poi` | Other property | What agents do there | POI id |
+|---|---|---|---|
+| `spawn` | `slot`: the index of the agent that starts here and returns here when its work is done | stand (`idle`) | `spawn-<slot>` |
+| `desk` | `slot`: the index of the agent that works here | sit and work (`sit_work`) | `desk-<slot>` |
+| `seat` | `slot`: any number unique among seats | sit (`sit_idle`); the player can pick it | `seat-<slot>` |
+| `area` | `area`: a lowercase name (`a-z`, `0-9`, `_`); `boardroom` is where agents with an on-hold task meet | gather facing the centre (`idle`) | `area-<area>` |
+
+Slots are integers. The scene builds every POI id through [`apps/web/src/simulation/world/poiIds.ts`](apps/web/src/simulation/world/poiIds.ts), so lookups cannot drift from the parser. `apps/web/test/simulation/world/PoiManager.test.ts` loads `public/models/office.glb` and fails if the navmesh, the boardroom, or a spawn or desk for any agent in the built-in teams is missing or off the navmesh; `characterModels.test.ts` does the same for every `AnimationName` clip in each character GLB.
+
+The current office was exported with the POIs encoded in their names only, so `bun scripts/add-poi-extras.ts` (in `apps/web`) stamped the properties onto the source from those names. It edits only the GLB's JSON, leaves nodes that already have a `poi` property alone, and is safe to rerun after a re-export from a Blender file without the custom properties; once the Blender file has them, it is not needed.
 
 ## Backend
 

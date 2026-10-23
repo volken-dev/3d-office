@@ -30,6 +30,7 @@ import { InputManager } from "./input/InputManager"
 import { createSceneLoader } from "./loaders"
 import { NavMeshManager } from "./pathfinding/NavMeshManager"
 import { PoiManager } from "./world/PoiManager"
+import { BOARDROOM_POI_ID, deskPoiId, spawnPoiId } from "./world/poiIds"
 import { WorldManager } from "./world/WorldManager"
 
 /** Clamp so a long pause (hidden tab, design mode) doesn't teleport characters through walls. */
@@ -391,12 +392,12 @@ export class SceneManager {
     }
   }
 
-  /** Sends the agent to its own desk (`sit_work-<index>`), or to a desk picked by index if the office has none for it. */
+  /** Sends the agent to its own desk (`deskPoiId`), or to a desk picked by index if the office has none for it. */
   public setNpcWorking(index: number): void {
     if (!this.controller) return
-    let poi = this.poiManager.getPoi(`sit_work-${index}`)
+    let poi = this.poiManager.getPoi(deskPoiId(index))
     if (!poi) {
-      const desks = this.poiManager.getPoisByPrefix("sit_work")
+      const desks = this.poiManager.getPoisOfKind("desk")
       // TODO(#12): assumes agent indices start at 1
       if (desks.length > 0) poi = desks[(index - 1) % desks.length]
     }
@@ -405,13 +406,13 @@ export class SceneManager {
 
   public moveNpcToBoardroom(index: number): void {
     if (!this.controller) return
-    const poi = this.poiManager.getPoi("area-boardroom") || this.poiManager.getPoi("boardroom")
+    const poi = this.poiManager.getPoi(BOARDROOM_POI_ID)
     if (poi) this.controller.walkToPoi(index, poi.id)
   }
 
   public moveNpcToSpawn(index: number): void {
     if (!this.controller) return
-    const poi = this.poiManager.getPoi(`spawn-${index}`)
+    const poi = this.poiManager.getPoi(spawnPoiId(index))
     if (poi)
       this.controller.moveTo(index, poi.position, "idle", undefined, undefined, poi.quaternion)
   }

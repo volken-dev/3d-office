@@ -1,19 +1,30 @@
+import { OfficePoiExtrasSchema, type OfficePoiKind } from "@the-delegation/shared/office-pois"
 import * as THREE from "three/webgpu"
 import type { CharacterStateKey, PoiDef } from "../../types"
-import { isCharacterStateKey } from "../behavior/CharacterStateMachine"
+import { poiIdFor } from "./poiIds"
 
-const POI_NAME_PATTERN = /^poi-([a-z0-9_]+)-(.+)$/
+/** The state an agent enters on arriving at each kind of POI. */
+const ARRIVAL_STATE_BY_KIND: Record<OfficePoiKind, CharacterStateKey> = {
+  spawn: "idle",
+  desk: "sit_work",
+  seat: "sit_idle",
+  area: "idle",
+}
+
+/** Only seats are offered to the player on hover. */
+const LABEL_BY_KIND: Partial<Record<OfficePoiKind, string>> = { seat: "Sit down" }
+
+/** Orders POIs by id with numbers compared by value, so `spawn-10` comes after `spawn-2`. */
+function compareById(a: PoiDef, b: PoiDef): number {
+  return a.id.localeCompare(b.id, "en", { numeric: true })
+}
 
 /**
- * Points of Interest: named locations that put an arriving agent into a specific
- * character state (e.g. 'sit_idle', 'sit_work'). Loaded from empties in the office GLB.
+ * Points of Interest: places in the office an agent walks to, and the character state it enters
+ * on arrival. Read from the extras of empty nodes in the office GLB (see `OfficePoiExtrasSchema`).
  */
 export class PoiManager {
   private pois = new Map<string, PoiDef>()
-
-  private addPoi(poi: PoiDef): void {
-    this.pois.set(poi.id, { ...poi })
-  }
 
   /** Mark a POI as occupied by an agent. */
   public occupy(id: string, agentIndex: number): void {
@@ -28,74 +39,61 @@ export class PoiManager {
     }
   }
 
+  /** Looks a POI up by an id from `poiIds.ts`. */
   public getPoi(id: string): PoiDef | undefined {
     return this.pois.get(id)
   }
 
-  /**
-   * Returns all free POIs for a specific arrival state.
-   * If agentIndex is provided, include the POIs already occupied by that agent.
-   */
-  public getFreePois(arrivalState: CharacterStateKey, agentIndex?: number): PoiDef[] {
-    return Array.from(this.pois.values()).filter(
-      (poi) =>
-        poi.arrivalState === arrivalState &&
-        (poi.occupiedBy === null || poi.occupiedBy === agentIndex),
-    )
+  /** Every POI of a kind, regardless of occupancy, in id order. */
+  public getPoisOfKind(kind: OfficePoiKind): PoiDef[] {
+    return Array.from(this.pois.values())
+      .filter((poi) => poi.kind === kind)
+      .sort(compareById)
   }
 
-  /** Returns all free POIs that start with a specific ID prefix (e.g. 'spawn', 'area'). */
-  public getFreePoisByPrefix(prefix: string, agentIndex?: number): PoiDef[] {
-    return Array.from(this.pois.values()).filter(
-      (poi) =>
-        poi.id.includes(prefix) && (poi.occupiedBy === null || poi.occupiedBy === agentIndex),
+  /** The POIs of a kind that are free, or already held by `agentIndex` when given, in id order. */
+  public getFreePoisOfKind(kind: OfficePoiKind, agentIndex?: number): PoiDef[] {
+    return this.getPoisOfKind(kind).filter(
+      (poi) => poi.occupiedBy === null || poi.occupiedBy === agentIndex,
     )
   }
 
   /**
-   * Extract POIs from a loaded GLB scene.
-   * Convention: empty objects named "poi-<arrivalState>-<uniqueId>".
-   * "spawn" and "area" aren't character states, so they arrive in 'idle'; an unknown state name
-   * also falls back to 'idle' (with a warning) rather than reaching the state machine.
-   *
-   * Example: "poi-sit_idle-chair_01", "poi-sit_work-desk_02", "poi-spawn-A", "poi-area-lounge"
+   * Reads the POIs from a loaded office scene. A node is a POI when its extras (three's
+   * `userData`) have a `poi` property; the rest of those extras must match
+   * `OfficePoiExtrasSchema`, or loading throws, naming the node, rather than leaving an agent
+   * with nowhere to go.
    */
   public loadFromGlb(scene: THREE.Object3D): void {
-    scene.traverse((child) => {
-      const match = child.name.match(POI_NAME_PATTERN)
-      if (!match) return
+    scene.traverse((node) => {
+      if (node.userData.poi === undefined) return
 
-      const type = match[1]
-      const uniqueId = match[2]
-
-      let arrivalState: CharacterStateKey = "idle"
-      let label: string | undefined
-
-      if (type !== "spawn" && type !== "area") {
-        if (isCharacterStateKey(type)) {
-          arrivalState = type
-        } else {
-          console.warn(`[PoiManager] Unknown POI state "${type}" on "${child.name}"; using idle`)
-        }
-        if (arrivalState === "sit_idle") {
-          label = "Sit down"
-        }
+      const parsed = OfficePoiExtrasSchema.safeParse(node.userData)
+      if (!parsed.success) {
+        throw new Error(
+          `[PoiManager] Invalid POI extras on "${node.name}": ${parsed.error.issues
+            .map((issue) => `${issue.path.join(".") || "extras"}: ${issue.message}`)
+            .join("; ")}`,
+        )
       }
 
-      const id = `${type}-${uniqueId}`
+      const extras = parsed.data
+      const id = poiIdFor(extras)
+      if (this.pois.has(id)) throw new Error(`[PoiManager] Duplicate POI "${id}" on "${node.name}"`)
 
-      const worldPosition = new THREE.Vector3()
-      const worldQuaternion = new THREE.Quaternion()
-      child.getWorldPosition(worldPosition)
-      child.getWorldQuaternion(worldQuaternion)
+      const position = new THREE.Vector3()
+      const quaternion = new THREE.Quaternion()
+      node.getWorldPosition(position)
+      node.getWorldQuaternion(quaternion)
 
-      this.addPoi({
+      this.pois.set(id, {
         id,
-        position: worldPosition,
-        quaternion: worldQuaternion,
-        arrivalState,
+        kind: extras.poi,
+        position,
+        quaternion,
+        arrivalState: ARRIVAL_STATE_BY_KIND[extras.poi],
         occupiedBy: null,
-        label,
+        label: LABEL_BY_KIND[extras.poi],
       })
     })
   }
@@ -103,15 +101,5 @@ export class PoiManager {
   /** Iterates POIs without allocating an array (for per-event hit tests). */
   public values(): IterableIterator<PoiDef> {
     return this.pois.values()
-  }
-
-  /**
-   * Returns ALL POIs whose ID contains the given prefix, regardless of occupancy.
-   * Results are sorted by ID for a consistent, repeatable order.
-   */
-  public getPoisByPrefix(prefix: string): PoiDef[] {
-    return Array.from(this.pois.values())
-      .filter((poi) => poi.id.includes(prefix))
-      .sort((a, b) => a.id.localeCompare(b.id))
   }
 }

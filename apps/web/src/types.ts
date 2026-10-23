@@ -1,3 +1,4 @@
+import type { OfficePoiKind } from "@the-delegation/shared/office-pois"
 import type * as THREE from "three/webgpu"
 
 export enum AnimationName {
@@ -73,7 +74,9 @@ export interface CharacterStateDef {
 }
 
 export interface PoiDef {
+  /** Built by `poiIdFor` in `simulation/world/poiIds.ts`. */
   id: string
+  kind: OfficePoiKind
   /** World-space position to walk toward. */
   position: THREE.Vector3
   /** World-space quaternion for orientation. */
