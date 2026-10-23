@@ -8,7 +8,6 @@ import {
   type ICharacterDriver,
 } from "../types"
 
-import type { AgentStateBuffer } from "./behavior/AgentStateBuffer"
 import { CharacterStateMachine } from "./behavior/CharacterStateMachine"
 import type { CharacterManager } from "./entities/CharacterManager"
 import type { NavMeshManager } from "./pathfinding/NavMeshManager"
@@ -23,20 +22,22 @@ const ORIGIN = new THREE.Vector3(0, 0, 0)
  * Composes:
  *  - CharacterManager     → movement, GPU rendering, animation baking, expression buffers
  *  - CharacterStateMachine → declarative state→animation+expression mapping
- *  - PathAgent[]          → per-agent CPU path following
+ *  - PathAgent per agent   → CPU path following
  *  - NavMeshManager       → path queries
  *  - PoiManager           → POI lookup and occupancy
  *
  * Implements ICharacterDriver so it can be passed to the state machine and
  * behavior drivers without circular dependencies.
  *
- * All behavior code (PlayerInputDriver, NpcAgentDriver) goes through this class.
+ * All behavior code (PlayerInputDriver, NpcAgentDriver) goes through this class. Characters are
+ * addressed by agent index; CharacterManager maps those to instance slots.
  */
 export class CharacterController implements ICharacterDriver {
   private stateMachine!: CharacterStateMachine
-  private pathAgents: PathAgent[] = []
+  private pathAgents = new Map<number, PathAgent>()
   /** Per-agent callback fired when the agent reaches its path destination. */
-  private arrivalCallbacks: ((index: number) => void)[] = []
+  private arrivalCallbacks = new Map<number, (index: number) => void>()
+  private readonly scratchPosition = new THREE.Vector3()
 
   constructor(
     public readonly characterManager: CharacterManager,
@@ -47,20 +48,17 @@ export class CharacterController implements ICharacterDriver {
     this.resetAgents()
   }
 
-  /**
-   * Fresh state machine and path followers sized to the current character count. Needs the
-   * characters to be loaded, since path followers write into their state buffer.
-   */
+  /** Fresh state machine and one path follower for every character of the current roster. */
   private resetAgents(): void {
-    const count = this.characterManager.getCount()
-    const stateBuffer = this.characterManager.getAgentStateBuffer()
-    if (!stateBuffer) throw new Error("CharacterController needs loaded characters")
-    this.stateMachine = new CharacterStateMachine(count)
-    this.pathAgents = []
-    this.arrivalCallbacks = []
-    for (let agentIndex = 0; agentIndex < count; agentIndex++) {
-      this.pathAgents.push(new PathAgent(agentIndex, stateBuffer))
-    }
+    const agentIndices = this.characterManager.getAgentIndices()
+    this.stateMachine = new CharacterStateMachine(agentIndices)
+    this.pathAgents = new Map(
+      agentIndices.map((agentIndex) => [
+        agentIndex,
+        new PathAgent(agentIndex, this.characterManager),
+      ]),
+    )
+    this.arrivalCallbacks = new Map()
   }
 
   /**
@@ -102,19 +100,16 @@ export class CharacterController implements ICharacterDriver {
     fromPosition?: THREE.Vector3,
     targetOrientation?: THREE.Quaternion,
   ): boolean {
+    const pathAgent = this.pathAgents.get(index)
+    if (!pathAgent) return false
+
     let from: THREE.Vector3
 
     if (fromPosition) {
       from = fromPosition.clone()
     } else {
-      const positions = this.characterManager.getCPUPositions()
-      if (!positions) return false
-
-      from = new THREE.Vector3(
-        positions[index * 4],
-        positions[index * 4 + 1],
-        positions[index * 4 + 2],
-      )
+      from = new THREE.Vector3()
+      if (!this.characterManager.getCPUPosition(index, from)) return false
     }
 
     const path = this.navMesh.findPath(from, target)
@@ -135,14 +130,14 @@ export class CharacterController implements ICharacterDriver {
 
     path[path.length - 1] = target.clone()
 
-    this.pathAgents[index].setPath(path, from)
-    this.arrivalCallbacks[index] = (arrivedIndex) => {
+    pathAgent.setPath(path, from)
+    this.arrivalCallbacks.set(index, (arrivedIndex) => {
       if (targetOrientation) {
         this.characterManager.setOrientation(arrivedIndex, targetOrientation)
       }
       this.play(arrivedIndex, arrivalState)
       onArrival?.(arrivedIndex)
-    }
+    })
 
     this.setPhysicsMode(index, AgentBehavior.GOTO)
     this.play(index, "walk")
@@ -221,30 +216,36 @@ export class CharacterController implements ICharacterDriver {
     this.stateMachine.update(deltaSeconds, this)
   }
 
+  /** Fades characters that overlap so neither hides the other; call after this frame's moves. */
+  public updateOverlapFading(deltaSeconds: number): void {
+    this.characterManager.updateOverlapFading(deltaSeconds)
+  }
+
   /**
    * Advance path agents. Call after `update` so positions include this frame's step.
    * Fires arrival callbacks for agents that reach their destination, after keeping their last
    * movement direction as the IDLE facing.
    */
-  public updatePaths(positions: Float32Array): void {
-    for (let agentIndex = 0; agentIndex < this.pathAgents.length; agentIndex++) {
-      const pathAgent = this.pathAgents[agentIndex]
+  public updatePaths(): void {
+    const position = this.scratchPosition
+    for (const [agentIndex, pathAgent] of this.pathAgents) {
       if (!pathAgent.isMoving) continue
+      if (!this.characterManager.getCPUPosition(agentIndex, position)) continue
 
-      const arrived = pathAgent.update(positions[agentIndex * 4], positions[agentIndex * 4 + 2])
+      const arrived = pathAgent.update(position.x, position.z)
       if (arrived) {
         const lastDirection = pathAgent.getLastDirection()
         this.characterManager.setFacing(agentIndex, lastDirection.x, lastDirection.z)
 
         this.setPhysicsMode(agentIndex, AgentBehavior.IDLE)
-        this.arrivalCallbacks[agentIndex]?.(agentIndex)
+        this.arrivalCallbacks.get(agentIndex)?.(agentIndex)
       }
     }
   }
 
   /** Cancel movement for an agent and return to idle. */
   public cancelMovement(index: number): void {
-    this.pathAgents[index].cancel()
+    this.pathAgents.get(index)?.cancel()
     this.setPhysicsMode(index, AgentBehavior.IDLE)
   }
 
@@ -278,24 +279,29 @@ export class CharacterController implements ICharacterDriver {
     })
   }
 
-  public getCPUPositions(): Float32Array | null {
-    return this.characterManager.getCPUPositions()
-  }
-
+  /** Writes a character's world position into `out`. Returns false if the agent has no character. */
   public getCPUPosition(index: number, out: THREE.Vector3): boolean {
     return this.characterManager.getCPUPosition(index, out)
   }
 
-  public getCount(): number {
-    return this.characterManager.getCount()
+  /** Agent indices of every character in the scene: the user and the team's agents. */
+  public getAgentIndices(): readonly number[] {
+    return this.characterManager.getAgentIndices()
   }
 
-  public getAgentStateBuffer(): AgentStateBuffer | null {
-    return this.characterManager.getAgentStateBuffer()
+  /** Turns an idle character to face along (x, z). */
+  public setFacing(index: number, x: number, z: number): void {
+    this.characterManager.setFacing(index, x, z)
   }
 
-  /** Switches to another team's characters (one rebuild at most) and resets every character's state. */
+  /**
+   * Switches to another team's characters (one rebuild at most) and resets every character's state.
+   * The outgoing roster's POIs are released first, so a removed agent does not keep its seat.
+   */
   public setTeam(team: AgenticSystem): void {
+    for (const agentIndex of this.characterManager.getAgentIndices()) {
+      this.poiManager.releaseAll(agentIndex)
+    }
     this.characterManager.setTeam(team)
     this.playerIndex = team.user.index
     this.resetAgents()

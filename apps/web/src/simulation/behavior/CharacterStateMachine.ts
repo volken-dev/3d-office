@@ -80,21 +80,21 @@ const STATE_MAP: Record<CharacterStateKey, CharacterStateDef> = {
  */
 export class CharacterStateMachine {
   /** Current state key per agent index. */
-  private currentState: CharacterStateKey[] = []
+  private readonly currentState = new Map<number, CharacterStateKey>()
   /** Countdown timer for non-looping states (seconds remaining). */
-  private stateTimer: number[] = []
+  private readonly stateTimer = new Map<number, number>()
   /**
    * Explicit sit target — set via prepareSitDown() before entering sit_down.
    * When the sit_down animation finishes this state is applied directly,
    * bypassing the generic pendingState / nextState mechanism.
    */
-  private sitTarget: (CharacterStateKey | null)[] = []
+  private readonly sitTarget = new Map<number, CharacterStateKey>()
 
-  constructor(private readonly count: number) {
-    for (let i = 0; i < count; i++) {
-      this.currentState[i] = "idle"
-      this.stateTimer[i] = 0
-      this.sitTarget[i] = null
+  /** Every character starts idle. Indices not listed here are ignored. */
+  constructor(agentIndices: readonly number[]) {
+    for (const agentIndex of agentIndices) {
+      this.currentState.set(agentIndex, "idle")
+      this.stateTimer.set(agentIndex, 0)
     }
   }
 
@@ -104,7 +104,7 @@ export class CharacterStateMachine {
    * regardless of timing between the async arrival callback and the sync update loop.
    */
   public prepareSitDown(index: number, finalState: "sit_idle" | "sit_work"): void {
-    this.sitTarget[index] = finalState
+    if (this.currentState.has(index)) this.sitTarget.set(index, finalState)
   }
 
   /**
@@ -112,16 +112,18 @@ export class CharacterStateMachine {
    * walk, which always wins so a click never feels ignored.
    */
   public transition(index: number, newState: CharacterStateKey, driver: ICharacterDriver): void {
-    const currentDefinition = STATE_MAP[this.currentState[index]]
-    if (!currentDefinition.interruptible && this.stateTimer[index] > 0 && newState !== "walk")
-      return
+    const currentState = this.currentState.get(index)
+    if (currentState === undefined) return
+    const currentDefinition = STATE_MAP[currentState]
+    const timer = this.stateTimer.get(index) ?? 0
+    if (!currentDefinition.interruptible && timer > 0 && newState !== "walk") return
 
     this._applyState(index, newState, driver)
   }
 
-  /** Returns the current state key for an agent. */
+  /** Returns the current state key for an agent; idle for an agent without a character. */
   public getState(index: number): CharacterStateKey {
-    return this.currentState[index]
+    return this.currentState.get(index) ?? "idle"
   }
 
   /**
@@ -130,16 +132,19 @@ export class CharacterStateMachine {
    * leaked prepareSitDown call never redirects another non-looping state.
    */
   public update(deltaSeconds: number, driver: ICharacterDriver): void {
-    for (let agentIndex = 0; agentIndex < this.count; agentIndex++) {
-      const stateDefinition = STATE_MAP[this.currentState[agentIndex]]
+    for (const [agentIndex, currentState] of this.currentState) {
+      const stateDefinition = STATE_MAP[currentState]
       if (stateDefinition.loop) continue
 
-      this.stateTimer[agentIndex] -= deltaSeconds
-      if (this.stateTimer[agentIndex] <= 0) {
-        const isSitDown = this.currentState[agentIndex] === "sit_down"
+      const timer = (this.stateTimer.get(agentIndex) ?? 0) - deltaSeconds
+      this.stateTimer.set(agentIndex, timer)
+      if (timer <= 0) {
+        const isSitDown = currentState === "sit_down"
         const nextState =
-          (isSitDown ? this.sitTarget[agentIndex] : null) ?? stateDefinition.nextState ?? "idle"
-        if (isSitDown) this.sitTarget[agentIndex] = null
+          (isSitDown ? this.sitTarget.get(agentIndex) : undefined) ??
+          stateDefinition.nextState ??
+          "idle"
+        if (isSitDown) this.sitTarget.delete(agentIndex)
         this._applyState(agentIndex, nextState, driver)
       }
     }
@@ -152,7 +157,7 @@ export class CharacterStateMachine {
       return
     }
 
-    this.currentState[index] = key
+    this.currentState.set(index, key)
 
     driver.setAnimation(index, stateDefinition.animation, stateDefinition.loop)
 
@@ -164,7 +169,7 @@ export class CharacterStateMachine {
       const duration =
         stateDefinition.durationOverride ??
         driver.getAnimationDuration(index, stateDefinition.animation)
-      this.stateTimer[index] = duration > 0 ? duration : 1.0
+      this.stateTimer.set(index, duration > 0 ? duration : 1.0)
     }
   }
 }

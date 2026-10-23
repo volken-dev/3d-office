@@ -13,7 +13,6 @@ import type { CharacterController } from "../CharacterController"
  */
 export class PlayerInputDriver implements IAgentDriver {
   public readonly agentIndex: number
-  private lastPositions: Float32Array | null = null
 
   constructor(
     agentIndex: number,
@@ -49,17 +48,11 @@ export class PlayerInputDriver implements IAgentDriver {
   }
 
   private _getCurrentPosition(): THREE.Vector3 | undefined {
-    if (!this.lastPositions) return undefined
-    return new THREE.Vector3(
-      this.lastPositions[this.agentIndex * 4],
-      this.lastPositions[this.agentIndex * 4 + 1],
-      this.lastPositions[this.agentIndex * 4 + 2],
-    )
+    const position = new THREE.Vector3()
+    return this.controller.getCPUPosition(this.agentIndex, position) ? position : undefined
   }
 
-  public update(positions: Float32Array): void {
-    this.lastPositions = positions
-  }
+  public update(): void {}
 
   public dispose(): void {}
 }

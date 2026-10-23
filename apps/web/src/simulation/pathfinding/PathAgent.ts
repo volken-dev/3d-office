@@ -1,9 +1,13 @@
 import * as THREE from "three/webgpu"
-import type { AgentStateBuffer } from "../behavior/AgentStateBuffer"
 import { PATH_NODE_ARRIVAL } from "../constants"
 
 /** Squared XZ distance under which the start position counts as already on the first node. */
 const SAME_POINT_DISTANCE_SQUARED = 0.0001
+
+/** Where a path follower writes the waypoint its character walks toward. */
+export interface WaypointTarget {
+  setWaypoint(agentIndex: number, x: number, z: number): void
+}
 
 /**
  * Manages path-following for a single agent on the CPU side.
@@ -19,7 +23,7 @@ export class PathAgent {
 
   constructor(
     private readonly agentIndex: number,
-    private readonly stateBuffer: AgentStateBuffer,
+    private readonly waypoints: WaypointTarget,
   ) {}
 
   /**
@@ -89,6 +93,6 @@ export class PathAgent {
   }
 
   private _writeWaypoint(node: THREE.Vector3): void {
-    this.stateBuffer.setWaypoint(this.agentIndex, node.x, node.z)
+    this.waypoints.setWaypoint(this.agentIndex, node.x, node.z)
   }
 }
