@@ -115,7 +115,6 @@ export class FakeProject implements ProjectStatePort {
   }
 
   logRequest(entry: Omit<RequestDebugLogEntry, "id" | "timestamp" | "phase">): void {
-    this.callsUsed++
     this.requests.push(entry)
   }
 
@@ -125,6 +124,10 @@ export class FakeProject implements ProjectStatePort {
 
   getCallBudget(): { used: number; limit: number } {
     return { used: this.callsUsed, limit: this.callLimit }
+  }
+
+  recordModelCall(): void {
+    this.callsUsed++
   }
 
   getIntentAttempts(key: string): IntentAttempts | undefined {

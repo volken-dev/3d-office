@@ -16,8 +16,14 @@ import type {
   StopReason,
   ToolDefinition,
 } from "@the-delegation/shared/llm-messages"
-import { type CompletionOptions, DEFAULT_EFFORT, type ProviderAdapter } from "../adapter"
-import { ProviderError, type ProviderErrorKind } from "../errors"
+import {
+  assertObjectToolSchema,
+  type CompletionOptions,
+  DEFAULT_EFFORT,
+  maxOutputTokensFor,
+  type ProviderAdapter,
+} from "../adapter"
+import { type ProviderErrorKind, toProviderError } from "../errors"
 import type { ModelEntry } from "../registry"
 
 /** Sends one Messages request and resolves with the complete message. */
@@ -31,9 +37,6 @@ export type AnthropicSend = (
  * block whose conversation prefix no longer matches is dropped instead of failing the request with a 400.
  */
 const BETAS = ["server-side-fallback-2026-07-01", "thinking-binding-controls-2026-08-01"]
-
-/** Thinking and output share `max_tokens`, so the default leaves room for long agentic turns. */
-const DEFAULT_MAX_OUTPUT_TOKENS = 64_000
 
 /** Assistant blocks other than text and tool use that must be replayed byte for byte on later turns. */
 const REPLAYABLE_BLOCK_TYPES: ReadonlySet<string> = new Set([
@@ -96,13 +99,7 @@ function toMessageParams(messages: readonly Message[]): BetaMessageParam[] {
 }
 
 function toTool(tool: ToolDefinition): BetaTool {
-  if (tool.inputSchema.type !== "object") {
-    throw new ProviderError(
-      "invalid_request",
-      "anthropic",
-      `Tool "${tool.name}" input schema must be an object`,
-    )
-  }
+  assertObjectToolSchema(tool, "anthropic")
   return {
     name: tool.name,
     description: tool.description,
@@ -144,6 +141,10 @@ function fromMessage(message: BetaMessage): MessagesResponse {
   }
 }
 
+function statusOf(error: unknown): number | undefined {
+  return error instanceof Anthropic.APIError ? error.status : undefined
+}
+
 function classify(error: unknown): ProviderErrorKind {
   if (error instanceof Anthropic.APIUserAbortError) return "aborted"
   if (error instanceof Anthropic.APIConnectionError) return "unavailable"
@@ -161,13 +162,6 @@ function classify(error: unknown): ProviderErrorKind {
   return "other"
 }
 
-function toProviderError(error: unknown): ProviderError {
-  if (error instanceof ProviderError) return error
-  const status = error instanceof Anthropic.APIError ? error.status : undefined
-  const detail = error instanceof Error ? error.message : String(error)
-  return new ProviderError(classify(error), "anthropic", detail, { cause: error, status })
-}
-
 /** Builds the Messages API request: adaptive thinking, explicit effort, strict tools, automatic prompt caching. */
 export function toAnthropicParams(
   model: ModelEntry,
@@ -175,10 +169,7 @@ export function toAnthropicParams(
 ): BetaMessageStreamParams {
   return {
     model: model.id,
-    max_tokens: Math.min(
-      request.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
-      model.maxOutputTokens,
-    ),
+    max_tokens: maxOutputTokensFor(model, request),
     system: request.system,
     messages: toMessageParams(request.messages),
     ...(request.tools?.length ? { tools: request.tools.map(toTool) } : {}),
@@ -205,11 +196,11 @@ export function createAnthropicAdapter(send: AnthropicSend): ProviderAdapter {
   return {
     provider: "anthropic",
     async complete(model: ModelEntry, request: MessagesRequest, options?: CompletionOptions) {
-      const params = toAnthropicParams(model, request)
       try {
+        const params = toAnthropicParams(model, request)
         return fromMessage(await send(params, options?.signal))
       } catch (error) {
-        throw toProviderError(error)
+        throw toProviderError("anthropic", error, classify, statusOf(error))
       }
     },
   }
