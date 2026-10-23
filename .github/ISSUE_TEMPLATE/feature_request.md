@@ -15,7 +15,7 @@ As a <user / agent>, I want <capability> so that <outcome>.
 - [ ] UI (`interface/`, `components/`)
 - [ ] Domain (`core/`)
 - [ ] State (`integration/`)
-- [ ] 3D scene (`simulation/`)
+- [ ] 3D scene (`packages/scene`)
 - [ ] API (`apps/api`, `packages/shared`)
 
 ## Acceptance criteria

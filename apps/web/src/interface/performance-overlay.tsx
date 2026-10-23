@@ -1,5 +1,6 @@
+import type { FrameStats } from "@the-delegation/scene/core/frame-profiler"
 import { useEffect, useState } from "react"
-import { type FrameStats, useFrameStats } from "../integration/frame-stats"
+import { useFrameStats } from "../integration/frame-stats"
 
 const TOGGLE_KEY = "`"
 

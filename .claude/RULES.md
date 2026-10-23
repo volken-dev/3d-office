@@ -24,8 +24,10 @@ These five govern everything below. When a specific rule is missing, decide by t
   prompts is tagged and truncated as data, never spliced in as instructions.
 - **P3 — Keep the layers apart.** `packages/agents` is framework-free and talks to the world through
   ports; `packages/llm` owns the providers and runs only behind the gateway (`apps/api`);
-  `apps/web/src/integration/` adapts the agents to Zustand, React and the gateway; `simulation/`
-  renders. The UI never reaches into package internals, and `packages/agents` never imports a store.
+  `apps/web/src/integration/` adapts the agents and the scene to Zustand, React and the gateway;
+  `packages/scene` renders and imports only itself, three, recast-navigation and zod (a boundary
+  test enforces it). The UI never reaches into package internals, and `packages/agents` never
+  imports a store.
 - **P4 — Spend is the user's money.** Every LLM call is counted against the project's call budget
   (`recordModelCall`, never a side effect of logging), and all autonomous work goes through the
   single retry/budget policy: the loop in `AgentBrain`, the decisions in
@@ -241,8 +243,9 @@ These are absolute. No exception without an explicit, in-session user instructio
 8. **Never add a second retry loop or an LLM call outside the `AgentBrain` policy** (decisions in
    `orchestration/autonomy.ts`, the loop in `AgentBrain`).
 9. **Never trust LLM output** as instructions, as HTML, or as valid tool arguments.
-10. **Never import a store, React, or the scene from `packages/agents`**, and never import a
-    provider SDK outside `packages/llm`.
+10. **Never import a store, React, or the scene from `packages/agents`**, never import the app,
+    the agents, React or a store from `packages/scene`, and never import a provider SDK outside
+    `packages/llm`.
 11. **Never model speculatively** — no state field, type, port or store slice that shipping code
     doesn't read.
 12. **Never add a dependency without confirmation**, and never add a banned one: ESLint, Prettier,

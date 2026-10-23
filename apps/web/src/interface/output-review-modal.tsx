@@ -15,9 +15,9 @@ import {
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
+import { useScene } from "../integration/scene-context"
 import { useCoreStore } from "../integration/store/core-store"
 import { useActiveTeam } from "../integration/store/team-store"
-import { useScene } from "../simulation/scene-context"
 
 const REVIEW_TOAST_ID = "deliverable-review"
 

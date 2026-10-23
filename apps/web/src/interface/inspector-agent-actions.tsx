@@ -3,9 +3,9 @@ import { FolderOpen, GitPullRequest, Lock, MessageSquare, MessageSquareWarning }
 import { useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { useChatAvailability } from "../integration/hooks/use-chat-availability"
+import { useScene } from "../integration/scene-context"
 import { useCoreStore } from "../integration/store/core-store"
 import { useUiStore } from "../integration/store/ui-store"
-import { useScene } from "../simulation/scene-context"
 
 const REVIEW_LABEL = "text-[11px] font-black text-user"
 

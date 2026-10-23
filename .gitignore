@@ -11,3 +11,6 @@ coverage/
 .env*
 !.env.example
 .turbo/
+
+# Copied from packages/scene/assets by apps/web/scripts/copy-scene-assets.ts before dev and build.
+apps/web/public/models/

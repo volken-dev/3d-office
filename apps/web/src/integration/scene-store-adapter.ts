@@ -1,15 +1,18 @@
 import type { AgenticSystem } from "@the-delegation/agents/team"
-import { SceneManager } from "../simulation/scene-manager"
+import type { SceneIntent } from "@the-delegation/scene/scene-intent"
+import { SceneManager } from "@the-delegation/scene/scene-manager"
+import { publishFrameStats } from "./frame-stats"
 import type { TeamRuntime } from "./orchestration/team-runtime"
+import { castForTeam } from "./scene-cast"
 import {
   chatIntents,
   initialSceneIntents,
   layoutIntents,
   projectIntents,
-  type SceneIntent,
   selectionForClick,
   teamIntents,
 } from "./scene-intents"
+import { clearScreenPositions, notifyScreenPositions, setScreenPosition } from "./screen-positions"
 import { useCoreStore } from "./store/core-store"
 import { getActiveAgentSet, useTeamStore } from "./store/team-store"
 import { useUiStore } from "./store/ui-store"
@@ -36,12 +39,26 @@ export class SceneStoreAdapter {
   constructor(container: HTMLElement, runtime: TeamRuntime, onDeviceLost: () => void) {
     this.runtime = runtime
     this.team = getActiveAgentSet()
-    this.scene = new SceneManager(container, this.team, {
-      onAgentClick: (agentIndex) => this.selectAgent(agentIndex),
-      onAgentHover: (agentIndex) => useUiStore.getState().setHoveredNpc(agentIndex),
-      onPoiHover: (id, label, position) => useUiStore.getState().setHoveredPoi(id, label, position),
-      onDeviceLost,
-    })
+    this.scene = new SceneManager(
+      container,
+      castForTeam(this.team),
+      {
+        onAgentClick: (agentIndex) => this.selectAgent(agentIndex),
+        onAgentHover: (agentIndex) => useUiStore.getState().setHoveredNpc(agentIndex),
+        onPoiHover: (id, label, position) =>
+          useUiStore.getState().setHoveredPoi(id, label, position),
+        onDeviceLost,
+        onFrameStats: process.env.NODE_ENV === "development" ? publishFrameStats : undefined,
+      },
+      {
+        assetBaseUrl: "/",
+        screenPositions: {
+          set: setScreenPosition,
+          clear: clearScreenPositions,
+          notify: notifyScreenPositions,
+        },
+      },
+    )
     this.ready = this.scene.ready
 
     const core = useCoreStore.getState()
