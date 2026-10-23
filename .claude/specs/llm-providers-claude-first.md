@@ -221,6 +221,7 @@ Issues: #17 (test runner), #25 (LLM package), #26 (agent loop), #27 (sign-in and
 12. `ui:` gateway-backed `LLMClient`, remove BYOK UI, gateway error states, registry-driven model
     picker and pricing (#2, #15).
 13. `config:` Workers entry, `wrangler`, D1 migrations, rate-limiting binding, secrets; manual
-    `wrangler deploy`, no deploy pipeline (#28).
+    `wrangler deploy`, no deploy pipeline (#28). Dropped on 2026-10-23 with item 10: the gateway
+    stays a local service, and #28 was closed as not planned.
 14. `docs:` update `CLAUDE.md`, `RULES.md` (rule 1 provider location, rule 21 error copy, P3 layer
     names), `README.md`, and `AUDIT.md` statuses.

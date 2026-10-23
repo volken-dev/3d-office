@@ -59,10 +59,10 @@ Status column: **Fixed** means the recommendation is in the code and was checked
 
 ### Claude-first LLM layer
 
-Spec: `.claude/specs/llm-providers-claude-first.md` (Workers hosting, item 13, is still open as #28; sign-in, item 10, was dropped on 2026-10-23 and #27 closed as not planned).
+Spec: `.claude/specs/llm-providers-claude-first.md` (sign-in and Workers hosting, items 10 and 13, were dropped on 2026-10-23; #27 and #28 closed as not planned).
 
 - **Providers:** `packages/llm` holds the model registry (Claude Opus 5.5 and Sonnet 5.5; GPT-6 Astra, 6.1 Sol and 6 Luna; prices checked 2026-10-23), the Anthropic adapter (adaptive thinking, explicit effort, strict closed tool schemas, prompt caching, server-side refusal fallback, thinking blocks replayed byte for byte with `drop_block` as a safety net), the OpenAI adapter (stateless Responses API, encrypted reasoning replayed) and a fallback router that fails Claude over to `gpt-6.1-sol` only on rate limits, overloads and outages, with a circuit breaker. Gemini and `@google/genai` are gone.
-- **Gateway (ARCH-07):** `POST /api/llm/messages` validates the provider-neutral contract (`@the-delegation/shared/llm-messages`, which also rejects unanswered tool calls), serves it through the router and maps provider failures to our own error codes without leaking upstream text. `GET /api/health` reports whether a Claude key and an OpenAI backup are configured. The gateway is a local service with no sign-in (#27 was closed as not planned on 2026-10-23), so it must not be exposed publicly; Workers hosting (#28) is still open.
+- **Gateway (ARCH-07):** `POST /api/llm/messages` validates the provider-neutral contract (`@the-delegation/shared/llm-messages`, which also rejects unanswered tool calls), serves it through the router and maps provider failures to our own error codes without leaking upstream text. `GET /api/health` reports whether a Claude key and an OpenAI backup are configured. The gateway is a local service with no sign-in (#27 was closed as not planned on 2026-10-23), so it must not be exposed publicly; Workers hosting (#28) was closed as not planned too.
 - **Key custody (SEC-01):** the browser holds no key. The BYOK dialog and its storage are removed, and any Gemini key an earlier version saved is deleted on startup. The header and project panel show gateway status (online, unreachable, no Claude key) with a re-check action.
 - **Agents (ARCH-01):** orchestration moved to the framework-free `packages/agents`; `AgentBrain` takes its ports by constructor (the Zustand default is gone). The loop meets Claude's tool-use contract: every tool call answered by a `tool_result`, append-only history sent whole, trimming only at call/result boundaries, a byte-stable system prompt with volatile state in a context turn, display-only notices never sent to the model. Saved teams naming Gemini models are migrated to the Claude defaults on load.
 - **Tests (ARCH-09):** `bun test` in every package through `bun run test` and CI: shared 11, llm 34, agents 37, api 10, web 4. Agent tests assert every request the loop builds passes the gateway's own schema.
@@ -70,7 +70,7 @@ Spec: `.claude/specs/llm-providers-claude-first.md` (Workers hosting, item 13, i
 
 ### Still open
 
-Everything still open is a GitHub issue: [volken-dev/3d-office issues](https://github.com/volken-dev/3d-office/issues). REL-07/REL-10 #1, PERF-02 #3, PERF-03 #4, PERF-04 #5, UX-06 #7, UX-13 #8, UX-14 #9, UX-17 #10, ARCH-02 #11, ARCH-03 and CODE-04 #12, ARCH-04 #13, ARCH-05/06 #14, ARCH-07 #15 (Workers hosting #28), ARCH-08 #16, MIG-07 #18, setup-bun pin #19. Bugs found during the rule-enforcement pass are #21 to #24. SEC-01 (#2), ARCH-01 (#11, first half), ARCH-09 (#17) and UX-04 (#6) are resolved by the Claude-first LLM layer below.
+Everything still open is a GitHub issue: [volken-dev/3d-office issues](https://github.com/volken-dev/3d-office/issues). REL-07/REL-10 #1, PERF-02 #3, PERF-03 #4, PERF-04 #5, UX-06 #7, UX-13 #8, UX-14 #9, UX-17 #10, ARCH-02 #11, ARCH-03 and CODE-04 #12, ARCH-04 #13, ARCH-05/06 #14, ARCH-07 #15, ARCH-08 #16, MIG-07 #18, setup-bun pin #19. Bugs found during the rule-enforcement pass are #21 to #24. SEC-01 (#2), ARCH-01 (#11, first half), ARCH-09 (#17) and UX-04 (#6) are resolved by the Claude-first LLM layer below.
 
 ---
 
@@ -343,7 +343,7 @@ Everything still open is a GitHub issue: [volken-dev/3d-office issues](https://g
 
 ### Next (backend adoption: finishing the gateway, then persistence)
 1. **Done:** ARCH-01 (ports and the framework-free `packages/agents`), ARCH-09 (tests), SEC-01 (keys only on the gateway), the provider seam of ARCH-07, and the Claude-first provider layer with OpenAI as outage backup.
-2. **Gateway access:** dropped for now. The gateway stays a local service with no sign-in (#27 closed as not planned on 2026-10-23); the Workers entry, D1, the Workers rate limiter and secrets are still tracked in #28, and the gateway must not be public without access control.
+2. **Gateway access:** dropped for now. The gateway stays a local service with no sign-in (#27 closed as not planned on 2026-10-23); the Workers entry, D1, the Workers rate limiter and secrets were dropped with it (#28 closed as not planned). The app stays runtime-agnostic, and the gateway must not be public without access control.
 3. **Orchestration out of the scene:** ARCH-02 (AgentSimulation/AgentHost out of `simulation/`), ARCH-08; then the agent loop can run server-side behind the gateway with server-side budgets.
 4. **Correct the orchestrator:** REL-07 and REL-10 (#1), plus streaming chat replies through the gateway.
 5. **Persistence:** ARCH-06 second half and ARCH-05. Split the stores, add a versioned `ProjectRepository` (IndexedDB locally, then the gateway plus D1), and resume `in_progress` tasks as `scheduled` on reload.
