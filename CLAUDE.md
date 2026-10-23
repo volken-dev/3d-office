@@ -48,8 +48,9 @@ apps/
 │               llm/routerForEnv
 packages/
 ├── agents/     @the-delegation/agents: framework-free orchestration. agent/ (AgentBrain,
-│               PromptBuilder, ToolRegistry, history, tools/), orchestration/ (ports, policy),
-│               project/types, llm/ (AgentMessage, LLMClient, LLMError), team.ts
+│               modelTurn, boardReaction, PromptBuilder, ToolRegistry, history, tools/ with
+│               toolArgs), orchestration/ (ports, policy, autonomy), project/types, llm/
+│               (AgentMessage, LLMClient, LLMError), team.ts
 ├── llm/        @the-delegation/llm: registry (models, prices, backups), adapter, errors,
 │               providers/ (anthropic, openai), router (fallback + circuit breaker)
 └── shared/     @the-delegation/shared: zod contracts (api.ts, llm-messages.ts)
@@ -72,17 +73,23 @@ packages/
 - **Providers live in `packages/llm`.** The Anthropic adapter is first-class; OpenAI is only the
   outage backup the router fails over to (429, overload, 5xx), never on refusals or bad requests.
   Models, prices and backups come from the registry; there is no Gemini.
-- **One retry policy, in `AgentBrain`.** Exponential backoff, a cap on unproductive attempts, a
-  per-project call and task budget, and an immediate pause on quota/auth errors. Do not add a
-  second retry loop anywhere else (one was removed for silently racing this one).
-- **LLM tool calls are untrusted input.** Every tool parses its arguments and checks it is offered
-  to that agent in that phase (`ToolRegistry.runToolCall`). LLM output is untrusted when rendered
-  too: Markdown goes through `components/Markdown.tsx` only (no raw HTML, no remote images).
+- **One retry policy: the loop in `AgentBrain`, the decisions in `orchestration/autonomy.ts`.**
+  Exponential backoff, a cap on unproductive attempts, a per-project call and task budget, and an
+  immediate pause on quota errors or a gateway with no key. `autonomy.ts` is pure (it decides);
+  `AgentBrain` is the only thing that waits and retries. Do not add a second retry loop anywhere
+  else (one was removed for silently racing this one). Every request is counted against the budget
+  through `recordModelCall` on the port, never as a side effect of logging.
+- **LLM tool calls are untrusted input.** Every tool declares its arguments once, as a zod
+  `z.strictObject` passed to `defineTool` (`agent/tools/toolArgs.ts`): the input schema sent to the
+  model is derived from it (cut down to the keywords strict tools accept), and the same schema
+  parses every call, length caps included. `ToolRegistry.runToolCall` also checks the tool was
+  offered to that agent in that phase. LLM output is untrusted when rendered too: Markdown goes
+  through `components/Markdown.tsx` only (no raw HTML, no remote images).
 - **React strict mode stays on.** It is the regression test for leaked simulations (REL-02).
 - **Keys live only on the gateway.** `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` are server
   bindings; the web app calls `POST /api/llm/messages` through the typed `hc` client and never
-  sees a key. The gateway is not safe to expose publicly until sign-in and the per-user spend cap
-  land (#27).
+  sees a key. The gateway is a local service: there is no sign-in and none is planned for now, so
+  it binds to `127.0.0.1` by default (`HOST` overrides it) and must not be exposed publicly.
 - **The 3D scene's look does not change** as a side effect of refactors.
 
 ---
@@ -214,9 +221,9 @@ Never report success with a red gate; if a gate fails, show the exact `file:line
 
 ### When you add an artifact, register it
 
-- New agent tool → add `register(<tool>)` to `TOOLS` in
-  `packages/agents/src/agent/ToolRegistry.ts` (order is the order the model sees them); its input
-  schema is a closed object (`additionalProperties: false`) so providers can enforce it strictly
+- New agent tool → build it with `defineTool` and a `z.strictObject` args schema (the helpers in
+  `agent/tools/toolArgs.ts` carry the length caps), then add `register(<tool>)` to `TOOLS` in
+  `packages/agents/src/agent/ToolRegistry.ts` (order is the order the model sees them)
 - New API route group → `.route('/<name>', <name>)` in `createApp` (`apps/api/src/app.ts`), with
   its request and response schemas in `@the-delegation/shared`
 - New model → an entry in `packages/llm/src/registry.ts` with prices checked against the

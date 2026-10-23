@@ -8,9 +8,8 @@ import {
   type ICharacterDriver,
 } from "../types"
 
-import type { AgentStateBuffer } from "./behavior/AgentStateBuffer"
 import { CharacterStateMachine } from "./behavior/CharacterStateMachine"
-import { MOVEMENT_STRIDE } from "./behavior/characterMovement"
+import { MOVEMENT_STRIDE, type MovementBuffers } from "./behavior/characterMovement"
 import type { CharacterManager } from "./entities/CharacterManager"
 import { CharacterCrowd } from "./pathfinding/CharacterCrowd"
 import type { NavMeshManager } from "./pathfinding/NavMeshManager"
@@ -40,13 +39,14 @@ interface Arrival {
  * Implements ICharacterDriver so it can be passed to the state machine and
  * behavior drivers without circular dependencies.
  *
- * All behavior code (PlayerInputDriver, NpcAgentDriver) goes through this class.
+ * All behavior code (PlayerInputDriver, NpcAgentDriver) goes through this class. Characters are
+ * addressed by agent index; CharacterManager maps those to instance slots.
  */
 export class CharacterController implements ICharacterDriver {
   private stateMachine!: CharacterStateMachine
   private crowd: CharacterCrowd | null = null
-  /** Per walker: what to do when it reaches its destination. */
-  private arrivals: (Arrival | null)[] = []
+  /** Per walker, by agent index: what to do when it reaches its destination. */
+  private arrivals = new Map<number, Arrival>()
 
   constructor(
     public readonly characterManager: CharacterManager,
@@ -58,19 +58,25 @@ export class CharacterController implements ICharacterDriver {
   }
 
   /**
-   * Fresh state machine and crowd sized to the current character count, with the crowd's agents at
-   * the characters' positions. Needs the characters to be loaded. Without a navmesh there is no
-   * crowd, and nobody walks.
+   * Fresh state machine and crowd for every character of the current roster, with the crowd's
+   * agents where the characters stand. Without a navmesh there is no crowd, and nobody walks.
    */
   private resetAgents(): void {
-    const count = this.characterManager.getCount()
-    const positions = this.characterManager.getCPUPositions()
-    if (!positions) throw new Error("CharacterController needs loaded characters")
-    this.stateMachine = new CharacterStateMachine(count)
+    const agentIndices = this.characterManager.getAgentIndices()
+    this.stateMachine = new CharacterStateMachine(agentIndices)
     this.crowd?.dispose()
+    this.crowd = null
+    this.arrivals = new Map()
     const navMesh = this.navMesh.getNavMesh()
-    this.crowd = navMesh ? new CharacterCrowd(navMesh, positions, count) : null
-    this.arrivals = new Array(count).fill(null)
+    if (!navMesh) return
+    const startPositions = new Map<number, THREE.Vector3>()
+    for (const agentIndex of agentIndices) {
+      const start = new THREE.Vector3()
+      if (this.characterManager.getCPUPosition(agentIndex, start)) {
+        startPositions.set(agentIndex, start)
+      }
+    }
+    this.crowd = new CharacterCrowd(navMesh, startPositions)
   }
 
   /**
@@ -112,19 +118,15 @@ export class CharacterController implements ICharacterDriver {
     fromPosition?: THREE.Vector3,
     targetOrientation?: THREE.Quaternion,
   ): boolean {
+    const current = new THREE.Vector3()
+    if (!this.characterManager.getCPUPosition(index, current)) return false
+
     let from: THREE.Vector3
 
     if (fromPosition) {
       from = fromPosition.clone()
     } else {
-      const positions = this.characterManager.getCPUPositions()
-      if (!positions) return false
-
-      from = new THREE.Vector3(
-        positions[index * 4],
-        positions[index * 4 + 1],
-        positions[index * 4 + 2],
-      )
+      from = current.clone()
     }
 
     const path = this.navMesh.findPath(from, target)
@@ -143,14 +145,13 @@ export class CharacterController implements ICharacterDriver {
       return false
     }
 
-    const positions = this.characterManager.getCPUPositions()
-    if (!positions || !this.crowd?.walk(index, positions, target.x, target.z)) return false
+    if (!this.crowd?.walk(index, current, target.x, target.z)) return false
 
     const lastLegStart = path.length > 1 ? path[path.length - 2] : from
     const facing = new THREE.Vector3(target.x - lastLegStart.x, 0, target.z - lastLegStart.z)
     if (facing.lengthSq() === 0) facing.set(0, 0, 1)
     facing.normalize()
-    this.arrivals[index] = {
+    this.arrivals.set(index, {
       facingX: facing.x,
       facingZ: facing.z,
       onArrival: (arrivedIndex) => {
@@ -160,7 +161,7 @@ export class CharacterController implements ICharacterDriver {
         this.play(arrivedIndex, arrivalState)
         onArrival?.(arrivedIndex)
       },
-    }
+    })
 
     this.setPhysicsMode(index, AgentBehavior.GOTO)
     this.play(index, "walk")
@@ -174,7 +175,7 @@ export class CharacterController implements ICharacterDriver {
    *
    * A sit target is armed before walking, so when the sit_down timer expires the state machine
    * reads it directly. On arrival the character snaps to the exact POI position (removing any
-   * navmesh offset) and, except for 'area' POIs, its facing; seated arrivals switch to SEATED so a
+   * navmesh offset) and, except for areas, its facing; seated arrivals switch to SEATED so a
    * stray GOTO can't move them.
    */
   public walkToPoi(
@@ -200,7 +201,7 @@ export class CharacterController implements ICharacterDriver {
       (arrivedIndex) => {
         this.characterManager.setPosition(arrivedIndex, poi.position)
 
-        if (!poi.id.startsWith("area")) {
+        if (poi.kind !== "area") {
           this.characterManager.setOrientation(arrivedIndex, poi.quaternion)
         }
 
@@ -244,36 +245,42 @@ export class CharacterController implements ICharacterDriver {
     const crowd = this.crowd
     let arrived: number[] = []
     if (crowd) {
-      this.characterManager.applyMovement((positions, velocities) => {
-        arrived = crowd.step(positions, velocities, deltaSeconds)
-        this.faceWalkDirections(crowd, velocities)
+      this.characterManager.applyMovement((buffers) => {
+        arrived = crowd.step(buffers, deltaSeconds)
+        this.faceWalkDirections(crowd, buffers)
       })
     }
     this.stateMachine.update(deltaSeconds, this)
     for (const agentIndex of arrived) {
-      const arrival = this.arrivals[agentIndex]
-      this.arrivals[agentIndex] = null
+      const arrival = this.arrivals.get(agentIndex)
+      this.arrivals.delete(agentIndex)
       if (arrival) this.characterManager.setFacing(agentIndex, arrival.facingX, arrival.facingZ)
       this.setPhysicsMode(agentIndex, AgentBehavior.IDLE)
       arrival?.onArrival(agentIndex)
     }
   }
 
-  private faceWalkDirections(crowd: CharacterCrowd, velocities: Float32Array): void {
-    for (let agentIndex = 0; agentIndex < this.getCount(); agentIndex++) {
-      if (!crowd.isWalking(agentIndex)) continue
-      const stepX = velocities[agentIndex * MOVEMENT_STRIDE]
-      const stepZ = velocities[agentIndex * MOVEMENT_STRIDE + 2]
+  private faceWalkDirections(crowd: CharacterCrowd, buffers: MovementBuffers): void {
+    for (const agentIndex of this.characterManager.getAgentIndices()) {
+      const slot = buffers.slotOf(agentIndex)
+      if (slot === null || !crowd.isWalking(agentIndex)) continue
+      const stepX = buffers.velocities[slot * MOVEMENT_STRIDE]
+      const stepZ = buffers.velocities[slot * MOVEMENT_STRIDE + 2]
       if (Math.hypot(stepX, stepZ) > FACING_STEP_THRESHOLD) {
         this.characterManager.setFacing(agentIndex, stepX, stepZ)
       }
     }
   }
 
+  /** Fades characters that overlap so neither hides the other; call after this frame's moves. */
+  public updateOverlapFading(deltaSeconds: number): void {
+    this.characterManager.updateOverlapFading(deltaSeconds)
+  }
+
   /** Cancel movement for an agent and return to idle. */
   public cancelMovement(index: number): void {
     this.crowd?.stop(index)
-    this.arrivals[index] = null
+    this.arrivals.delete(index)
     this.setPhysicsMode(index, AgentBehavior.IDLE)
   }
 
@@ -295,7 +302,7 @@ export class CharacterController implements ICharacterDriver {
     this.characterManager.setPosition(playerIndex, ORIGIN)
     this.play(playerIndex, "idle")
 
-    const spawnPois = this.poiManager.getPoisByPrefix("spawn")
+    const spawnPois = this.poiManager.getPoisOfKind("spawn")
     npcIndices.forEach((agentIndex, order) => {
       const poi = spawnPois[order % spawnPois.length]
       if (poi) {
@@ -307,24 +314,29 @@ export class CharacterController implements ICharacterDriver {
     })
   }
 
-  public getCPUPositions(): Float32Array | null {
-    return this.characterManager.getCPUPositions()
-  }
-
+  /** Writes a character's world position into `out`. Returns false if the agent has no character. */
   public getCPUPosition(index: number, out: THREE.Vector3): boolean {
     return this.characterManager.getCPUPosition(index, out)
   }
 
-  public getCount(): number {
-    return this.characterManager.getCount()
+  /** Agent indices of every character in the scene: the user and the team's agents. */
+  public getAgentIndices(): readonly number[] {
+    return this.characterManager.getAgentIndices()
   }
 
-  public getAgentStateBuffer(): AgentStateBuffer | null {
-    return this.characterManager.getAgentStateBuffer()
+  /** Turns an idle character to face along (x, z). */
+  public setFacing(index: number, x: number, z: number): void {
+    this.characterManager.setFacing(index, x, z)
   }
 
-  /** Switches to another team's characters (one rebuild at most) and resets every character's state. */
+  /**
+   * Switches to another team's characters (one rebuild at most) and resets every character's state.
+   * The outgoing roster's POIs are released first, so a removed agent does not keep its seat.
+   */
   public setTeam(team: AgenticSystem): void {
+    for (const agentIndex of this.characterManager.getAgentIndices()) {
+      this.poiManager.releaseAll(agentIndex)
+    }
     this.characterManager.setTeam(team)
     this.playerIndex = team.user.index
     this.resetAgents()

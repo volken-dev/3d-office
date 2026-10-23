@@ -6,6 +6,17 @@ export const WALK_SPEED = 2.7
 /** Within this distance of its destination a walker snaps onto it and arrives. */
 export const ARRIVAL_RADIUS = 0.2
 
+/**
+ * The movement buffers, addressed by instance slot, and the slot of each agent. CharacterManager
+ * hands them to the movement step; nothing keeps them past that call.
+ */
+export interface MovementBuffers {
+  positions: Float32Array
+  velocities: Float32Array
+  /** The slot an agent's character occupies, or null when the agent has no character. */
+  slotOf(agentIndex: number): number | null
+}
+
 /** A walker's ground-plane position and velocity (units per second) as the crowd reports them. */
 export interface WalkerMotion {
   x: number
@@ -22,11 +33,11 @@ export interface WalkerMotion {
 export function writeWalkerMotion(
   positions: Float32Array,
   velocities: Float32Array,
-  index: number,
+  slot: number,
   motion: WalkerMotion,
   deltaSeconds: number,
 ): void {
-  const offset = index * MOVEMENT_STRIDE
+  const offset = slot * MOVEMENT_STRIDE
   positions[offset] = motion.x
   positions[offset + 1] = 0
   positions[offset + 2] = motion.z
@@ -44,9 +55,9 @@ export function writeWalkerMotion(
 export function holdCharacterStill(
   positions: Float32Array,
   velocities: Float32Array,
-  index: number,
+  slot: number,
 ): void {
-  const offset = index * MOVEMENT_STRIDE
+  const offset = slot * MOVEMENT_STRIDE
   positions[offset + 3] = 1
   velocities.fill(0, offset, offset + MOVEMENT_STRIDE)
 }
@@ -54,11 +65,11 @@ export function holdCharacterStill(
 /** Whether the character is within ARRIVAL_RADIUS of the destination on the ground plane. */
 export function isWithinArrivalRadius(
   positions: Float32Array,
-  index: number,
+  slot: number,
   destinationX: number,
   destinationZ: number,
 ): boolean {
-  const offset = index * MOVEMENT_STRIDE
+  const offset = slot * MOVEMENT_STRIDE
   return (
     Math.hypot(destinationX - positions[offset], destinationZ - positions[offset + 2]) <
     ARRIVAL_RADIUS

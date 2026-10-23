@@ -1,4 +1,5 @@
 import type * as THREE from "three/webgpu"
+import type { OfficePoiKind } from "./simulation/world/officePoiExtras"
 
 export enum AnimationName {
   IDLE = "Idle",
@@ -73,7 +74,9 @@ export interface CharacterStateDef {
 }
 
 export interface PoiDef {
+  /** Built by `poiIdFor` in `simulation/world/poiIds.ts`. */
   id: string
+  kind: OfficePoiKind
   /** World-space position to walk toward. */
   position: THREE.Vector3
   /** World-space quaternion for orientation. */
@@ -97,7 +100,6 @@ export interface ICharacterDriver {
   setSpeaking(index: number, isSpeaking: boolean): void
   getAgentState(index: number): AgentBehavior
   getAnimationDuration(index: number, name: AnimationName): number
-  getCPUPositions(): Float32Array | null
 }
 
 /**
@@ -106,7 +108,7 @@ export interface ICharacterDriver {
  */
 export interface IAgentDriver {
   readonly agentIndex: number
-  update(positions: Float32Array, delta: number): void
+  update(deltaSeconds: number): void
   dispose(): void
 }
 

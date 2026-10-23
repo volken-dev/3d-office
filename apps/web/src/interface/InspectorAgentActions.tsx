@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { useChatAvailability } from "../integration/hooks/useChatAvailability"
 import { useCoreStore } from "../integration/store/coreStore"
 import { useUiStore } from "../integration/store/uiStore"
-import { useSceneManager } from "../simulation/SceneContext"
+import { useScene } from "../simulation/SceneContext"
 
 const REVIEW_LABEL = "text-[11px] font-black text-user"
 
@@ -23,7 +23,7 @@ export function InspectorAgentActions({ agent, system }: InspectorAgentActionsPr
   const taskOnHold = useCoreStore((state) =>
     state.tasks.find((task) => task.assignedAgentId === agent.index && task.status === "on_hold"),
   )
-  const scene = useSceneManager()
+  const scene = useScene()
   const { canChat, reason } = useChatAvailability(agent.index)
   const previousCanChatRef = useRef(canChat)
 

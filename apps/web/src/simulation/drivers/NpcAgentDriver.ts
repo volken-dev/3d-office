@@ -2,6 +2,7 @@ import { MAX_AGENTS } from "@the-delegation/agents/team"
 import * as THREE from "three/webgpu"
 import type { CharacterStateKey, IAgentDriver } from "../../types"
 import type { CharacterController } from "../CharacterController"
+import { spawnPoiId } from "../world/poiIds"
 
 /** Seconds before an NPC's first idle decision: INITIAL_WAIT_MIN plus up to INITIAL_WAIT_RANGE. */
 const INITIAL_WAIT_MIN = 2
@@ -27,6 +28,8 @@ export class NpcAgentDriver implements IAgentDriver {
   /** Has a scheduled, in-progress or on-hold task. */
   private isBusy = false
   private projectDone = false
+  /** This frame's position; moveTo copies it, so it is safe to reuse. */
+  private readonly position = new THREE.Vector3()
 
   constructor(
     public readonly agentIndex: number,
@@ -54,13 +57,15 @@ export class NpcAgentDriver implements IAgentDriver {
    * desks and the boardroom while the agent has work. Otherwise new actions are only decided from
    * a resting state.
    */
-  public update(positions: Float32Array, deltaSeconds: number): void {
+  public update(deltaSeconds: number): void {
     if (this.isChattingWithMe) return
+    const position = this.position
+    if (!this.controller.getCPUPosition(this.agentIndex, position)) return
 
     const currentState = this.controller.getState(this.agentIndex)
 
     if (this.isLead && this.projectDone) {
-      this._updateProjectReadyBehavior(positions, currentState)
+      this._updateProjectReadyBehavior(position, currentState)
       return
     }
 
@@ -70,7 +75,7 @@ export class NpcAgentDriver implements IAgentDriver {
       this.behaviorTimer -= deltaSeconds
 
       if (this.behaviorTimer <= 0) {
-        this._decideNextAction(positions, currentState)
+        this._decideNextAction(position, currentState)
       }
     }
   }
@@ -81,28 +86,17 @@ export class NpcAgentDriver implements IAgentDriver {
    * arrival state (idle).
    */
   private _updateProjectReadyBehavior(
-    positions: Float32Array,
+    currentPosition: THREE.Vector3,
     currentState: CharacterStateKey,
   ): void {
-    const spawnId = `idle-spawn-${this.agentIndex}`
-    const targetPoi = this.controller.poiManager.getPoi(spawnId)
+    const targetPoi = this.controller.poiManager.getPoi(spawnPoiId(this.agentIndex))
     if (!targetPoi) return
 
-    const offset = this.agentIndex * 4
-    const deltaX = positions[offset] - targetPoi.position.x
-    const deltaY = positions[offset + 1] - targetPoi.position.y
-    const deltaZ = positions[offset + 2] - targetPoi.position.z
-
     if (
-      deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ >
+      currentPosition.distanceToSquared(targetPoi.position) >
       CELEBRATION_RADIUS * CELEBRATION_RADIUS
     ) {
       if (currentState !== "walk") {
-        const currentPosition = new THREE.Vector3(
-          positions[offset],
-          positions[offset + 1],
-          positions[offset + 2],
-        )
         this.controller.moveTo(
           this.agentIndex,
           targetPoi.position,
@@ -132,7 +126,7 @@ export class NpcAgentDriver implements IAgentDriver {
    * lead never sits), else maybe wander to a common area facing its centre, else play a short
    * reaction. A seated agent that wanted to get up but found nowhere to go stays seated.
    */
-  private _decideNextAction(positions: Float32Array, currentState: CharacterStateKey): void {
+  private _decideNextAction(currentPosition: THREE.Vector3, currentState: CharacterStateKey): void {
     const roll = Math.random()
     const isSeated = currentState === "sit_idle"
 
@@ -142,14 +136,8 @@ export class NpcAgentDriver implements IAgentDriver {
       return
     }
 
-    const currentPosition = new THREE.Vector3(
-      positions[this.agentIndex * 4],
-      positions[this.agentIndex * 4 + 1],
-      positions[this.agentIndex * 4 + 2],
-    )
-
     if (!isSeated && roll < GO_SIT_CHANCE && !this.isLead) {
-      const pois = this.controller.poiManager.getFreePois("sit_idle", this.agentIndex)
+      const pois = this.controller.poiManager.getFreePoisOfKind("seat", this.agentIndex)
       if (pois.length > 0) {
         const poi = pois[Math.floor(Math.random() * pois.length)]
         this.controller.walkToPoi(this.agentIndex, poi.id, undefined, currentPosition)
@@ -159,7 +147,7 @@ export class NpcAgentDriver implements IAgentDriver {
     }
 
     if (roll < WANDER_CHANCE) {
-      const areaPois = this.controller.poiManager.getFreePoisByPrefix("area-", this.agentIndex)
+      const areaPois = this.controller.poiManager.getFreePoisOfKind("area", this.agentIndex)
       if (areaPois.length > 0) {
         const areaPoi = areaPois[Math.floor(Math.random() * areaPois.length)]
 

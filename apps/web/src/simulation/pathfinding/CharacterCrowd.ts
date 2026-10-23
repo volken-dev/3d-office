@@ -3,6 +3,7 @@ import {
   holdCharacterStill,
   isWithinArrivalRadius,
   MOVEMENT_STRIDE,
+  type MovementBuffers,
   WALK_SPEED,
   writeWalkerMotion,
 } from "../behavior/characterMovement"
@@ -60,26 +61,35 @@ interface Walk {
   stallSeconds: number
 }
 
+/** A point in world space, as Detour takes it. */
+interface CrowdPoint {
+  x: number
+  y: number
+  z: number
+}
+
 /**
  * Moves walking characters through a Detour crowd, so they steer around each other. Every character
- * has a crowd agent. A walker's agent drives its position; a character that is not walking (idle,
- * seated, talking) keeps its own position, and its agent is pinned there as an obstacle the walkers
- * avoid, so a walker's push never moves it.
+ * has a crowd agent, keyed by agent index. A walker's agent drives its position; a character that
+ * is not walking (idle, seated, talking) keeps its own position, and its agent is pinned there as
+ * an obstacle the walkers avoid, so a walker's push never moves it. Positions and velocities are
+ * read and written through the slot mapping CharacterManager hands to `step`.
  */
 export class CharacterCrowd {
   private readonly crowd: Crowd
-  private readonly agents: CrowdAgent[] = []
-  private readonly walks: (Walk | null)[] = []
+  private readonly agents = new Map<number, CrowdAgent>()
+  private readonly walks = new Map<number, Walk>()
 
-  /** One agent per character, each starting at the character's position. */
-  constructor(navMesh: NavMesh, positions: Float32Array, count: number) {
+  /** One crowd agent per character, each starting at the given position. */
+  constructor(navMesh: NavMesh, startPositions: ReadonlyMap<number, CrowdPoint>) {
     this.crowd = new Crowd(navMesh, {
-      maxAgents: Math.max(count, 1),
+      maxAgents: Math.max(startPositions.size, 1),
       maxAgentRadius: CHARACTER_RADIUS,
     })
-    for (let index = 0; index < count; index++) {
-      this.agents.push(
-        this.crowd.addAgent(this.positionOf(positions, index), {
+    for (const [agentIndex, start] of startPositions) {
+      this.agents.set(
+        agentIndex,
+        this.crowd.addAgent(start, {
           radius: CHARACTER_RADIUS,
           height: CHARACTER_HEIGHT,
           maxSpeed: WALK_SPEED,
@@ -89,88 +99,90 @@ export class CharacterCrowd {
           pathOptimizationRange: PATH_OPTIMIZATION_RANGE,
         }),
       )
-      this.walks.push(null)
     }
   }
 
   /**
-   * Starts walking the character from its current position to the destination. A character that
-   * was standing still is first put back exactly where it stands. Returns false if the crowd could
-   * not take the request (no navmesh under the destination).
+   * Starts walking the character from `from` (where it stands now) to the destination. A
+   * character that was standing still is first put back exactly there. Returns false for an agent
+   * the crowd does not have, or if the crowd could not take the request (no navmesh under the
+   * destination).
    */
   public walk(
-    index: number,
-    positions: Float32Array,
+    agentIndex: number,
+    from: CrowdPoint,
     destinationX: number,
     destinationZ: number,
   ): boolean {
-    const agent = this.agents[index]
+    const agent = this.agents.get(agentIndex)
     if (!agent) return false
-    if (!this.walks[index]) agent.teleport(this.positionOf(positions, index))
+    if (!this.walks.has(agentIndex)) agent.teleport(from)
     if (!agent.requestMoveTarget({ x: destinationX, y: 0, z: destinationZ })) return false
-    const offset = index * MOVEMENT_STRIDE
     const walk: Walk = {
       destinationX,
       destinationZ,
       phase: "avoiding",
       finishingStraight: false,
-      stallX: positions[offset],
-      stallZ: positions[offset + 2],
+      stallX: from.x,
+      stallZ: from.z,
       stallSeconds: 0,
     }
-    this.walks[index] = walk
+    this.walks.set(agentIndex, walk)
     this.enterPhase(agent, walk, "avoiding")
     return true
   }
 
   /** Stops the character where it is. */
-  public stop(index: number): void {
-    const agent = this.agents[index]
-    const walk = this.walks[index]
+  public stop(agentIndex: number): void {
+    const agent = this.agents.get(agentIndex)
+    const walk = this.walks.get(agentIndex)
     if (!agent || !walk) return
-    this.walks[index] = null
+    this.walks.delete(agentIndex)
     agent.resetMoveTarget()
     this.enterPhase(agent, walk, "avoiding")
   }
 
-  public isWalking(index: number): boolean {
-    return Boolean(this.walks[index])
+  public isWalking(agentIndex: number): boolean {
+    return this.walks.has(agentIndex)
   }
 
   /**
    * Advances the crowd one frame and writes every character's position and velocity. A walker that
    * reaches its destination snaps onto it and stops.
-   * @returns the indices of the characters that arrived this frame.
+   * @returns the agent indices of the characters that arrived this frame.
    */
-  public step(positions: Float32Array, velocities: Float32Array, deltaSeconds: number): number[] {
-    for (let index = 0; index < this.agents.length; index++) {
-      if (!this.walks[index]) this.pinToCharacter(index, positions)
+  public step(buffers: MovementBuffers, deltaSeconds: number): number[] {
+    const { positions, velocities } = buffers
+    for (const [agentIndex, agent] of this.agents) {
+      const slot = buffers.slotOf(agentIndex)
+      if (slot !== null && !this.walks.has(agentIndex)) this.pinToCharacter(agent, positions, slot)
     }
     if (deltaSeconds > 0) this.crowd.update(deltaSeconds)
 
     const arrived: number[] = []
-    for (let index = 0; index < this.agents.length; index++) {
-      const walk = this.walks[index]
+    for (const [agentIndex, agent] of this.agents) {
+      const slot = buffers.slotOf(agentIndex)
+      if (slot === null) continue
+      const walk = this.walks.get(agentIndex)
       if (!walk) {
-        holdCharacterStill(positions, velocities, index)
+        holdCharacterStill(positions, velocities, slot)
         continue
       }
-      const agent = this.agents[index]
       const position = agent.position()
       const velocity = agent.velocity()
       writeWalkerMotion(
         positions,
         velocities,
-        index,
+        slot,
         { x: position.x, z: position.z, velocityX: velocity.x, velocityZ: velocity.z },
         deltaSeconds,
       )
-      if (isWithinArrivalRadius(positions, index, walk.destinationX, walk.destinationZ)) {
-        const offset = index * MOVEMENT_STRIDE
+      if (isWithinArrivalRadius(positions, slot, walk.destinationX, walk.destinationZ)) {
+        const offset = slot * MOVEMENT_STRIDE
         positions[offset] = walk.destinationX
         positions[offset + 2] = walk.destinationZ
-        this.stop(index)
-        arrived.push(index)
+        this.stop(agentIndex)
+        arrived.push(agentIndex)
         continue
       }
       this.advancePhase(agent, walk, position.x, position.z, deltaSeconds)
@@ -231,19 +243,15 @@ export class CharacterCrowd {
     return true
   }
 
-  private pinToCharacter(index: number, positions: Float32Array): void {
-    const agent = this.agents[index]
+  private pinToCharacter(agent: CrowdAgent, positions: Float32Array, slot: number): void {
     const agentPosition = agent.position()
-    const offset = index * MOVEMENT_STRIDE
+    const offset = slot * MOVEMENT_STRIDE
     const drift = Math.hypot(
       agentPosition.x - positions[offset],
       agentPosition.z - positions[offset + 2],
     )
-    if (drift > STATIONARY_DRIFT) agent.teleport(this.positionOf(positions, index))
-  }
-
-  private positionOf(positions: Float32Array, index: number) {
-    const offset = index * MOVEMENT_STRIDE
-    return { x: positions[offset], y: positions[offset + 1], z: positions[offset + 2] }
+    if (drift > STATIONARY_DRIFT) {
+      agent.teleport({ x: positions[offset], y: positions[offset + 1], z: positions[offset + 2] })
+    }
   }
 }
