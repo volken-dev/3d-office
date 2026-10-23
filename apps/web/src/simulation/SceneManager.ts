@@ -116,7 +116,7 @@ export class SceneManager {
       this.engine.init(),
       loader.load(OFFICE_MODEL_URL),
       loadCharacterModels(loader, this.characterModelsFor(this.team)),
-    ]).finally(() => loader.dispose())
+    ])
     if (this.isDisposed) return
 
     this.worldManager.setup(officeGltf, this.team.color)
@@ -284,7 +284,6 @@ export class SceneManager {
         console.error("[SceneManager] Character models failed to load:", error)
         if (!this.isDisposed && this.team === team) this.rebuildForTeam(team)
       })
-      .finally(() => loader.dispose())
   }
 
   /**
