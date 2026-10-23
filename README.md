@@ -37,13 +37,14 @@ This is a [Turborepo](https://turborepo.com) monorepo using Bun workspaces:
 | `apps/api` | Hono LLM gateway: holds the provider keys and serves every model call |
 | `packages/agents` | Framework-free agent orchestration: the agent loop, tools, prompts and policy |
 | `packages/llm` | Model registry, Anthropic and OpenAI adapters, and the fallback router |
+| `packages/scene` | The 3D office: renderer, characters, navigation and points of interest, plus the models and their asset pipeline |
 | `packages/shared` | API contract types and schemas shared by web and api |
 
 Common tasks run from the repo root through Turborepo: `bun dev`, `bun run build`, `bun run lint`, `bun run typecheck`, `bun run test`. Target one package with `bunx turbo run <task> --filter=web`.
 
 ### 3D models
 
-Exported models are sources, not what the browser loads. They live in `apps/web/assets-src/models/`; `bun run assets` (in `apps/web`) builds the optimised copies in `apps/web/public/models/`, which are committed alongside them.
+Exported models are sources, not what the browser loads. They live in `packages/scene/assets-src/models/`; `bun run assets` (in `packages/scene`) builds the optimised copies in `packages/scene/assets/models/`, which are committed alongside them. The web app copies those into `apps/web/public/models/` (gitignored) before every dev and build.
 
 1. Export from Blender with **File > Export > glTF 2.0**:
    - Format: **glTF Binary (.glb)**.
@@ -52,14 +53,14 @@ Exported models are sources, not what the browser loads. They live in `apps/web/
    - Material: **Export**; images **Automatic** (PNG or JPEG).
    - Animation: **Skinning** on, shape keys off, actions exported as clips named after `AnimationName` (`Idle`, `Walk`, `Sit_Work`, ...). Missing clips fall back to `Idle`.
    - Office naming the scene relies on: the walkable mesh's name contains `navmesh` (any case) and team-coloured meshes start with `colored`. Points of interest are described by custom properties, not names (see below).
-2. Save the `.glb` to `apps/web/assets-src/models/`. A new character also needs an entry in `apps/web/src/simulation/characters/character-models.ts`.
-3. Run `bun run assets` in `apps/web` and commit both the source and the output.
+2. Save the `.glb` to `packages/scene/assets-src/models/`. A new character also needs an entry in `packages/scene/src/characters/character-models.ts`.
+3. Run `bun run assets` in `packages/scene` and commit both the source and the output.
 
-The script ([`apps/web/scripts/optimize-models.ts`](apps/web/scripts/optimize-models.ts), using [glTF Transform](https://gltf-transform.dev)) deduplicates, prunes unreferenced data (keeping names, empty POI nodes and extras), welds identical vertices, resamples animations, quantizes normals and skin weights, and applies Meshopt compression (`EXT_meshopt_compression`, decoded in the browser by three's `MeshoptDecoder`). Positions and UVs stay full precision so the scene looks exactly as exported. It always starts from the sources, so it is safe to rerun: unchanged sources give byte-identical output.
+The script ([`packages/scene/scripts/optimize-models.ts`](packages/scene/scripts/optimize-models.ts), using [glTF Transform](https://gltf-transform.dev)) deduplicates, prunes unreferenced data (keeping names, empty POI nodes and extras), welds identical vertices, resamples animations, quantizes normals and skin weights, and applies Meshopt compression (`EXT_meshopt_compression`, decoded in the browser by three's `MeshoptDecoder`). Positions and UVs stay full precision so the scene looks exactly as exported. It always starts from the sources, so it is safe to rerun: unchanged sources give byte-identical output.
 
 #### Points of interest
 
-A point of interest is an empty in the office with a `poi` custom property (exported as glTF node `extras`, which three reads into `userData`). `PoiManager` validates them at load against `OfficePoiExtrasSchema` in [`apps/web/src/simulation/world/office-poi-extras.ts`](apps/web/src/simulation/world/office-poi-extras.ts) and throws, naming the node, if one is malformed. The node's name is free.
+A point of interest is an empty in the office with a `poi` custom property (exported as glTF node `extras`, which three reads into `userData`). `PoiManager` validates them at load against `OfficePoiExtrasSchema` in [`packages/scene/src/world/office-poi-extras.ts`](packages/scene/src/world/office-poi-extras.ts) and throws, naming the node, if one is malformed. The node's name is free.
 
 | `poi` | Other property | What agents do there | POI id |
 |---|---|---|---|
@@ -68,9 +69,9 @@ A point of interest is an empty in the office with a `poi` custom property (expo
 | `seat` | `slot`: any number unique among seats | sit (`sit_idle`); the player can pick it | `seat-<slot>` |
 | `area` | `area`: a lowercase name (`a-z`, `0-9`, `_`); `boardroom` is where agents with an on-hold task meet | gather facing the centre (`idle`) | `area-<area>` |
 
-Slots are integers. The scene builds every POI id through [`apps/web/src/simulation/world/poi-ids.ts`](apps/web/src/simulation/world/poi-ids.ts), so lookups cannot drift from the parser. `apps/web/test/simulation/world/poi-manager.test.ts` loads `public/models/office.glb` and fails if the navmesh, the boardroom, or a spawn or desk for any agent in the built-in teams is missing or off the navmesh; `character-models.test.ts` does the same for every `AnimationName` clip in each character GLB.
+Slots are integers. The scene builds every POI id through [`packages/scene/src/world/poi-ids.ts`](packages/scene/src/world/poi-ids.ts), so lookups cannot drift from the parser. `packages/scene/test/world/poi-manager.test.ts` loads `assets/models/office.glb` and fails if the navmesh, the boardroom, or a spawn or desk for agents 1 to 5 is missing or off the navmesh (`apps/web/test/data/agents.test.ts` keeps the built-in teams within those indices); `character-models.test.ts` does the same for every `AnimationName` clip in each character GLB.
 
-The current office was exported with the POIs encoded in their names only, so `bun scripts/add-poi-extras.ts` (in `apps/web`) stamped the properties onto the source from those names. It edits only the GLB's JSON, leaves nodes that already have a `poi` property alone, and is safe to rerun after a re-export from a Blender file without the custom properties; once the Blender file has them, it is not needed.
+The current office was exported with the POIs encoded in their names only, so `bun scripts/add-poi-extras.ts` (in `packages/scene`) stamped the properties onto the source from those names. It edits only the GLB's JSON, leaves nodes that already have a `poi` property alone, and is safe to rerun after a re-export from a Blender file without the custom properties; once the Blender file has them, it is not needed.
 
 ## Backend
 

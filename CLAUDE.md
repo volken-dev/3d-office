@@ -32,19 +32,20 @@ Turborepo + Bun workspaces (`bun@1.3.11`, pinned in the root `package.json`).
 ```
 apps/
 ├── web/        Next.js 16 App Router, output: 'export'
-│   └── src/
-│       ├── app/          layout, page, client-app (the ssr:false boundary)
-│       ├── integration/  adapters from packages/agents to React/Zustand and the gateway: store/
-│       │                 (coreStore, uiStore, teamStore), orchestration/ (zustandDeps,
-│       │                 TeamRuntime, which runs the agents apart from the scene), llm/
-│       │                 (gatewayClient, gatewayStatus, legacyApiKey), hooks/
-│       ├── simulation/   the 3D scene: SceneManager, Engine, characters, pathfinding (reads no
-│       │                 store; driven by scene intents from integration/)
-│       ├── interface/    React panels and modals
-│       ├── components/   ui/ (shadcn primitives) + shared components (Markdown, ExternalLink)
-│       ├── data/         team templates and the user-including character roster (agents.ts)
-│       ├── lib/          asset, storage, clipboard, format, usage, api-client, utils (cn only)
-│       └── theme/        brand.ts
+│   ├── src/
+│   │   ├── app/          layout, page, client-app (the ssr:false boundary)
+│   │   ├── integration/  adapters from packages/agents to React/Zustand and the gateway: store/
+│   │   │                 (coreStore, uiStore, teamStore), orchestration/ (zustandDeps,
+│   │   │                 TeamRuntime, which runs the agents apart from the scene), llm/
+│   │   │                 (gatewayClient, gatewayStatus, legacyApiKey), hooks/, and the scene
+│   │   │                 adapters: sceneCast (look rules), sceneIntents, sceneStoreAdapter,
+│   │   │                 sceneContext, screenPositions, frameStats
+│   │   ├── interface/    React panels and modals
+│   │   ├── components/   ui/ (shadcn primitives) + shared components (Markdown, ExternalLink)
+│   │   ├── data/         team templates and the user-including character roster (agents.ts)
+│   │   ├── lib/          asset, storage, clipboard, format, usage, api-client, utils (cn only)
+│   │   └── theme/        brand.ts
+│   └── scripts/  copy-scene-assets (models into public/models before dev and build), csp
 ├── api/        Hono app, runtime-agnostic: the LLM gateway
 │   └── src/    app.ts (createApp), env.ts, errors.ts, routes/ (health, llm), middleware/,
 │               llm/routerForEnv
@@ -56,6 +57,10 @@ packages/
 │               (AgentMessage, LLMClient, LLMError), team.ts
 ├── llm/        @the-delegation/llm: registry (models, prices, backups), adapter, errors,
 │               providers/ (anthropic, openai), router (fallback + circuit breaker)
+├── scene/      @the-delegation/scene: the 3D scene, framework-free. SceneManager (driven by
+│               scene intents and a SceneCast), Engine, characters, behaviour, drivers, input,
+│               pathfinding, world/POIs. assets/models (the GLBs the app serves), assets-src
+│               (exported sources), scripts/ (`bun run assets`)
 └── shared/     @the-delegation/shared: zod contracts (api.ts, llm-messages.ts)
 ```
 
@@ -114,7 +119,10 @@ set `ANTHROPIC_API_KEY` (and optionally `OPENAI_API_KEY` for the backup); point 
 gateway with `NEXT_PUBLIC_API_URL` in `apps/web/.env.local` (see its `.env.example`). The header's
 gateway indicator shows whether it is online, unreachable or missing its key.
 
-`bun run dev:lan` in `apps/web` opts in to binding on the network. `.env*` files are gitignored
+`bun run dev:lan` in `apps/web` opts in to binding on the network. The models live in
+`packages/scene/assets/models` and are copied into `apps/web/public/models` (gitignored) before
+every dev and build; after re-exporting a model, run `bun run assets` in `packages/scene` and
+restart dev. `.env*` files are gitignored
 except `.env.example`.
 
 CI (`.github/workflows/ci.yml`) runs on pull requests and pushes to `main`: installs with
