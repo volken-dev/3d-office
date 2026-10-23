@@ -1,5 +1,5 @@
 import * as THREE from "three/webgpu"
-import { FrameProfiler } from "./frame-profiler"
+import { FrameProfiler, type FrameStats } from "./frame-profiler"
 
 /** Retina-sharp; above 2 the fill-rate cost buys no visible gain. */
 const MAX_PIXEL_RATIO = 2
@@ -24,8 +24,7 @@ export class Engine {
   private elapsed = 0
   private sampleTime = 0
   private sampleFrames = 0
-  /** Development only: the literal check lets the production build drop the profiler entirely. */
-  private readonly profiler = process.env.NODE_ENV === "development" ? new FrameProfiler() : null
+  private readonly profiler: FrameProfiler | null
 
   /**
    * The canvas is sized by CSS so it stretches immediately while the drawing buffer catches up on
@@ -33,8 +32,18 @@ export class Engine {
    * timestamp queries are only requested in development, for the performance overlay.
    * A lost GPU device (driver reset, GPU switch, sleep) or WebGL context stops the render loop,
    * since nothing can draw on it any more, and is reported so the owner can rebuild the scene.
+   * Frame stats are measured only in development and only when the owner listens for them; the
+   * literal environment check lets the production build drop the profiler entirely.
    */
-  constructor(container: HTMLElement, onDeviceLost: () => void) {
+  constructor(
+    container: HTMLElement,
+    onDeviceLost: () => void,
+    onFrameStats?: (stats: FrameStats) => void,
+  ) {
+    this.profiler =
+      process.env.NODE_ENV === "development" && onFrameStats
+        ? new FrameProfiler(onFrameStats)
+        : null
     this.renderer = new THREE.WebGPURenderer({
       antialias: true,
       trackTimestamp: process.env.NODE_ENV === "development",

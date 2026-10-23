@@ -1,17 +1,17 @@
 import * as THREE from "three/webgpu"
-import {
-  AgentBehavior,
-  type AnimationName,
-  type CharacterStateKey,
-  type ExpressionKey,
-  type ICharacterDriver,
-} from "../types"
 import { MOVEMENT_STRIDE, type MovementBuffers } from "./behavior/character-movement"
 import { CharacterStateMachine } from "./behavior/character-state-machine"
 import type { CharacterManager } from "./entities/character-manager"
 import { CharacterCrowd } from "./pathfinding/character-crowd"
 import type { NavMeshManager } from "./pathfinding/nav-mesh-manager"
 import { type SceneCast, userIndexOf } from "./scene-cast"
+import {
+  AgentBehavior,
+  type AnimationName,
+  type CharacterStateKey,
+  type ExpressionKey,
+  type ICharacterDriver,
+} from "./scene-types"
 import type { PoiManager } from "./world/poi-manager"
 
 const ORIGIN = new THREE.Vector3(0, 0, 0)

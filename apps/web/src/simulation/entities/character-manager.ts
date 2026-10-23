@@ -20,7 +20,6 @@ import {
   vec4,
 } from "three/tsl"
 import * as THREE from "three/webgpu"
-import { AgentBehavior, AnimationName, type ExpressionKey, type PoiDef } from "../../types"
 import { AgentStateBuffer } from "../behavior/agent-state-buffer"
 import { MOVEMENT_STRIDE, type MovementBuffers } from "../behavior/character-movement"
 import { ExpressionBuffer } from "../behavior/expression-buffer"
@@ -34,6 +33,7 @@ import {
 import { ALPHA_LERP_RATE, OVERLAP_ALPHA, OVERLAP_DIST_SQ } from "../constants"
 import { castMemberAt, type SceneCast } from "../scene-cast"
 import { isMesh, isSkinnedMesh } from "../scene-graph-guards"
+import { AgentBehavior, AnimationName, type ExpressionKey, type PoiDef } from "../scene-types"
 import { Vec4Texture } from "../vec4-texture"
 import type { PoiManager } from "../world/poi-manager"
 import { CharacterSlots } from "./character-slots"

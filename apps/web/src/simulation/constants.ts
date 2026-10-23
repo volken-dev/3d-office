@@ -1,5 +1,4 @@
-import { assetUrl } from "../lib/asset"
-import type { AtlasCoords } from "../types"
+import type { AtlasCoords } from "./scene-types"
 
 /** Vertical offset from position origin to character center (for raycasting/picking). */
 export const CHARACTER_Y_OFFSET = 0.9
@@ -10,7 +9,8 @@ export const PICK_RADIUS = 0.65
 /** World-space sphere radius used for mouse-picking POIs. */
 export const POI_PICK_RADIUS = 0.4
 
-export const OFFICE_MODEL_URL = assetUrl("models/office.glb")
+/** Path of the office model under the scene's asset base URL. */
+export const OFFICE_MODEL_PATH = "models/office.glb"
 
 export const ATLAS_COLS = 2
 export const ATLAS_ROWS = 4

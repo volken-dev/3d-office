@@ -3,7 +3,7 @@ import {
   type CharacterStateDef,
   type CharacterStateKey,
   type ICharacterDriver,
-} from "../../types"
+} from "../scene-types"
 
 /**
  * Declarative definition of every character state.

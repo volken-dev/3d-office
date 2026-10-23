@@ -1,7 +1,7 @@
 import * as THREE from "three/webgpu"
-import type { CharacterStateKey, IAgentDriver } from "../../types"
 import type { CharacterController } from "../character-controller"
 import { WANDER_SPREAD_DIRECTIONS } from "../constants"
+import type { CharacterStateKey, IAgentDriver } from "../scene-types"
 import { spawnPoiId } from "../world/poi-ids"
 
 /** Seconds before an NPC's first idle decision: INITIAL_WAIT_MIN plus up to INITIAL_WAIT_RANGE. */

@@ -1,5 +1,5 @@
 import React from "react"
-import type { SceneStoreAdapter } from "../integration/scene-store-adapter"
+import type { SceneStoreAdapter } from "./scene-store-adapter"
 
 /** Gives components the imperative scene API (startChat, sendMessage, resetScene); state still comes from the stores. */
 export const SceneContext = React.createContext<SceneStoreAdapter | null>(null)

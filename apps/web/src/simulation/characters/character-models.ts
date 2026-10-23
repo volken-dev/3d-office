@@ -1,5 +1,3 @@
-import { assetUrl } from "../../lib/asset"
-
 /** Where a part's colour comes from: the character's team colour, or the model's own material or texture. */
 export type ColorSource = "instance" | "authored"
 
@@ -39,7 +37,8 @@ export type SurfaceStyle = "matte" | "authored"
 export interface CharacterModelDef {
   id: string
   label: string
-  url: string
+  /** Path under the scene's asset base URL. */
+  path: string
   surface: SurfaceStyle
   parts: readonly PartRule[]
 }
@@ -48,7 +47,7 @@ export const CHARACTER_MODELS: readonly CharacterModelDef[] = [
   {
     id: "human",
     label: "Human",
-    url: assetUrl("models/character.glb"),
+    path: "models/character.glb",
     surface: "matte",
     parts: [
       { mesh: "eyes", color: "authored", expression: "eyes" },
@@ -61,7 +60,7 @@ export const CHARACTER_MODELS: readonly CharacterModelDef[] = [
   {
     id: "robot",
     label: "Robot",
-    url: assetUrl("models/robot.glb"),
+    path: "models/robot.glb",
     surface: "authored",
     parts: [
       { material: "primary", color: "instance" },

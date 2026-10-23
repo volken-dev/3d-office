@@ -1,5 +1,5 @@
 import * as THREE from "three/webgpu"
-import type { CharacterStateKey, PoiDef } from "../../types"
+import type { CharacterStateKey, PoiDef } from "../scene-types"
 import { OfficePoiExtrasSchema, type OfficePoiKind } from "./office-poi-extras"
 import { poiIdFor } from "./poi-ids"
 

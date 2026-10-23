@@ -1,7 +1,6 @@
 import * as THREE from "three/webgpu"
-
-import type { PoiDef } from "../../types"
 import { CHARACTER_Y_OFFSET, PICK_RADIUS, POI_PICK_RADIUS } from "../constants"
+import type { PoiDef } from "../scene-types"
 
 const DRAG_THRESHOLD_PX = 4
 /** The y=0 plane, used for floor clicks when the office has no navmesh. */

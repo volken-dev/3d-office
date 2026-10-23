@@ -1,4 +1,3 @@
-import type { AtlasCoords, ExpressionKey } from "../../types"
 import {
   ATLAS_COLS,
   ATLAS_ROWS,
@@ -8,6 +7,7 @@ import {
   BLINK_INTERVAL_RANGE,
   SPEAKING_FRAME_DURATION,
 } from "../constants"
+import type { AtlasCoords, ExpressionKey } from "../scene-types"
 import { Vec4Texture } from "../vec4-texture"
 
 const EXPRESSIONS: Record<ExpressionKey, { eyes: AtlasCoords; mouth: AtlasCoords }> = {

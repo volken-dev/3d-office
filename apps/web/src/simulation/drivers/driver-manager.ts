@@ -1,5 +1,5 @@
-import type { IAgentDriver } from "../../types"
 import type { CharacterController } from "../character-controller"
+import type { IAgentDriver } from "../scene-types"
 
 import { NpcAgentDriver } from "./npc-agent-driver"
 import { PlayerInputDriver } from "./player-input-driver"

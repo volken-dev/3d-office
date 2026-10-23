@@ -1,5 +1,7 @@
 import type { AgenticSystem } from "@the-delegation/agents/team"
+import type { SceneIntent } from "../simulation/scene-intent"
 import { SceneManager } from "../simulation/scene-manager"
+import { publishFrameStats } from "./frame-stats"
 import type { TeamRuntime } from "./orchestration/team-runtime"
 import { castForTeam } from "./scene-cast"
 import {
@@ -7,10 +9,10 @@ import {
   initialSceneIntents,
   layoutIntents,
   projectIntents,
-  type SceneIntent,
   selectionForClick,
   teamIntents,
 } from "./scene-intents"
+import { clearScreenPositions, notifyScreenPositions, setScreenPosition } from "./screen-positions"
 import { useCoreStore } from "./store/core-store"
 import { getActiveAgentSet, useTeamStore } from "./store/team-store"
 import { useUiStore } from "./store/ui-store"
@@ -37,12 +39,26 @@ export class SceneStoreAdapter {
   constructor(container: HTMLElement, runtime: TeamRuntime, onDeviceLost: () => void) {
     this.runtime = runtime
     this.team = getActiveAgentSet()
-    this.scene = new SceneManager(container, castForTeam(this.team), {
-      onAgentClick: (agentIndex) => this.selectAgent(agentIndex),
-      onAgentHover: (agentIndex) => useUiStore.getState().setHoveredNpc(agentIndex),
-      onPoiHover: (id, label, position) => useUiStore.getState().setHoveredPoi(id, label, position),
-      onDeviceLost,
-    })
+    this.scene = new SceneManager(
+      container,
+      castForTeam(this.team),
+      {
+        onAgentClick: (agentIndex) => this.selectAgent(agentIndex),
+        onAgentHover: (agentIndex) => useUiStore.getState().setHoveredNpc(agentIndex),
+        onPoiHover: (id, label, position) =>
+          useUiStore.getState().setHoveredPoi(id, label, position),
+        onDeviceLost,
+        onFrameStats: publishFrameStats,
+      },
+      {
+        assetBaseUrl: "/",
+        screenPositions: {
+          set: setScreenPosition,
+          clear: clearScreenPositions,
+          notify: notifyScreenPositions,
+        },
+      },
+    )
     this.ready = this.scene.ready
 
     const core = useCoreStore.getState()

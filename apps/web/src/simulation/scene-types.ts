@@ -1,5 +1,5 @@
 import type * as THREE from "three/webgpu"
-import type { OfficePoiKind } from "./simulation/world/office-poi-extras"
+import type { OfficePoiKind } from "./world/office-poi-extras"
 
 export enum AnimationName {
   IDLE = "Idle",

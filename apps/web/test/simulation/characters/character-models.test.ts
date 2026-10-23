@@ -9,7 +9,7 @@ import {
   LEAD_CHARACTER_MODEL_ID,
   partRuleFor,
 } from "../../../src/simulation/characters/character-models"
-import { AnimationName } from "../../../src/types"
+import { AnimationName } from "../../../src/simulation/scene-types"
 
 const PUBLIC_DIR = path.resolve(import.meta.dir, "../../../public")
 
@@ -43,7 +43,7 @@ describe("character model registry", () => {
 
   for (const model of CHARACTER_MODELS) {
     test(`${model.id}: the GLB is skinned and has every shared clip`, () => {
-      const gltf = readGlbJson(model.url)
+      const gltf = readGlbJson(model.path)
       expect(gltf.skins?.length ?? 0).toBeGreaterThan(0)
       const clips = new Set(gltf.animations?.map((animation) => animation.name))
       for (const name of Object.values(AnimationName)) expect(clips.has(name)).toBe(true)
@@ -75,7 +75,7 @@ describe("partRuleFor", () => {
 
   test("every part of every registered GLB is matched by a rule of its model", () => {
     for (const model of CHARACTER_MODELS) {
-      const gltf = readGlbJson(model.url)
+      const gltf = readGlbJson(model.path)
       for (const mesh of gltf.meshes ?? []) {
         for (const primitive of mesh.primitives) {
           const materialName =

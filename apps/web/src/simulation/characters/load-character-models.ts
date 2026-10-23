@@ -11,5 +11,5 @@ export async function loadCharacterModels(
     const model = findCharacterModel(modelId)
     return model ? [model] : []
   })
-  return Promise.all(models.map(async (model) => ({ model, gltf: await loader.load(model.url) })))
+  return Promise.all(models.map(async (model) => ({ model, gltf: await loader.load(model.path) })))
 }

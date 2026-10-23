@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { removeLegacyApiKey } from "./integration/llm/legacy-api-key"
 import { TeamRuntime } from "./integration/orchestration/team-runtime"
+import { SceneContext } from "./integration/scene-context"
 import { SceneStoreAdapter } from "./integration/scene-store-adapter"
 import { useCoreStore } from "./integration/store/core-store"
 import { useUiStore } from "./integration/store/ui-store"
@@ -15,7 +16,6 @@ import InspectorPanel from "./interface/inspector-panel"
 import { KanbanDock } from "./interface/kanban-dock"
 import { OutputReviewModal } from "./interface/output-review-modal"
 import SimulationView from "./interface/simulation-view"
-import { SceneContext } from "./simulation/scene-context"
 
 type DrawerPanel = "logs" | "inspector" | null
 

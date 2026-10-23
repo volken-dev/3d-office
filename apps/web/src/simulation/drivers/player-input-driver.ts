@@ -1,6 +1,6 @@
 import * as THREE from "three/webgpu"
-import type { CharacterStateKey, IAgentDriver } from "../../types"
 import type { CharacterController } from "../character-controller"
+import type { CharacterStateKey, IAgentDriver } from "../scene-types"
 
 /**
  * PlayerInputDriver — translates user input into CharacterController actions.

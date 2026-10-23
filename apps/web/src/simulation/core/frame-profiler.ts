@@ -1,5 +1,19 @@
 import * as THREE from "three/webgpu"
-import { publishFrameStats } from "../../integration/frame-stats"
+
+/** A summary of recent frames, reported a few times a second for the dev performance overlay. */
+export interface FrameStats {
+  frameAverageMs: number
+  frameP95Ms: number
+  cpuAverageMs: number
+  /** Null where the device has no timestamp queries, or before the first one resolves. */
+  gpuAverageMs: number | null
+  gpuP95Ms: number | null
+  drawCalls: number
+  triangles: number
+  pixelRatio: number
+  bufferWidth: number
+  bufferHeight: number
+}
 
 /** About two seconds at 60 fps: long enough for a stable p95, short enough to follow a change. */
 const FRAME_SAMPLE_COUNT = 120
@@ -63,6 +77,9 @@ export class FrameProfiler {
   private lastPublishedAt = 0
   private isResolvingTimestamps = false
 
+  /** `onStats` receives a summary a few times a second, never once per frame. */
+  constructor(private readonly onStats: (stats: FrameStats) => void) {}
+
   /** Call at the start of a frame's work. */
   public beginFrame() {
     this.frameStartedAt = performance.now()
@@ -80,7 +97,7 @@ export class FrameProfiler {
     if (now - this.lastPublishedAt < PUBLISH_INTERVAL_MS) return
     this.lastPublishedAt = now
     const hasGpuTime = !this.gpuTimes.isEmpty()
-    publishFrameStats({
+    this.onStats({
       frameAverageMs: this.frameIntervals.average(),
       frameP95Ms: this.frameIntervals.percentile95(),
       cpuAverageMs: this.cpuTimes.average(),

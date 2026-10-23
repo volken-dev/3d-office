@@ -1,16 +1,10 @@
 import * as THREE from "three/webgpu"
-import type { AgentWork, SceneIntent } from "../integration/scene-intents"
-import {
-  clearScreenPositions,
-  notifyScreenPositions,
-  setScreenPosition,
-} from "../integration/screen-positions"
-import { AgentBehavior } from "../types"
 import { CharacterController } from "./character-controller"
 import { DEFAULT_CHARACTER_MODEL_ID } from "./characters/character-models"
 import { loadCharacterModels } from "./characters/load-character-models"
-import { BUBBLE_Y_OFFSET, CHAT_STANDOFF, OFFICE_MODEL_URL } from "./constants"
+import { BUBBLE_Y_OFFSET, CHAT_STANDOFF, OFFICE_MODEL_PATH } from "./constants"
 import { Engine } from "./core/engine"
+import type { FrameStats } from "./core/frame-profiler"
 import { Stage } from "./core/stage"
 import { DriverManager } from "./drivers/driver-manager"
 import { CharacterManager } from "./entities/character-manager"
@@ -19,6 +13,9 @@ import { createSceneLoader } from "./loaders"
 import { NavMeshManager } from "./pathfinding/nav-mesh-manager"
 import { loadNavigationRuntime } from "./pathfinding/navigation-runtime"
 import { modelIdsUsedBy, nonPlayerMembers, type SceneCast, userIndexOf } from "./scene-cast"
+import type { AgentWork, SceneIntent } from "./scene-intent"
+import { AgentBehavior } from "./scene-types"
+import type { ScreenPositionSink } from "./screen-position-sink"
 import { BOARDROOM_POI_ID, deskPoiId, spawnPoiId } from "./world/poi-ids"
 import { PoiManager } from "./world/poi-manager"
 import { WorldManager } from "./world/world-manager"
@@ -38,6 +35,15 @@ export interface SceneEvents {
   ): void
   /** The GPU device is gone: this scene can no longer render and should be rebuilt. */
   onDeviceLost(): void
+  /** Development only: a summary of recent frames, a few times a second. Omit to skip measuring. */
+  onFrameStats?(stats: FrameStats): void
+}
+
+/** What the scene needs from the app that hosts it. */
+export interface SceneOptions {
+  /** Where the scene's models are served from, e.g. "/" for the site root. */
+  assetBaseUrl: string
+  screenPositions: ScreenPositionSink
 }
 
 /**
@@ -77,7 +83,12 @@ export class SceneManager {
   /** Resolves once the scene renders; rejects if WebGPU/WebGL2 or the models fail to load. */
   public readonly ready: Promise<void>
 
-  constructor(container: HTMLElement, cast: SceneCast, events: SceneEvents) {
+  constructor(
+    container: HTMLElement,
+    cast: SceneCast,
+    events: SceneEvents,
+    private readonly options: SceneOptions,
+  ) {
     this.container = container
     this.viewportWidth = container.clientWidth
     this.viewportHeight = container.clientHeight
@@ -85,9 +96,13 @@ export class SceneManager {
     this.playerIndex = userIndexOf(cast)
     this.events = events
 
-    this.engine = new Engine(container, () => {
-      if (!this.isDisposed) this.events.onDeviceLost()
-    })
+    this.engine = new Engine(
+      container,
+      () => {
+        if (!this.isDisposed) this.events.onDeviceLost()
+      },
+      events.onFrameStats,
+    )
     this.stage = new Stage(this.engine.renderer.domElement)
     this.characterManager = new CharacterManager(this.stage.scene, this.cast)
     this.navMesh = new NavMeshManager()
@@ -112,11 +127,11 @@ export class SceneManager {
    * Shaders are compiled before the first frame, so `ready` resolves on a scene that renders smoothly.
    */
   private async init() {
-    const loader = createSceneLoader()
+    const loader = createSceneLoader(this.options.assetBaseUrl)
     const [, , officeGltf, characterModels] = await Promise.all([
       this.engine.init(),
       loadNavigationRuntime(),
-      loader.load(OFFICE_MODEL_URL),
+      loader.load(OFFICE_MODEL_PATH),
       loadCharacterModels(loader, this.characterModelsFor(this.cast)),
     ])
     if (this.isDisposed) return
@@ -257,7 +272,7 @@ export class SceneManager {
       this.rebuildForCast(cast)
       return
     }
-    const loader = createSceneLoader()
+    const loader = createSceneLoader(this.options.assetBaseUrl)
     loadCharacterModels(loader, missing)
       .then((models) => {
         if (this.isDisposed || this.cast !== cast) return
@@ -280,7 +295,7 @@ export class SceneManager {
 
     if (!this.controller) return
     this.controller.setCast(cast)
-    clearScreenPositions()
+    this.options.screenPositions.clear()
     const roster = this.controller.getAgentIndices()
     if (this.selectedIndex !== null && !roster.includes(this.selectedIndex)) {
       this.selectedIndex = null
@@ -423,13 +438,13 @@ export class SceneManager {
         if (!controller.getCPUPosition(agentIndex, bubblePosition)) continue
         bubblePosition.y += BUBBLE_Y_OFFSET
         bubblePosition.project(camera)
-        setScreenPosition(
+        this.options.screenPositions.set(
           agentIndex,
           (bubblePosition.x * 0.5 + 0.5) * this.viewportWidth,
           (bubblePosition.y * -0.5 + 0.5) * this.viewportHeight,
         )
       }
-      notifyScreenPositions()
+      this.options.screenPositions.notify()
     }
     this.stage.setChatMode(
       this.isChatMode,
@@ -465,6 +480,6 @@ export class SceneManager {
     this.characterManager.dispose()
     this.worldManager.dispose()
     this.engine.dispose()
-    clearScreenPositions()
+    this.options.screenPositions.clear()
   }
 }
