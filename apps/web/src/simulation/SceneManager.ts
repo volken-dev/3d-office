@@ -1,13 +1,11 @@
 import { type AgenticSystem, getAllAgents } from "@the-delegation/agents/team"
 import * as THREE from "three/webgpu"
+import type { AgentWork, SceneIntent } from "../integration/sceneIntents"
 import {
   clearScreenPositions,
   notifyScreenPositions,
   setScreenPosition,
 } from "../integration/screenPositions"
-import { type Task, useCoreStore } from "../integration/store/coreStore"
-import { getActiveAgentSet, useTeamStore } from "../integration/store/teamStore"
-import { useUiStore } from "../integration/store/uiStore"
 import { AgentBehavior } from "../types"
 import { CharacterController } from "./CharacterController"
 import { modelIdsUsedBy } from "./characters/characterAppearance"
@@ -36,20 +34,25 @@ import { WorldManager } from "./world/WorldManager"
 /** Clamp so a long pause (hidden tab, design mode) doesn't teleport characters through walls. */
 const MAX_FRAME_DELTA = 0.1
 
-function isBusyStatus(status: Task["status"]): boolean {
-  return status === "in_progress" || status === "on_hold" || status === "scheduled"
-}
-
-/** Agent indices in roster order, to tell a roster change from an edit of the same agents. */
-function rosterKey(team: AgenticSystem): string {
-  return getAllAgents(team)
-    .map((agent) => agent.index)
-    .join(",")
+/** What the scene reports back as the user points at and clicks things in the office. */
+export interface SceneEvents {
+  /** A character or empty space (null) was clicked. */
+  onAgentClick(agentIndex: number | null): void
+  onAgentHover(agentIndex: number | null): void
+  onPoiHover(
+    id: string | null,
+    label: string | null,
+    position: { x: number; y: number } | null,
+  ): void
+  /** The GPU device is gone: this scene can no longer render and should be rebuilt. */
+  onDeviceLost(): void
 }
 
 /**
- * Owns the 3D office and the agent simulation for the active team, and turns store changes
- * (tasks, chat, team selection) into character movement and animation.
+ * Owns the 3D office and the agent simulation for a team, and executes scene intents (movement,
+ * chat, team changes) as character movement and animation. It reads no store: an integration
+ * adapter derives the intents from store changes and receives the user's input through
+ * `SceneEvents`.
  */
 export class SceneManager {
   private engine: Engine
@@ -65,8 +68,12 @@ export class SceneManager {
 
   private team: AgenticSystem
   private selectedIndex: number | null = null
+  private readonly events: SceneEvents
+  private agentWork: AgentWork = { busyAgentIndices: [], isProjectDone: false }
+  private isChatMode = false
+  private isRenderingPaused = false
+  private isLayoutResizing = false
 
-  private unsubscribers: (() => void)[] = []
   private isDisposed = false
   private container: HTMLElement
   private resizeObserver: ResizeObserver
@@ -79,15 +86,15 @@ export class SceneManager {
   /** Resolves once the scene renders; rejects if WebGPU/WebGL2 or the models fail to load. */
   public readonly ready: Promise<void>
 
-  /** `onDeviceLost` fires once the GPU device is gone; this scene can no longer render and should be rebuilt. */
-  constructor(container: HTMLElement, onDeviceLost: () => void) {
+  constructor(container: HTMLElement, team: AgenticSystem, events: SceneEvents) {
     this.container = container
     this.viewportWidth = container.clientWidth
     this.viewportHeight = container.clientHeight
-    this.team = getActiveAgentSet()
+    this.team = team
+    this.events = events
 
     this.engine = new Engine(container, () => {
-      if (!this.isDisposed) onDeviceLost()
+      if (!this.isDisposed) this.events.onDeviceLost()
     })
     this.stage = new Stage(this.engine.renderer.domElement)
     this.characterManager = new CharacterManager(this.stage.scene, this.team)
@@ -105,8 +112,6 @@ export class SceneManager {
     this.ready.catch((error) => {
       if (!this.isDisposed) console.error("[SceneManager] Scene failed to load:", error)
     })
-    this.startWatchingCoreStore()
-    this.startWatchingTeamStore()
   }
 
   /**
@@ -145,16 +150,10 @@ export class SceneManager {
         getCount: () => this.controller?.getCount() ?? 0,
         getPois: () => this.poiManager.values(),
         isPointValid: (point) => this.navMesh.isPointOnNavMesh(point),
-        onSelect: (agentIndex) => {
-          const ui = useUiStore.getState()
-          if (ui.isChatting) ui.setChatting(false)
-          this.selectedIndex = agentIndex !== this.team.user.index ? agentIndex : null
-          ui.setSelectedNpc(this.selectedIndex)
-        },
+        onSelect: (agentIndex) => this.events.onAgentClick(agentIndex),
         onFloorClick: (x, z) => this.driverManager?.getPlayerDriver()?.onFloorClick(x, z),
-        onHover: (agentIndex) => useUiStore.getState().setHoveredNpc(agentIndex),
-        onPoiHover: (id, label, position) =>
-          useUiStore.getState().setHoveredPoi(id, label, position),
+        onHover: (agentIndex) => this.events.onAgentHover(agentIndex),
+        onPoiHover: (id, label, position) => this.events.onPoiHover(id, label, position),
         onPoiClick: (id) => this.driverManager?.getPlayerDriver()?.onPoiClick(id),
       },
     )
@@ -162,7 +161,6 @@ export class SceneManager {
     await this.engine.compile(this.stage.scene, this.stage.camera)
     if (this.isDisposed) return
 
-    this.startWatchingUiStore()
     this.engine.renderer.setAnimationLoop(this.animate)
     const stillMissing = this.characterModelsFor(this.team).some(
       (modelId) => !this.characterManager.hasModel(modelId),
@@ -186,80 +184,65 @@ export class SceneManager {
   /** Pushes task and phase state to the NPC drivers so they don't scan the store every frame. */
   private syncDriverState() {
     if (!this.driverManager) return
-    const { tasks, phase } = useCoreStore.getState()
-    const busy = new Set(
-      tasks.filter((task) => isBusyStatus(task.status)).map((task) => task.assignedAgentId),
-    )
+    const busy = new Set(this.agentWork.busyAgentIndices)
     for (const driver of this.driverManager.npcDrivers()) {
       driver.setBusy(busy.has(driver.agentIndex))
-      driver.setProjectDone(phase === "done")
+      driver.setProjectDone(this.agentWork.isProjectDone)
     }
   }
 
-  /**
-   * Renderer resizes are skipped during a Kanban drag (see onResize), so the final size is applied
-   * once it ends. Task status changes move each affected agent: on hold to the boardroom, in
-   * progress to a desk, just done back to spawn.
-   */
-  private startWatchingCoreStore() {
-    this.unsubscribers.push(
-      useCoreStore.subscribe((state, previousState) => {
-        if (previousState.isResizing && !state.isResizing) this.onResize()
-        if (state.tasks === previousState.tasks && state.phase === previousState.phase) return
+  /** Executes one intent. Movement and chat intents are ignored until the characters exist. */
+  public apply(intent: SceneIntent): void {
+    switch (intent.type) {
+      case "syncAgentWork":
+        this.agentWork = intent.work
         this.syncDriverState()
-        if (state.tasks === previousState.tasks) return
-
-        const agentIndices = new Set(
-          state.tasks
-            .map((task) => task.assignedAgentId)
-            // TODO(#12): assumes the user is index 0
-            .filter((agentIndex) => agentIndex !== undefined && agentIndex !== 0),
-        )
-        for (const agentIndex of agentIndices) {
-          const agentTasks = state.tasks.filter((task) => task.assignedAgentId === agentIndex)
-          const hasChange = agentTasks.some((task) => {
-            const previousTask = previousState.tasks.find((candidate) => candidate.id === task.id)
-            return !previousTask || previousTask.status !== task.status
-          })
-          if (!hasChange) continue
-
-          const onHold = agentTasks.find((task) => task.status === "on_hold")
-          const inProgress = agentTasks.find((task) => task.status === "in_progress")
-          const justDone = agentTasks.some(
-            (task) =>
-              task.status === "done" &&
-              !previousState.tasks.find(
-                (previousTask) => previousTask.id === task.id && previousTask.status === "done",
-              ),
-          )
-
-          if (onHold) {
-            this.moveNpcToBoardroom(agentIndex)
-          } else if (inProgress) {
-            this.setNpcWorking(agentIndex)
-          } else if (justDone) {
-            this.moveNpcToSpawn(agentIndex)
-          }
-        }
-      }),
-    )
+        return
+      case "goToDesk":
+        this.setNpcWorking(intent.agentIndex, intent.deskSlot)
+        return
+      case "goToBoardroom":
+        this.moveNpcToBoardroom(intent.agentIndex)
+        return
+      case "returnToSpawn":
+        this.moveNpcToSpawn(intent.agentIndex)
+        return
+      case "setChatMode":
+        this.isChatMode = intent.isChatting
+        return
+      case "startChat":
+        this.startChatVisuals(intent.agentIndex)
+        return
+      case "updateChatTurn":
+        this.updateChatTurn(intent.agentIndex, intent.isAgentSpeaking, intent.isUserSpeaking)
+        return
+      case "stopChat":
+        this.stopChatVisuals(intent.agentIndex)
+        return
+      case "replaceTeam":
+        this.team = intent.team
+        this.applyTeamChange()
+        return
+      case "updateTeam":
+        this.team = intent.team
+        this.simulation?.updateSystem(intent.team)
+        return
+      case "layoutResizeStarted":
+        this.isLayoutResizing = true
+        return
+      case "layoutResizeSettled":
+        this.isLayoutResizing = false
+        this.onResize()
+        return
+      case "setViewMode":
+        this.isRenderingPaused = intent.viewMode === "design"
+        return
+    }
   }
 
-  private startWatchingTeamStore() {
-    this.unsubscribers.push(
-      useTeamStore.subscribe(() => {
-        const next = getActiveAgentSet()
-        if (next === this.team) return
-        const previous = this.team
-        this.team = next
-
-        if (next.id !== previous.id || rosterKey(next) !== rosterKey(previous)) {
-          this.applyTeamChange()
-        } else {
-          this.simulation?.updateSystem(next)
-        }
-      }),
-    )
+  /** Sets the character the camera follows; null follows the user. */
+  public followAgent(agentIndex: number | null): void {
+    this.selectedIndex = agentIndex
   }
 
   /** The character models a team needs: the ones its characters use, plus the default fallback. */
@@ -312,45 +295,33 @@ export class SceneManager {
     )
   }
 
-  private startWatchingUiStore() {
-    this.unsubscribers.push(
-      useUiStore.subscribe((state, previousState) => {
-        const controller = this.controller
-        if (!controller) return
-        if (
-          state.isChatting === previousState.isChatting &&
-          state.isThinking === previousState.isThinking &&
-          state.isTyping === previousState.isTyping
-        )
-          return
+  /** Plays talk or listen on both sides of an open chat, unless one of them is still walking. */
+  private updateChatTurn(npcIndex: number, isAgentSpeaking: boolean, isUserSpeaking: boolean) {
+    const controller = this.controller
+    if (!controller) return
+    const user = this.team.user.index
+    if (controller.getState(npcIndex) !== "walk")
+      controller.play(npcIndex, isAgentSpeaking ? "talk" : "listen")
+    controller.setSpeaking(npcIndex, isAgentSpeaking)
+    if (controller.getState(user) !== "walk")
+      controller.play(user, isUserSpeaking ? "talk" : "listen")
+    controller.setSpeaking(user, isUserSpeaking)
+  }
 
-        const user = this.team.user.index
-        if (state.isChatting && !previousState.isChatting && state.selectedNpcIndex !== null) {
-          this.startChatVisuals(state.selectedNpcIndex)
-        }
-
-        if (state.isChatting && state.selectedNpcIndex !== null) {
-          const npc = state.selectedNpcIndex
-          if (controller.getState(npc) !== "walk")
-            controller.play(npc, state.isThinking ? "talk" : "listen")
-          controller.setSpeaking(npc, state.isThinking)
-          if (controller.getState(user) !== "walk")
-            controller.play(user, state.isTyping ? "talk" : "listen")
-          controller.setSpeaking(user, state.isTyping)
-        } else if (!state.isChatting && previousState.isChatting) {
-          const npc = previousState.selectedNpcIndex
-          if (npc !== null) {
-            this.driverManager?.getNpcDriver(npc)?.setChatting(false)
-            controller.setSpeaking(npc, false)
-            controller.play(npc, "idle")
-            controller.poiManager.releaseAll(npc)
-          }
-          controller.setSpeaking(user, false)
-          controller.play(user, "idle")
-          this.selectedIndex = null
-        }
-      }),
-    )
+  /** Returns both sides of a closed chat to idle and lets the NPC wander again. */
+  private stopChatVisuals(npcIndex: number | null) {
+    const controller = this.controller
+    if (!controller) return
+    if (npcIndex !== null) {
+      this.driverManager?.getNpcDriver(npcIndex)?.setChatting(false)
+      controller.setSpeaking(npcIndex, false)
+      controller.play(npcIndex, "idle")
+      controller.poiManager.releaseAll(npcIndex)
+    }
+    const user = this.team.user.index
+    controller.setSpeaking(user, false)
+    controller.play(user, "idle")
+    this.selectedIndex = null
   }
 
   /** Walks the player over to the NPC and turns the two to face each other. */
@@ -381,43 +352,37 @@ export class SceneManager {
     })
   }
 
-  /** Opens the chat with the currently selected NPC. */
-  public startChat(): void {
-    useUiStore.getState().setChatting(true)
+  /** False once disposed, when the agent loop is gone and a message has nowhere to go. */
+  public get canSendMessages(): boolean {
+    return this.simulation !== null
   }
 
-  public async sendMessage(text: string): Promise<void> {
-    const { selectedNpcIndex, isThinking } = useUiStore.getState()
-    if (selectedNpcIndex === null || isThinking || !this.simulation) return
-    useUiStore.setState({ isThinking: true, isTyping: false })
-    try {
-      await this.simulation.handleUserMessage(selectedNpcIndex, text)
-    } catch (error) {
-      console.error("[SceneManager] sendMessage error:", error)
-    } finally {
-      useUiStore.setState({ isThinking: false })
-    }
+  /** Hands the user's chat message to the agent's loop; resolves when the agent has replied. */
+  public async sendUserMessage(agentIndex: number, text: string): Promise<void> {
+    await this.simulation?.handleUserMessage(agentIndex, text)
   }
 
-  /** Sends the agent to its own desk (`deskPoiId`), or to a desk picked by index if the office has none for it. */
-  public setNpcWorking(index: number): void {
+  /**
+   * Sends the agent to its own desk (`deskPoiId`), or, if the office has none for it, to a
+   * desk picked by its position on the team (`deskSlot`).
+   */
+  private setNpcWorking(index: number, deskSlot: number): void {
     if (!this.controller) return
     let poi = this.poiManager.getPoi(deskPoiId(index))
     if (!poi) {
       const desks = this.poiManager.getPoisOfKind("desk")
-      // TODO(#12): assumes agent indices start at 1
-      if (desks.length > 0) poi = desks[(index - 1) % desks.length]
+      if (desks.length > 0) poi = desks[deskSlot % desks.length]
     }
     if (poi) this.controller.walkToPoi(index, poi.id)
   }
 
-  public moveNpcToBoardroom(index: number): void {
+  private moveNpcToBoardroom(index: number): void {
     if (!this.controller) return
     const poi = this.poiManager.getPoi(BOARDROOM_POI_ID)
     if (poi) this.controller.walkToPoi(index, poi.id)
   }
 
-  public moveNpcToSpawn(index: number): void {
+  private moveNpcToSpawn(index: number): void {
     if (!this.controller) return
     const poi = this.poiManager.getPoi(spawnPoiId(index))
     if (poi)
@@ -431,7 +396,7 @@ export class SceneManager {
     this.viewportWidth = width
     this.viewportHeight = height
     this.stage.onResize(width, height)
-    if (!useCoreStore.getState().isResizing) this.engine.onResize(width, height)
+    if (!this.isLayoutResizing) this.engine.onResize(width, height)
   }
 
   /**
@@ -442,7 +407,7 @@ export class SceneManager {
   private animate = () => {
     this.engine.timer.update()
     const deltaSeconds = Math.min(this.engine.timer.getDelta(), MAX_FRAME_DELTA)
-    if (useCoreStore.getState().viewMode === "design") return
+    if (this.isRenderingPaused) return
 
     const controller = this.controller
     this.engine.trackFrame(deltaSeconds)
@@ -487,7 +452,7 @@ export class SceneManager {
       notifyScreenPositions()
     }
     this.stage.setChatMode(
-      useUiStore.getState().isChatting,
+      this.isChatMode,
       controller?.getAgentState(player) === AgentBehavior.GOTO,
     )
     this.engine.render(this.stage.scene, this.stage.camera)
@@ -526,9 +491,9 @@ export class SceneManager {
     }
   }
 
+  /** Puts everyone back at spawn and releases the camera. Close any chat first. */
   public resetScene() {
     if (!this.controller) return
-    useUiStore.getState().setChatting(false)
     const agents = getAllAgents(this.team)
     for (const agent of agents) this.controller.setSpeaking(agent.index, false)
     this.controller.warpAllToSpawn(
@@ -539,12 +504,10 @@ export class SceneManager {
     this.stage.setChatMode(false, false)
   }
 
-  /** Stops the render loop and the agent loop and releases every listener, subscription and GPU resource. Idempotent. */
+  /** Stops the render loop and the agent loop and releases every listener and GPU resource. Idempotent. */
   public dispose() {
     if (this.isDisposed) return
     this.isDisposed = true
-    for (const unsubscribe of this.unsubscribers) unsubscribe()
-    this.unsubscribers = []
     this.simulation?.dispose()
     this.simulation = null
     this.inputManager?.dispose()

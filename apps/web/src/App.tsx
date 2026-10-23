@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { removeLegacyApiKey } from "./integration/llm/legacyApiKey"
+import { SceneStoreAdapter } from "./integration/SceneStoreAdapter"
 import { useCoreStore } from "./integration/store/coreStore"
 import { useUiStore } from "./integration/store/uiStore"
 import { ActionLogPanel } from "./interface/ActionLogPanel"
@@ -14,7 +15,6 @@ import { KanbanDock } from "./interface/KanbanDock"
 import { OutputReviewModal } from "./interface/OutputReviewModal"
 import SimulationView from "./interface/SimulationView"
 import { SceneContext } from "./simulation/SceneContext"
-import { SceneManager } from "./simulation/SceneManager"
 
 type DrawerPanel = "logs" | "inspector" | null
 
@@ -33,8 +33,8 @@ const DEVICE_LOSS_WINDOW_MS = 60_000
  */
 export default function App() {
   const canvasRef = useRef<HTMLDivElement>(null)
-  const managerRef = useRef<SceneManager | null>(null)
-  const [sceneManager, setSceneManager] = useState<SceneManager | null>(null)
+  const sceneRef = useRef<SceneStoreAdapter | null>(null)
+  const [scene, setScene] = useState<SceneStoreAdapter | null>(null)
   const [sceneGeneration, setSceneGeneration] = useState(0)
   const [isSceneLost, setSceneLost] = useState(false)
   const deviceLossTimesRef = useRef<number[]>([])
@@ -63,17 +63,17 @@ export default function App() {
       if (recentLosses.length > MAX_DEVICE_LOSS_RECOVERIES) setSceneLost(true)
       else setSceneGeneration((generation) => generation + 1)
     }
-    if (canvasRef.current && !managerRef.current) {
-      const manager = new SceneManager(canvasRef.current, onDeviceLost)
-      managerRef.current = manager
-      setSceneManager(manager)
+    if (canvasRef.current && !sceneRef.current) {
+      const connectedScene = new SceneStoreAdapter(canvasRef.current, onDeviceLost)
+      sceneRef.current = connectedScene
+      setScene(connectedScene)
     }
     return () => {
-      const manager = managerRef.current
-      if (!manager) return
-      managerRef.current = null
-      setSceneManager(null)
-      manager.dispose()
+      const connectedScene = sceneRef.current
+      if (!connectedScene) return
+      sceneRef.current = null
+      setScene(null)
+      connectedScene.dispose()
     }
   }, [sceneGeneration])
 
@@ -116,7 +116,7 @@ export default function App() {
   const showChrome = !isFocusMode && !isDesign
 
   return (
-    <SceneContext.Provider value={sceneManager}>
+    <SceneContext.Provider value={scene}>
       <div className="flex h-dvh w-screen flex-col overflow-hidden bg-background">
         {!isFocusMode && <Header panels={panels} />}
 

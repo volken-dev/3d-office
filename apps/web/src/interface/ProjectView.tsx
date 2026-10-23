@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils"
 import { type ProjectPhase, type Task, useCoreStore } from "../integration/store/coreStore"
 import { useTeamRoster } from "../integration/store/teamStore"
 import { useUiStore } from "../integration/store/uiStore"
-import { useSceneManager } from "../simulation/SceneContext"
+import { useScene } from "../simulation/SceneContext"
 import { Avatar, avatarTypeFor } from "./components/Avatar"
 import { SectionHeading } from "./components/SectionHeading"
 import { selectAgent } from "./components/selectAgent"
@@ -134,7 +134,7 @@ function ProjectView() {
   const [isResetModalOpen, setIsResetModalOpen] = useState(false)
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false)
   const { system: activeTeam, agents, byIndex } = useTeamRoster()
-  const scene = useSceneManager()
+  const scene = useScene()
 
   const usageRows = useMemo(
     () =>
