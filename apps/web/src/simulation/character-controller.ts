@@ -1,4 +1,3 @@
-import type { AgenticSystem } from "@the-delegation/agents/team"
 import * as THREE from "three/webgpu"
 import {
   AgentBehavior,
@@ -12,6 +11,7 @@ import { CharacterStateMachine } from "./behavior/character-state-machine"
 import type { CharacterManager } from "./entities/character-manager"
 import { CharacterCrowd } from "./pathfinding/character-crowd"
 import type { NavMeshManager } from "./pathfinding/nav-mesh-manager"
+import { type SceneCast, userIndexOf } from "./scene-cast"
 import type { PoiManager } from "./world/poi-manager"
 
 const ORIGIN = new THREE.Vector3(0, 0, 0)
@@ -329,15 +329,15 @@ export class CharacterController implements ICharacterDriver {
   }
 
   /**
-   * Switches to another team's characters (one rebuild at most) and resets every character's state.
+   * Switches to another cast's characters (one rebuild at most) and resets every character's state.
    * The outgoing roster's POIs are released first, so a removed agent does not keep its seat.
    */
-  public setTeam(team: AgenticSystem): void {
+  public setCast(cast: SceneCast): void {
     for (const agentIndex of this.characterManager.getAgentIndices()) {
       this.poiManager.releaseAll(agentIndex)
     }
-    this.characterManager.setTeam(team)
-    this.playerIndex = team.user.index
+    this.characterManager.setCast(cast)
+    this.playerIndex = userIndexOf(cast)
     this.resetAgents()
   }
 

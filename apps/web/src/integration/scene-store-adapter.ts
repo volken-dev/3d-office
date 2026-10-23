@@ -1,6 +1,7 @@
 import type { AgenticSystem } from "@the-delegation/agents/team"
 import { SceneManager } from "../simulation/scene-manager"
 import type { TeamRuntime } from "./orchestration/team-runtime"
+import { castForTeam } from "./scene-cast"
 import {
   chatIntents,
   initialSceneIntents,
@@ -36,7 +37,7 @@ export class SceneStoreAdapter {
   constructor(container: HTMLElement, runtime: TeamRuntime, onDeviceLost: () => void) {
     this.runtime = runtime
     this.team = getActiveAgentSet()
-    this.scene = new SceneManager(container, this.team, {
+    this.scene = new SceneManager(container, castForTeam(this.team), {
       onAgentClick: (agentIndex) => this.selectAgent(agentIndex),
       onAgentHover: (agentIndex) => useUiStore.getState().setHoveredNpc(agentIndex),
       onPoiHover: (id, label, position) => useUiStore.getState().setHoveredPoi(id, label, position),

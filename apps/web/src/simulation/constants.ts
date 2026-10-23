@@ -30,5 +30,10 @@ export const OVERLAP_DIST_SQ = 0.36
 export const OVERLAP_ALPHA = 0.4
 /** Per-second rate at which character alpha eases toward its target. */
 export const ALPHA_LERP_RATE = 2.0
+/**
+ * Directions around an area that wandering NPCs spread across, picked by agent index. Equal to the
+ * team size limit (`MAX_AGENTS`), so each agent keeps its own direction.
+ */
+export const WANDER_SPREAD_DIRECTIONS = 5
 /** How far in front of an NPC the player stops when walking over to chat. */
 export const CHAT_STANDOFF = 1.2

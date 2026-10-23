@@ -1,4 +1,3 @@
-import type { AgenticSystem } from "@the-delegation/agents/team"
 import type { GLTF } from "three/addons/loaders/GLTFLoader.js"
 import {
   atan,
@@ -21,12 +20,10 @@ import {
   vec4,
 } from "three/tsl"
 import * as THREE from "three/webgpu"
-import { getAgentByIndex } from "../../data/agents"
 import { AgentBehavior, AnimationName, type ExpressionKey, type PoiDef } from "../../types"
 import { AgentStateBuffer } from "../behavior/agent-state-buffer"
 import { MOVEMENT_STRIDE, type MovementBuffers } from "../behavior/character-movement"
 import { ExpressionBuffer } from "../behavior/expression-buffer"
-import { appearanceFor } from "../characters/character-appearance"
 import {
   type AccessoryId,
   type CharacterModelDef,
@@ -35,6 +32,7 @@ import {
   partRuleFor,
 } from "../characters/character-models"
 import { ALPHA_LERP_RATE, OVERLAP_ALPHA, OVERLAP_DIST_SQ } from "../constants"
+import { castMemberAt, type SceneCast } from "../scene-cast"
 import { isMesh, isSkinnedMesh } from "../scene-graph-guards"
 import { Vec4Texture } from "../vec4-texture"
 import type { PoiManager } from "../world/poi-manager"
@@ -154,7 +152,7 @@ interface MeshAttributes extends MovementTextures {
  * rather than storage buffers, which the WebGL2 fallback cannot read.
  */
 export class CharacterManager {
-  private team: AgenticSystem
+  private cast: SceneCast
   /** Which instance slot each character (the user and every agent) is drawn in. */
   private slots: CharacterSlots
   private poiManager: PoiManager | null = null
@@ -196,10 +194,10 @@ export class CharacterManager {
 
   constructor(
     private scene: THREE.Scene,
-    team: AgenticSystem,
+    cast: SceneCast,
   ) {
-    this.team = team
-    this.slots = CharacterSlots.forTeam(team)
+    this.cast = cast
+    this.slots = CharacterSlots.forCast(cast)
   }
 
   private get instanceCount(): number {
@@ -332,7 +330,8 @@ export class CharacterManager {
     this.instanceRigs = []
     const active: CharacterRig[] = []
     this.slots.agentIndices.forEach((agentIndex, slot) => {
-      const rig = this.rigFor(appearanceFor(this.team, agentIndex).modelId)
+      const modelId = castMemberAt(this.cast, agentIndex)?.modelId ?? DEFAULT_CHARACTER_MODEL_ID
+      const rig = this.rigFor(modelId)
       if (!rig) return
       this.instanceRigs[slot] = rig
       if (!active.includes(rig)) active.push(rig)
@@ -345,15 +344,15 @@ export class CharacterManager {
   }
 
   /**
-   * Switches the characters to another team and rebuilds the slot mapping from its roster, so the
+   * Switches the characters to another cast and rebuilds the slot mapping from its roster, so the
    * slots stay dense after an agent is removed. When the character count and the set of models in use are
    * unchanged, colours, accessories and models are rewritten in place, so no GPU resources or pipelines are
    * rebuilt. Either way every character is reset to its initial spawn state. Load any new models with
    * `addModels` first; a character whose model is missing is drawn with the default model.
    */
-  public setTeam(team: AgenticSystem) {
-    this.team = team
-    this.slots = CharacterSlots.forTeam(team)
+  public setCast(cast: SceneCast) {
+    this.cast = cast
+    this.slots = CharacterSlots.forCast(cast)
     if (!this.isLoaded) return
     const count = this.instanceCount
     this.assignRigs()
@@ -477,13 +476,11 @@ export class CharacterManager {
 
     const spawnPoiBySlot: (PoiDef | null)[] = []
 
-    const system = this.team
-
     this.slots.agentIndices.forEach((agentIndex, slot) => {
-      const character = getAgentByIndex(system, agentIndex) ?? system.leadAgent
-      scratchColor.set(character.color)
+      const member = castMemberAt(this.cast, agentIndex)
+      if (member) scratchColor.set(member.color)
 
-      if (agentIndex === system.user.index) {
+      if (member?.role === "user") {
         positions[slot * 4 + 0] = 0
         positions[slot * 4 + 2] = 0
         spawnPoiBySlot[slot] = null
@@ -509,7 +506,7 @@ export class CharacterManager {
       colors[slot * 3 + 1] = scratchColor.g
       colors[slot * 3 + 2] = scratchColor.b
 
-      const { accessory } = appearanceFor(system, agentIndex)
+      const accessory = member?.accessory
       accessories[slot] = accessory ? ACCESSORY_IDS[accessory] : ACCESSORY_NONE
       const rig = this.instanceRigs[slot]
       rigSlots[slot] = rig ? this.activeRigs.indexOf(rig) : -1

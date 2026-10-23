@@ -1,5 +1,4 @@
-import type { AgenticSystem } from "@the-delegation/agents/team"
-import { getAllCharacters } from "../../data/agents"
+import type { SceneCast } from "../scene-cast"
 
 /**
  * Maps agent indices to dense instance slots. Agent indices identify characters everywhere outside
@@ -25,9 +24,9 @@ export class CharacterSlots {
     this.slotByAgentIndex = slotByAgentIndex
   }
 
-  /** The user and every agent of the team, in roster order (user first, then lead first). */
-  public static forTeam(team: AgenticSystem): CharacterSlots {
-    return new CharacterSlots(getAllCharacters(team).map((character) => character.index))
+  /** Every member of the cast, in roster order (user first, then lead first). */
+  public static forCast(cast: SceneCast): CharacterSlots {
+    return new CharacterSlots(cast.members.map((member) => member.index))
   }
 
   public get count(): number {

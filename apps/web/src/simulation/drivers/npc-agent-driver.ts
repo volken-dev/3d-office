@@ -1,7 +1,7 @@
-import { MAX_AGENTS } from "@the-delegation/agents/team"
 import * as THREE from "three/webgpu"
 import type { CharacterStateKey, IAgentDriver } from "../../types"
 import type { CharacterController } from "../character-controller"
+import { WANDER_SPREAD_DIRECTIONS } from "../constants"
 import { spawnPoiId } from "../world/poi-ids"
 
 /** Seconds before an NPC's first idle decision: INITIAL_WAIT_MIN plus up to INITIAL_WAIT_RANGE. */
@@ -151,7 +151,7 @@ export class NpcAgentDriver implements IAgentDriver {
       if (areaPois.length > 0) {
         const areaPoi = areaPois[Math.floor(Math.random() * areaPois.length)]
 
-        const angle = (this.agentIndex * (Math.PI * 2)) / MAX_AGENTS
+        const angle = (this.agentIndex * (Math.PI * 2)) / WANDER_SPREAD_DIRECTIONS
         const target = areaPoi.position.clone()
         target.x += Math.cos(angle) * AREA_SPREAD_RADIUS
         target.z += Math.sin(angle) * AREA_SPREAD_RADIUS

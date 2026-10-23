@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test"
-import type { AgenticSystem, AgentNode } from "@the-delegation/agents/team"
 import * as THREE from "three/webgpu"
 import { CharacterController } from "../../src/simulation/character-controller"
 import {
@@ -11,32 +10,10 @@ import {
   type LoadedCharacterModel,
 } from "../../src/simulation/entities/character-manager"
 import { NavMeshManager } from "../../src/simulation/pathfinding/nav-mesh-manager"
+import { nonPlayerMembers, type SceneCast, userIndexOf } from "../../src/simulation/scene-cast"
 import { PoiManager } from "../../src/simulation/world/poi-manager"
 import { AgentBehavior } from "../../src/types"
-
-function agent(index: number, subagents?: AgentNode[]): AgentNode {
-  return {
-    id: `agent-${index}`,
-    index,
-    name: `Agent ${index}`,
-    description: "",
-    color: "#336699",
-    model: "m",
-    subagents,
-  }
-}
-
-function team(userIndex: number, lead: AgentNode): AgenticSystem {
-  return {
-    id: "team",
-    teamName: "Team",
-    teamType: "",
-    teamDescription: "",
-    color: "#000000",
-    user: { index: userIndex, model: "Human" },
-    leadAgent: lead,
-  }
-}
+import { castOf } from "../support/cast"
 
 /** A one-bone skinned box with an idle clip: enough for CharacterManager to bake a rig headless. */
 function fakeHumanModel(): LoadedCharacterModel {
@@ -76,35 +53,35 @@ function officeWithSpawns(spawnCount: number): PoiManager {
   return poiManager
 }
 
-function sceneFor(initialTeam: AgenticSystem) {
+function sceneFor(initialCast: SceneCast) {
   const poiManager = officeWithSpawns(5)
-  const characterManager = new CharacterManager(new THREE.Scene(), initialTeam)
+  const characterManager = new CharacterManager(new THREE.Scene(), initialCast)
   characterManager.setPoiManager(poiManager)
   characterManager.setup([fakeHumanModel()])
   const controller = new CharacterController(
     characterManager,
     new NavMeshManager(),
     poiManager,
-    initialTeam.user.index,
+    userIndexOf(initialCast),
   )
   return { controller, characterManager }
 }
 
-/** What SceneManager.rebuildForTeam does with the controller. */
-function rebuild(controller: CharacterController, nextTeam: AgenticSystem) {
-  controller.setTeam(nextTeam)
-  controller.warpAllToSpawn(nextTeam.user.index, [
-    nextTeam.leadAgent.index,
-    ...(nextTeam.leadAgent.subagents ?? []).map((subagent) => subagent.index),
-  ])
+/** What SceneManager.rebuildForCast does with the controller. */
+function rebuild(controller: CharacterController, nextCast: SceneCast) {
+  controller.setCast(nextCast)
+  controller.warpAllToSpawn(
+    userIndexOf(nextCast),
+    nonPlayerMembers(nextCast).map((member) => member.index),
+  )
 }
 
 const position = new THREE.Vector3()
 
 describe("CharacterController rebuild", () => {
   test("removing a middle agent rebuilds without an out-of-range index", () => {
-    const { controller } = sceneFor(team(0, agent(1, [agent(2), agent(3), agent(4)])))
-    const withoutThree = team(0, agent(1, [agent(2), agent(4)]))
+    const { controller } = sceneFor(castOf(0, [1, 2, 3, 4]))
+    const withoutThree = castOf(0, [1, 2, 4])
 
     expect(() => rebuild(controller, withoutThree)).not.toThrow()
     expect(controller.getAgentIndices()).toEqual([0, 1, 2, 4])
@@ -115,8 +92,8 @@ describe("CharacterController rebuild", () => {
   })
 
   test("characters keep their own data when indices have gaps and the user is not 0", () => {
-    const { controller } = sceneFor(team(0, agent(1, [agent(2)])))
-    const sparse = team(5, agent(7, [agent(3), agent(9)]))
+    const { controller } = sceneFor(castOf(0, [1, 2]))
+    const sparse = castOf(5, [7, 3, 9])
     rebuild(controller, sparse)
 
     controller.characterManager.setPosition(9, new THREE.Vector3(-4, 0, 1))
@@ -131,8 +108,8 @@ describe("CharacterController rebuild", () => {
   })
 
   test("an agent that is no longer on the roster is ignored, not a crash", () => {
-    const { controller } = sceneFor(team(0, agent(1, [agent(2), agent(3)])))
-    rebuild(controller, team(0, agent(1, [agent(3)])))
+    const { controller } = sceneFor(castOf(0, [1, 2, 3]))
+    rebuild(controller, castOf(0, [1, 3]))
 
     expect(() => {
       controller.cancelMovement(2)
@@ -144,9 +121,9 @@ describe("CharacterController rebuild", () => {
   })
 
   test("adding an agent back after a removal gives it a character", () => {
-    const { controller } = sceneFor(team(0, agent(1, [agent(2), agent(3)])))
-    rebuild(controller, team(0, agent(1, [agent(3)])))
-    rebuild(controller, team(0, agent(1, [agent(3), agent(4)])))
+    const { controller } = sceneFor(castOf(0, [1, 2, 3]))
+    rebuild(controller, castOf(0, [1, 3]))
+    rebuild(controller, castOf(0, [1, 3, 4]))
 
     expect(controller.getAgentIndices()).toEqual([0, 1, 3, 4])
     expect(controller.getCPUPosition(4, position)).toBe(true)
@@ -156,8 +133,8 @@ describe("CharacterController rebuild", () => {
 
 describe("CharacterController seats", () => {
   test("a removed agent's spawn is free for the rest of the team", () => {
-    const { controller } = sceneFor(team(0, agent(1, [agent(2), agent(3)])))
-    rebuild(controller, team(0, agent(1, [agent(3)])))
+    const { controller } = sceneFor(castOf(0, [1, 2, 3]))
+    rebuild(controller, castOf(0, [1, 3]))
 
     const occupants = controller.poiManager.getPoisOfKind("spawn").map((poi) => poi.occupiedBy)
     expect(occupants).toEqual([1, 3, null, null, null])

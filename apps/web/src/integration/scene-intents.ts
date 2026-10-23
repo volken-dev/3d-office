@@ -1,5 +1,7 @@
 import type { ProjectPhase, Task, TaskStatus } from "@the-delegation/agents/project/types"
 import { type AgenticSystem, getAllAgents, hasSameRoster } from "@the-delegation/agents/team"
+import type { SceneCast } from "../simulation/scene-cast"
+import { castForTeam } from "./scene-cast"
 
 /** What the scene renders while the editor is open (paused) or not. */
 export type SceneViewMode = "simulation" | "design"
@@ -32,9 +34,9 @@ export type SceneIntent =
   /** `agentIndex` is the agent the chat was with, if one was selected. */
   | { type: "stopChat"; agentIndex: number | null }
   /** A different team, or agents added or removed: characters and drivers are rebuilt. */
-  | { type: "replaceTeam"; team: AgenticSystem }
+  | { type: "replaceTeam"; cast: SceneCast }
   /** The same agents with edited details: only the simulation is updated. */
-  | { type: "updateTeam"; team: AgenticSystem }
+  | { type: "updateTeam"; cast: SceneCast }
   | { type: "layoutResizeStarted" }
   | { type: "layoutResizeSettled" }
   | { type: "setViewMode"; viewMode: SceneViewMode }
@@ -170,7 +172,9 @@ export function chatIntents(previous: ChatSceneState, next: ChatSceneState): Sce
 /** Intents for a team change: a rebuild when the team or its roster differs, else an update. */
 export function teamIntents(previous: AgenticSystem, next: AgenticSystem): SceneIntent[] {
   if (previous === next) return []
-  return [{ type: hasSameRoster(previous, next) ? "updateTeam" : "replaceTeam", team: next }]
+  return [
+    { type: hasSameRoster(previous, next) ? "updateTeam" : "replaceTeam", cast: castForTeam(next) },
+  ]
 }
 
 /** The state a freshly connected scene needs before any change arrives. */

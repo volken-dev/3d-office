@@ -1,4 +1,3 @@
-import { type AgenticSystem, getAllAgents } from "@the-delegation/agents/team"
 import * as THREE from "three/webgpu"
 import type { AgentWork, SceneIntent } from "../integration/scene-intents"
 import {
@@ -8,7 +7,6 @@ import {
 } from "../integration/screen-positions"
 import { AgentBehavior } from "../types"
 import { CharacterController } from "./character-controller"
-import { modelIdsUsedBy } from "./characters/character-appearance"
 import { DEFAULT_CHARACTER_MODEL_ID } from "./characters/character-models"
 import { loadCharacterModels } from "./characters/load-character-models"
 import { BUBBLE_Y_OFFSET, CHAT_STANDOFF, OFFICE_MODEL_URL } from "./constants"
@@ -20,6 +18,7 @@ import { InputManager } from "./input/input-manager"
 import { createSceneLoader } from "./loaders"
 import { NavMeshManager } from "./pathfinding/nav-mesh-manager"
 import { loadNavigationRuntime } from "./pathfinding/navigation-runtime"
+import { modelIdsUsedBy, nonPlayerMembers, type SceneCast, userIndexOf } from "./scene-cast"
 import { BOARDROOM_POI_ID, deskPoiId, spawnPoiId } from "./world/poi-ids"
 import { PoiManager } from "./world/poi-manager"
 import { WorldManager } from "./world/world-manager"
@@ -42,7 +41,7 @@ export interface SceneEvents {
 }
 
 /**
- * Owns the 3D office for a team and executes scene intents (movement,
+ * Owns the 3D office for a cast and executes scene intents (movement,
  * chat, team changes) as character movement and animation. It reads no store: an integration
  * adapter derives the intents from store changes and receives the user's input through
  * `SceneEvents`.
@@ -58,7 +57,9 @@ export class SceneManager {
   private driverManager: DriverManager | null = null
   private inputManager: InputManager | null = null
 
-  private team: AgenticSystem
+  private cast: SceneCast
+  /** The user's character index in the current cast, kept so the render loop never searches for it. */
+  private playerIndex: number
   private selectedIndex: number | null = null
   private readonly events: SceneEvents
   private agentWork: AgentWork = { busyAgentIndices: [], isProjectDone: false }
@@ -76,18 +77,19 @@ export class SceneManager {
   /** Resolves once the scene renders; rejects if WebGPU/WebGL2 or the models fail to load. */
   public readonly ready: Promise<void>
 
-  constructor(container: HTMLElement, team: AgenticSystem, events: SceneEvents) {
+  constructor(container: HTMLElement, cast: SceneCast, events: SceneEvents) {
     this.container = container
     this.viewportWidth = container.clientWidth
     this.viewportHeight = container.clientHeight
-    this.team = team
+    this.cast = cast
+    this.playerIndex = userIndexOf(cast)
     this.events = events
 
     this.engine = new Engine(container, () => {
       if (!this.isDisposed) this.events.onDeviceLost()
     })
     this.stage = new Stage(this.engine.renderer.domElement)
-    this.characterManager = new CharacterManager(this.stage.scene, this.team)
+    this.characterManager = new CharacterManager(this.stage.scene, this.cast)
     this.navMesh = new NavMeshManager()
     this.poiManager = new PoiManager()
     this.characterManager.setPoiManager(this.poiManager)
@@ -106,7 +108,7 @@ export class SceneManager {
    * Renderer init, the navigation runtime and every model download/decode overlap; only the setup
    * after them is ordered.
    * The world is set up before the characters because character spawns need its POIs. Only the
-   * character models this team uses are loaded, plus the default model every missing one falls back to.
+   * character models this cast uses are loaded, plus the default model every missing one falls back to.
    * Shaders are compiled before the first frame, so `ready` resolves on a scene that renders smoothly.
    */
   private async init() {
@@ -115,18 +117,18 @@ export class SceneManager {
       this.engine.init(),
       loadNavigationRuntime(),
       loader.load(OFFICE_MODEL_URL),
-      loadCharacterModels(loader, this.characterModelsFor(this.team)),
+      loadCharacterModels(loader, this.characterModelsFor(this.cast)),
     ])
     if (this.isDisposed) return
 
-    this.worldManager.setup(officeGltf, this.team.color)
+    this.worldManager.setup(officeGltf, this.cast.themeColor)
     this.characterManager.setup(characterModels)
 
     this.controller = new CharacterController(
       this.characterManager,
       this.navMesh,
       this.poiManager,
-      this.team.user.index,
+      this.playerIndex,
     )
     this.driverManager = new DriverManager(this.controller)
     this.registerDrivers()
@@ -152,7 +154,7 @@ export class SceneManager {
     if (this.isDisposed) return
 
     this.engine.renderer.setAnimationLoop(this.animate)
-    const stillMissing = this.characterModelsFor(this.team).some(
+    const stillMissing = this.characterModelsFor(this.cast).some(
       (modelId) => !this.characterManager.hasModel(modelId),
     )
     if (stillMissing) this.applyTeamChange()
@@ -160,13 +162,10 @@ export class SceneManager {
 
   private registerDrivers() {
     if (!this.driverManager) return
-    const playerIndex = this.team.user.index
-    const leadIndex = this.team.leadAgent.index
     this.driverManager.dispose()
-    this.driverManager.registerPlayer(playerIndex)
-    for (const agent of getAllAgents(this.team)) {
-      if (agent.index !== playerIndex)
-        this.driverManager.registerNpc(agent.index, agent.index === leadIndex)
+    this.driverManager.registerPlayer(this.playerIndex)
+    for (const member of nonPlayerMembers(this.cast)) {
+      this.driverManager.registerNpc(member.index, member.role === "lead")
     }
     this.syncDriverState()
   }
@@ -210,11 +209,11 @@ export class SceneManager {
         this.stopChatVisuals(intent.agentIndex)
         return
       case "replaceTeam":
-        this.team = intent.team
+        this.setCurrentCast(intent.cast)
         this.applyTeamChange()
         return
       case "updateTeam":
-        this.team = intent.team
+        this.setCurrentCast(intent.cast)
         return
       case "layoutResizeStarted":
         this.isLayoutResizing = true
@@ -234,9 +233,14 @@ export class SceneManager {
     this.selectedIndex = agentIndex
   }
 
-  /** The character models a team needs: the ones its characters use, plus the default fallback. */
-  private characterModelsFor(team: AgenticSystem): string[] {
-    const used = modelIdsUsedBy(team)
+  private setCurrentCast(cast: SceneCast) {
+    this.cast = cast
+    this.playerIndex = userIndexOf(cast)
+  }
+
+  /** The character models a cast needs: the ones its characters use, plus the default fallback. */
+  private characterModelsFor(cast: SceneCast): string[] {
+    const used = modelIdsUsedBy(cast)
     return used.includes(DEFAULT_CHARACTER_MODEL_ID) ? used : [DEFAULT_CHARACTER_MODEL_ID, ...used]
   }
 
@@ -245,37 +249,37 @@ export class SceneManager {
    * loaded yet are fetched first; if the team changes again meanwhile, the stale load is ignored.
    */
   private applyTeamChange() {
-    const team = this.team
-    const missing = this.characterModelsFor(team).filter(
+    const cast = this.cast
+    const missing = this.characterModelsFor(cast).filter(
       (modelId) => !this.characterManager.hasModel(modelId),
     )
     if (!this.controller || missing.length === 0) {
-      this.rebuildForTeam(team)
+      this.rebuildForCast(cast)
       return
     }
     const loader = createSceneLoader()
     loadCharacterModels(loader, missing)
       .then((models) => {
-        if (this.isDisposed || this.team !== team) return
+        if (this.isDisposed || this.cast !== cast) return
         this.characterManager.addModels(models)
-        this.rebuildForTeam(team)
+        this.rebuildForCast(cast)
       })
       .catch((error: unknown) => {
         console.error("[SceneManager] Character models failed to load:", error)
-        if (!this.isDisposed && this.team === team) this.rebuildForTeam(team)
+        if (!this.isDisposed && this.cast === cast) this.rebuildForCast(cast)
       })
   }
 
   /**
    * New characters and drivers for the team, everyone back at spawn. While still
-   * loading, init() builds everything from this.team instead. Screen positions are cleared so a
+   * loading, init() builds everything from this.cast instead. Screen positions are cleared so a
    * removed agent's name bubble does not stay pinned where it last stood.
    */
-  private rebuildForTeam(team: AgenticSystem) {
-    this.worldManager.updateThemeColor(team.color)
+  private rebuildForCast(cast: SceneCast) {
+    this.worldManager.updateThemeColor(cast.themeColor)
 
     if (!this.controller) return
-    this.controller.setTeam(team)
+    this.controller.setCast(cast)
     clearScreenPositions()
     const roster = this.controller.getAgentIndices()
     if (this.selectedIndex !== null && !roster.includes(this.selectedIndex)) {
@@ -287,8 +291,8 @@ export class SceneManager {
     }
     this.registerDrivers()
     this.controller.warpAllToSpawn(
-      team.user.index,
-      getAllAgents(team).map((agent) => agent.index),
+      userIndexOf(cast),
+      nonPlayerMembers(cast).map((member) => member.index),
     )
   }
 
@@ -296,7 +300,7 @@ export class SceneManager {
   private updateChatTurn(npcIndex: number, isAgentSpeaking: boolean, isUserSpeaking: boolean) {
     const controller = this.controller
     if (!controller) return
-    const user = this.team.user.index
+    const user = this.playerIndex
     if (controller.getState(npcIndex) !== "walk")
       controller.play(npcIndex, isAgentSpeaking ? "talk" : "listen")
     controller.setSpeaking(npcIndex, isAgentSpeaking)
@@ -315,7 +319,7 @@ export class SceneManager {
       controller.play(npcIndex, "idle")
       controller.poiManager.releaseAll(npcIndex)
     }
-    const user = this.team.user.index
+    const user = this.playerIndex
     controller.setSpeaking(user, false)
     controller.play(user, "idle")
     this.selectedIndex = null
@@ -325,7 +329,7 @@ export class SceneManager {
   private startChatVisuals(npcIndex: number): void {
     const controller = this.controller
     if (!controller) return
-    const user = this.team.user.index
+    const user = this.playerIndex
     const npc = new THREE.Vector3()
     const player = new THREE.Vector3()
     if (!controller.getCPUPosition(npcIndex, npc) || !controller.getCPUPosition(user, player))
@@ -408,7 +412,7 @@ export class SceneManager {
       controller.updateOverlapFading(deltaSeconds)
     }
 
-    const player = this.team.user.index
+    const player = this.playerIndex
     const followed =
       controller?.getCPUPosition(this.selectedIndex ?? player, this.scratchPosition) ?? false
     this.stage.setFollowTarget(followed ? this.scratchPosition : null)
@@ -437,10 +441,10 @@ export class SceneManager {
   /** Puts everyone back at spawn and releases the camera. Close any chat first. */
   public resetScene() {
     if (!this.controller) return
-    const agents = getAllAgents(this.team)
+    const agents = nonPlayerMembers(this.cast)
     for (const agent of agents) this.controller.setSpeaking(agent.index, false)
     this.controller.warpAllToSpawn(
-      this.team.user.index,
+      this.playerIndex,
       agents.map((agent) => agent.index),
     )
     this.stage.setFollowTarget(null)

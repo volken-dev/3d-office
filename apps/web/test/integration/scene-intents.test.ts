@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { Task, TaskStatus } from "@the-delegation/agents/project/types"
 import type { AgenticSystem, AgentNode } from "@the-delegation/agents/team"
+import { castForTeam } from "../../src/integration/scene-cast"
 import {
   type ChatSceneState,
   chatIntents,
@@ -205,14 +206,18 @@ describe("teamIntents", () => {
 
   test("edited details of the same roster update the team", () => {
     const next = team({ teamName: "Renamed" })
-    expect(teamIntents(team(), next)).toEqual([{ type: "updateTeam", team: next }])
+    expect(teamIntents(team(), next)).toEqual([{ type: "updateTeam", cast: castForTeam(next) }])
   })
 
   test("a different team or roster replaces the team", () => {
     const otherTeam = team({ id: "other" })
-    expect(teamIntents(team(), otherTeam)).toEqual([{ type: "replaceTeam", team: otherTeam }])
+    expect(teamIntents(team(), otherTeam)).toEqual([
+      { type: "replaceTeam", cast: castForTeam(otherTeam) },
+    ])
     const addedAgent = team({ leadAgent: agent(7, [agent(3), agent(9), agent(11)]) })
-    expect(teamIntents(team(), addedAgent)).toEqual([{ type: "replaceTeam", team: addedAgent }])
+    expect(teamIntents(team(), addedAgent)).toEqual([
+      { type: "replaceTeam", cast: castForTeam(addedAgent) },
+    ])
   })
 })
 
