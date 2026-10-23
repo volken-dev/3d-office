@@ -1,8 +1,8 @@
 import type { IAgentDriver } from "../../types"
-import type { CharacterController } from "../CharacterController"
+import type { CharacterController } from "../character-controller"
 
-import { NpcAgentDriver } from "./NpcAgentDriver"
-import { PlayerInputDriver } from "./PlayerInputDriver"
+import { NpcAgentDriver } from "./npc-agent-driver"
+import { PlayerInputDriver } from "./player-input-driver"
 
 /** Owns the per-character drivers (one player, the rest NPCs) and ticks them once per frame after movement. */
 export class DriverManager {

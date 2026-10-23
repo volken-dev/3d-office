@@ -1,7 +1,7 @@
 import * as THREE from "three/webgpu"
 import type { CharacterStateKey, PoiDef } from "../../types"
-import { OfficePoiExtrasSchema, type OfficePoiKind } from "./officePoiExtras"
-import { poiIdFor } from "./poiIds"
+import { OfficePoiExtrasSchema, type OfficePoiKind } from "./office-poi-extras"
+import { poiIdFor } from "./poi-ids"
 
 /** The state an agent enters on arriving at each kind of POI. */
 const ARRIVAL_STATE_BY_KIND: Record<OfficePoiKind, CharacterStateKey> = {
@@ -39,7 +39,7 @@ export class PoiManager {
     }
   }
 
-  /** Looks a POI up by an id from `poiIds.ts`. */
+  /** Looks a POI up by an id from `poi-ids.ts`. */
   public getPoi(id: string): PoiDef | undefined {
     return this.pois.get(id)
   }

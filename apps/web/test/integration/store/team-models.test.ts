@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { AgenticSystem } from "@the-delegation/agents/team"
-import { withServedModels } from "../../../src/integration/store/teamModels"
+import { withServedModels } from "../../../src/integration/store/team-models"
 
 function team(leadModel: string, subagentModel: string): AgenticSystem {
   return {

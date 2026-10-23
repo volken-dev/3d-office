@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { AgenticSystem, AgentNode } from "@the-delegation/agents/team"
-import { CharacterSlots } from "../../../src/simulation/entities/CharacterSlots"
+import { CharacterSlots } from "../../../src/simulation/entities/character-slots"
 
 function agent(index: number, subagents?: AgentNode[]): AgentNode {
   return {

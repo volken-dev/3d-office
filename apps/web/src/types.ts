@@ -1,5 +1,5 @@
 import type * as THREE from "three/webgpu"
-import type { OfficePoiKind } from "./simulation/world/officePoiExtras"
+import type { OfficePoiKind } from "./simulation/world/office-poi-extras"
 
 export enum AnimationName {
   IDLE = "Idle",
@@ -74,7 +74,7 @@ export interface CharacterStateDef {
 }
 
 export interface PoiDef {
-  /** Built by `poiIdFor` in `simulation/world/poiIds.ts`. */
+  /** Built by `poiIdFor` in `simulation/world/poi-ids.ts`. */
   id: string
   kind: OfficePoiKind
   /** World-space position to walk toward. */

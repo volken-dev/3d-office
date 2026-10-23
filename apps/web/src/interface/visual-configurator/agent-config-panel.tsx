@@ -17,10 +17,10 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
-import { Avatar } from "../components/Avatar"
-import { ColorPicker, isColorTooLight } from "./ColorPicker"
-import { DisabledReason, Field, FieldHint, MICRO_LABEL } from "./Field"
-import { type AgentDraft, countDescendants } from "./teamTree"
+import { Avatar } from "../components/avatar"
+import { ColorPicker, isColorTooLight } from "./color-picker"
+import { DisabledReason, Field, FieldHint, MICRO_LABEL } from "./field"
+import { type AgentDraft, countDescendants } from "./team-tree"
 
 interface AgentConfigPanelProps {
   /** The saved agent, used for its place in the hierarchy. */

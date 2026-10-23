@@ -1,7 +1,7 @@
 import { type AgenticSystem, getAllAgents } from "@the-delegation/agents/team"
-import { useCoreStore } from "../../integration/store/coreStore"
-import { useUiStore } from "../../integration/store/uiStore"
-import { AgentHost } from "./AgentHost"
+import { useCoreStore } from "../../integration/store/core-store"
+import { useUiStore } from "../../integration/store/ui-store"
+import { AgentHost } from "./agent-host"
 
 /** Safety net for work that no store change re-triggers. */
 const HEARTBEAT_MS = 5000

@@ -5,7 +5,7 @@ import {
   DEFAULT_CHARACTER_MODEL_ID,
   findCharacterModel,
   LEAD_CHARACTER_MODEL_ID,
-} from "./characterModels"
+} from "./character-models"
 
 /** Which model a character is drawn with, and which accessory it wears if the model has one. */
 export interface CharacterAppearance {

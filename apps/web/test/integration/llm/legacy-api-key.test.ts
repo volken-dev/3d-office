@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { removeLegacyApiKey } from "../../../src/integration/llm/legacyApiKey"
+import { removeLegacyApiKey } from "../../../src/integration/llm/legacy-api-key"
 
 const store = new Map<string, string>()
 const localStorageStub: Storage = {

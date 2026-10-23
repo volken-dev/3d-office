@@ -1,6 +1,6 @@
 import type { AgentWorkStatus } from "@the-delegation/agents/project/types"
 import { create } from "zustand"
-import { type GatewayStatus, probeGateway } from "../llm/gatewayStatus"
+import { type GatewayStatus, probeGateway } from "../llm/gateway-status"
 
 export interface UiState {
   /** True while the selected agent is answering a chat message. */

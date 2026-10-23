@@ -6,14 +6,14 @@ import {
   type MessagesResponse,
   type StopReason,
 } from "@the-delegation/shared/llm-messages"
-import { AgentBrain, type BrainHost } from "../../src/agent/AgentBrain"
+import { AgentBrain, type BrainHost } from "../../src/agent/agent-brain"
 import { LLMError } from "../../src/llm/errors"
 import type { LLMCallOptions, LLMClient } from "../../src/llm/types"
 import { MAX_INTENT_ATTEMPTS } from "../../src/orchestration/policy"
 import type { LLMErrorEvent, OrchestrationDeps } from "../../src/orchestration/ports"
 import type { AgentWorkStatus } from "../../src/project/types"
 import type { AgentNode } from "../../src/team"
-import { FakeProject } from "../support/fakeProject"
+import { FakeProject } from "../support/fake-project"
 import { TEST_TEAM } from "../support/team"
 
 const team = TEST_TEAM

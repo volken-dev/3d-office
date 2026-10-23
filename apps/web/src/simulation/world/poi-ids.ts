@@ -1,4 +1,4 @@
-import type { OfficePoiExtras } from "./officePoiExtras"
+import type { OfficePoiExtras } from "./office-poi-extras"
 
 /**
  * The one place POI ids are built. PoiManager names every POI it parses with `poiIdFor`, and the

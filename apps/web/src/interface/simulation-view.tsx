@@ -5,20 +5,20 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import type { SceneStoreAdapter } from "../integration/SceneStoreAdapter"
-import { useActiveTeam } from "../integration/store/teamStore"
-import { useUiStore } from "../integration/store/uiStore"
-import { useScene } from "../simulation/SceneContext"
-import { AuditModal } from "./AuditModal"
-import { TeamBadge } from "./components/TeamBadge"
-import { TeamOutputBadge } from "./components/TeamOutputBadge"
-import InspectorPanel from "./InspectorPanel"
-import UIOverlay from "./UIOverlay"
+import type { SceneStoreAdapter } from "../integration/scene-store-adapter"
+import { useActiveTeam } from "../integration/store/team-store"
+import { useUiStore } from "../integration/store/ui-store"
+import { useScene } from "../simulation/scene-context"
+import { AuditModal } from "./audit-modal"
+import { TeamBadge } from "./components/team-badge"
+import { TeamOutputBadge } from "./components/team-output-badge"
+import InspectorPanel from "./inspector-panel"
+import UIOverlay from "./ui-overlay"
 
-const TeamFlowModal = lazy(() => import("./TeamFlowModal"))
+const TeamFlowModal = lazy(() => import("./team-flow-modal"))
 /** Development only: the literal check lets the production build drop the overlay's chunk. */
 const PerformanceOverlay =
-  process.env.NODE_ENV === "development" ? lazy(() => import("./PerformanceOverlay")) : null
+  process.env.NODE_ENV === "development" ? lazy(() => import("./performance-overlay")) : null
 
 type SceneStatus = "loading" | "ready" | "error"
 

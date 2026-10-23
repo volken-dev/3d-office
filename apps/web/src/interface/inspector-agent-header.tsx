@@ -3,8 +3,8 @@ import { ArrowLeft } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Avatar, avatarTypeFor } from "./components/Avatar"
-import { selectAgent } from "./components/selectAgent"
+import { Avatar, avatarTypeFor } from "./components/avatar"
+import { selectAgent } from "./components/select-agent"
 
 /** Back button, avatar, name and role badge at the top of the agent inspector. */
 export function InspectorAgentHeader({

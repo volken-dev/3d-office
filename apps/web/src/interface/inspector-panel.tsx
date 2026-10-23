@@ -1,13 +1,13 @@
 import { useShallow } from "zustand/react/shallow"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { useTeamRoster } from "../integration/store/teamStore"
-import { useUiStore } from "../integration/store/uiStore"
-import AgentStatusPanel from "./AgentStatusPanel"
-import ChatPanel from "./ChatPanel"
-import { InspectorAgentActions } from "./InspectorAgentActions"
-import { InspectorAgentHeader } from "./InspectorAgentHeader"
-import ProjectView from "./ProjectView"
+import { useTeamRoster } from "../integration/store/team-store"
+import { useUiStore } from "../integration/store/ui-store"
+import AgentStatusPanel from "./agent-status-panel"
+import ChatPanel from "./chat-panel"
+import { InspectorAgentActions } from "./inspector-agent-actions"
+import { InspectorAgentHeader } from "./inspector-agent-header"
+import ProjectView from "./project-view"
 
 interface InspectorPanelProps {
   /** Rendered as a card over the canvas in focus mode instead of a docked sidebar. */

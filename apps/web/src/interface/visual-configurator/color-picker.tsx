@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { getBrightness, getDarkenedColor, MAX_BRIGHTNESS } from "./colorBrightness"
-import { DEFAULT_AGENT_COLOR } from "./teamTree"
+import { getBrightness, getDarkenedColor, MAX_BRIGHTNESS } from "./color-brightness"
+import { DEFAULT_AGENT_COLOR } from "./team-tree"
 
 const PRESET_COLORS = [
   DEFAULT_AGENT_COLOR,

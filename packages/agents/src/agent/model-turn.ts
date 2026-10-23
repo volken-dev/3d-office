@@ -5,8 +5,8 @@ import type { OrchestrationDeps } from "../orchestration/ports"
 import type { AgentWorkStatus } from "../project/types"
 import type { AgentNode } from "../team"
 import { lastContextText, toolCallsIn, toRequestMessages } from "./history"
-import { buildContextText, buildSystemPrompt } from "./PromptBuilder"
-import { answerToolCalls, getToolDefinitions } from "./ToolRegistry"
+import { buildContextText, buildSystemPrompt } from "./prompt-builder"
+import { answerToolCalls, getToolDefinitions } from "./tool-registry"
 
 /** What starts a turn: the user's chat message (shown in the chat) or an autonomous prompt (internal). */
 export type TurnTrigger = { kind: "chat"; text: string } | { kind: "intent"; prompt: string }

@@ -1,5 +1,5 @@
 import * as THREE from "three/webgpu"
-import { FrameProfiler } from "./FrameProfiler"
+import { FrameProfiler } from "./frame-profiler"
 
 /** Retina-sharp; above 2 the fill-rate cost buys no visible gain. */
 const MAX_PIXEL_RATIO = 2

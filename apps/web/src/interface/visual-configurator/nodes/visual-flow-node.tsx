@@ -3,8 +3,8 @@ import { User } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { USER_COLOR } from "../../../theme/brand"
-import { Avatar } from "../../components/Avatar"
-import type { HandleData, VisualAgentNode } from "../teamFlowGraph"
+import { Avatar } from "../../components/avatar"
+import type { HandleData, VisualAgentNode } from "../team-flow-graph"
 
 const HANDLE_SPACING = 28
 const PILL = "h-5 rounded-md px-1.5 text-[11px] font-black tracking-tight leading-none"

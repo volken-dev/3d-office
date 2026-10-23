@@ -1,5 +1,5 @@
 import { blockText, toolCallsIn } from "@the-delegation/agents/agent/history"
-import type { DebugLogEntry } from "../integration/store/coreStore"
+import type { DebugLogEntry } from "../integration/store/core-store"
 
 function toPrettyJson(value: unknown): string {
   return JSON.stringify(value ?? null, null, 2)

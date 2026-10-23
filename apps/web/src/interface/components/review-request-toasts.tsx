@@ -1,8 +1,8 @@
 import { useEffect } from "react"
 import { toast } from "sonner"
-import { useCoreStore } from "../../integration/store/coreStore"
-import { getActiveTeamRoster } from "../../integration/store/teamStore"
-import { useUiStore } from "../../integration/store/uiStore"
+import { useCoreStore } from "../../integration/store/core-store"
+import { getActiveTeamRoster } from "../../integration/store/team-store"
+import { useUiStore } from "../../integration/store/ui-store"
 
 /** Announces new review requests, which are otherwise only visible as bubbles in the 3D scene. */
 export function ReviewRequestToasts() {

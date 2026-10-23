@@ -10,11 +10,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { TeamBadge } from "./components/TeamBadge"
-import { TeamOutputBadge } from "./components/TeamOutputBadge"
-import { flowEdgeTypes, flowNodeTypes } from "./VisualConfigurator/flowTypes"
-import { useFlowFocus } from "./VisualConfigurator/hooks/useFlowFocus"
-import { systemToFlow, type VisualAgentNode } from "./VisualConfigurator/teamFlowGraph"
+import { TeamBadge } from "./components/team-badge"
+import { TeamOutputBadge } from "./components/team-output-badge"
+import { flowEdgeTypes, flowNodeTypes } from "./visual-configurator/flow-types"
+import { useFlowFocus } from "./visual-configurator/hooks/use-flow-focus"
+import { systemToFlow, type VisualAgentNode } from "./visual-configurator/team-flow-graph"
 
 interface TeamFlowModalProps {
   isOpen?: boolean

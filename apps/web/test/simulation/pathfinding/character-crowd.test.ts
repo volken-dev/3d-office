@@ -4,14 +4,14 @@ import {
   MOVEMENT_STRIDE,
   type MovementBuffers,
   WALK_SPEED,
-} from "../../../src/simulation/behavior/characterMovement"
+} from "../../../src/simulation/behavior/character-movement"
 import {
   CHARACTER_RADIUS,
   CharacterCrowd,
-} from "../../../src/simulation/pathfinding/CharacterCrowd"
-import { NavMeshManager } from "../../../src/simulation/pathfinding/NavMeshManager"
-import { loadNavigationRuntime } from "../../../src/simulation/pathfinding/navigationRuntime"
-import { buildFloorGeometry } from "../../support/floorGeometry"
+} from "../../../src/simulation/pathfinding/character-crowd"
+import { NavMeshManager } from "../../../src/simulation/pathfinding/nav-mesh-manager"
+import { loadNavigationRuntime } from "../../../src/simulation/pathfinding/navigation-runtime"
+import { buildFloorGeometry } from "../../support/floor-geometry"
 
 const FRAME = 1 / 60
 const MAX_FRAMES = 60 * 20

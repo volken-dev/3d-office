@@ -1,5 +1,5 @@
 import { Copy } from "lucide-react"
-import { Markdown } from "@/components/Markdown"
+import { Markdown } from "@/components/markdown"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -11,9 +11,9 @@ import {
 } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { copyToClipboard } from "@/lib/clipboard"
-import { useCoreStore } from "../integration/store/coreStore"
-import { useActiveTeam } from "../integration/store/teamStore"
-import { TeamOutputBadge } from "./components/TeamOutputBadge"
+import { useCoreStore } from "../integration/store/core-store"
+import { useActiveTeam } from "../integration/store/team-store"
+import { TeamOutputBadge } from "./components/team-output-badge"
 
 function formatFinalizedAt(timestamp: number): string {
   return new Date(timestamp).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })

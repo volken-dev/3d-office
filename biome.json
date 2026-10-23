@@ -12,7 +12,7 @@
     "lineWidth": 100
   },
   "files": {
-    "includes": ["**", "!**/.claude/workflows/**"]
+    "includes": ["**", "!**/.claude/workflows"]
   },
   "linter": {
     "enabled": true,
@@ -20,7 +20,12 @@
       "preset": "recommended",
       "suspicious": {
         "noExplicitAny": "error",
-        "noConsole": { "level": "error", "options": { "allow": ["warn", "error"] } },
+        "noConsole": {
+          "level": "error",
+          "options": {
+            "allow": ["warn", "error"]
+          }
+        },
         "noVar": "error"
       },
       "correctness": {
@@ -28,7 +33,14 @@
         "noUnusedImports": "error"
       },
       "style": {
-        "useConst": "error"
+        "useConst": "error",
+        "useFilenamingConvention": {
+          "level": "error",
+          "options": {
+            "filenameCases": ["kebab-case"],
+            "requireAscii": true
+          }
+        }
       }
     }
   },

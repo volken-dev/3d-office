@@ -1,8 +1,8 @@
 import { MAX_AGENTS } from "@the-delegation/agents/team"
 import * as THREE from "three/webgpu"
 import type { CharacterStateKey, IAgentDriver } from "../../types"
-import type { CharacterController } from "../CharacterController"
-import { spawnPoiId } from "../world/poiIds"
+import type { CharacterController } from "../character-controller"
+import { spawnPoiId } from "../world/poi-ids"
 
 /** Seconds before an NPC's first idle decision: INITIAL_WAIT_MIN plus up to INITIAL_WAIT_RANGE. */
 const INITIAL_WAIT_MIN = 2

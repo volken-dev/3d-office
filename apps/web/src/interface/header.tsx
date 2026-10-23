@@ -11,15 +11,15 @@ import {
 } from "lucide-react"
 import type React from "react"
 import { useState } from "react"
-import { ExternalLink } from "@/components/ExternalLink"
+import { ExternalLink } from "@/components/external-link"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import type { GatewayStatus } from "../integration/llm/gatewayStatus"
-import { useCoreStore } from "../integration/store/coreStore"
-import { useUiStore } from "../integration/store/uiStore"
-import { BrandLogo, GitHubIcon } from "./components/BrandLogo"
-import InfoModal from "./InfoModal"
+import type { GatewayStatus } from "../integration/llm/gateway-status"
+import { useCoreStore } from "../integration/store/core-store"
+import { useUiStore } from "../integration/store/ui-store"
+import { BrandLogo, GitHubIcon } from "./components/brand-logo"
+import InfoModal from "./info-modal"
 
 const version = process.env.NEXT_PUBLIC_APP_VERSION
 

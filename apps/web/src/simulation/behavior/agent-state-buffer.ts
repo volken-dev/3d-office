@@ -1,4 +1,4 @@
-import { Vec4Texture } from "../Vec4Texture"
+import { Vec4Texture } from "../vec4-texture"
 
 /**
  * CPU/GPU buffer that stores per-instance physics mode and animation state.

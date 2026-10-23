@@ -8,7 +8,7 @@ import {
   findCharacterModel,
   LEAD_CHARACTER_MODEL_ID,
   partRuleFor,
-} from "../../../src/simulation/characters/characterModels"
+} from "../../../src/simulation/characters/character-models"
 import { AnimationName } from "../../../src/types"
 
 const PUBLIC_DIR = path.resolve(import.meta.dir, "../../../public")

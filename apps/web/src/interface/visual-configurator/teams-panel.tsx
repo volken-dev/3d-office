@@ -6,9 +6,9 @@ import { useShallow } from "zustand/react/shallow"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { AGENTIC_SETS } from "../../data/agents"
-import { useTeamStore } from "../../integration/store/teamStore"
-import { TeamCard } from "./TeamCard"
-import { DEFAULT_AGENT_COLOR, type RequestDiscard } from "./teamTree"
+import { useTeamStore } from "../../integration/store/team-store"
+import { TeamCard } from "./team-card"
+import { DEFAULT_AGENT_COLOR, type RequestDiscard } from "./team-tree"
 
 interface TeamsPanelProps {
   selectedTeamId: string

@@ -8,7 +8,7 @@ import { bodyLimit } from "hono/body-limit"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
 import type { AppEnv } from "../env"
 import { ApiHttpError } from "../errors"
-import type { RouterForEnv } from "../llm/routerForEnv"
+import type { RouterForEnv } from "../llm/router-for-env"
 import { inMemoryRateLimit } from "../middleware/rate-limit"
 
 /** How each provider failure reaches the client. Messages are ours; upstream text stays in server logs. */

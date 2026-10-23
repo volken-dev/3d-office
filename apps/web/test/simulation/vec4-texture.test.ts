@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { MAX_TEXTURE_SIDE, Vec4Texture } from "../../src/simulation/Vec4Texture"
+import { MAX_TEXTURE_SIDE, Vec4Texture } from "../../src/simulation/vec4-texture"
 
 describe("Vec4Texture", () => {
   test("a short list is one row whose data is exactly the records", () => {

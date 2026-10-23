@@ -1,8 +1,8 @@
 import type React from "react"
 import { useRef, useState } from "react"
 import { cn } from "@/lib/utils"
-import { useCoreStore } from "../integration/store/coreStore"
-import { KanbanPanel } from "./KanbanPanel"
+import { useCoreStore } from "../integration/store/core-store"
+import { KanbanPanel } from "./kanban-panel"
 
 const KANBAN_DEFAULT_HEIGHT = 220
 const KANBAN_MIN_RATIO = 0.2

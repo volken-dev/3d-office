@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 /** React Flow is only needed in design mode, so it stays out of the initial bundle. */
 const VisualConfigurator = lazy(() =>
-  import("./VisualConfigurator/VisualConfigurator").then((module) => ({
+  import("./visual-configurator/visual-configurator").then((module) => ({
     default: module.VisualConfigurator,
   })),
 )

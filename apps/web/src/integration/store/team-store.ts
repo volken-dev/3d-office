@@ -10,7 +10,7 @@ import {
   type TeamRoster,
 } from "../../data/agents"
 import { safeJSONStorage } from "../../lib/storage"
-import { withServedModels } from "./teamModels"
+import { withServedModels } from "./team-models"
 
 /** Built-in team ids from before the switch to software-development teams. */
 const LEGACY_TEAM_IDS = [

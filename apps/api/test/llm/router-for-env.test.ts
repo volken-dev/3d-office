@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { routerForEnv } from "../../src/llm/routerForEnv"
+import { routerForEnv } from "../../src/llm/router-for-env"
 
 describe("routerForEnv", () => {
   test("is undefined without a Claude key", () => {

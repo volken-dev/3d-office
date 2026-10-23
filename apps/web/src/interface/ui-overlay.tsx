@@ -1,9 +1,9 @@
 import { useShallow } from "zustand/react/shallow"
-import { useCoreStore } from "../integration/store/coreStore"
-import { useTeamRoster } from "../integration/store/teamStore"
-import { useUiStore } from "../integration/store/uiStore"
-import { selectAgent } from "./components/selectAgent"
-import { AlertBubble, FocusedAgentLabel, getAlertForAgent, PoiBubble } from "./UIOverlayBubbles"
+import { useCoreStore } from "../integration/store/core-store"
+import { useTeamRoster } from "../integration/store/team-store"
+import { useUiStore } from "../integration/store/ui-store"
+import { selectAgent } from "./components/select-agent"
+import { AlertBubble, FocusedAgentLabel, getAlertForAgent, PoiBubble } from "./ui-overlay-bubbles"
 
 /** HTML labels over the canvas: alert bubbles, the focused agent's label (selection wins over hover) and POI hints. */
 function UIOverlay() {

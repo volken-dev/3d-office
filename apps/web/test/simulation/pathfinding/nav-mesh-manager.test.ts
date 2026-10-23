@@ -3,9 +3,9 @@ import * as THREE from "three/webgpu"
 import {
   NAVMESH_EDGE_TOLERANCE,
   NavMeshManager,
-} from "../../../src/simulation/pathfinding/NavMeshManager"
-import { loadNavigationRuntime } from "../../../src/simulation/pathfinding/navigationRuntime"
-import { buildFloorGeometry, type FloorRect } from "../../support/floorGeometry"
+} from "../../../src/simulation/pathfinding/nav-mesh-manager"
+import { loadNavigationRuntime } from "../../../src/simulation/pathfinding/navigation-runtime"
+import { buildFloorGeometry, type FloorRect } from "../../support/floor-geometry"
 
 const FLOOR: FloorRect = { minX: -5, minZ: -5, maxX: 5, maxZ: 5 }
 /** A table in the middle of the room that paths must go around. */

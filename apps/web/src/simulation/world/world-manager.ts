@@ -1,8 +1,8 @@
 import type { GLTF } from "three/addons/loaders/GLTFLoader.js"
 import * as THREE from "three/webgpu"
-import type { NavMeshManager } from "../pathfinding/NavMeshManager"
-import { isMesh } from "../sceneGraphGuards"
-import type { PoiManager } from "./PoiManager"
+import type { NavMeshManager } from "../pathfinding/nav-mesh-manager"
+import { isMesh } from "../scene-graph-guards"
+import type { PoiManager } from "./poi-manager"
 
 /** The walkable mesh in the office GLB is the one whose name contains "navmesh", in any case. */
 export function isNavMeshName(name: string): boolean {

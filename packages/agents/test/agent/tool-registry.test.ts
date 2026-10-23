@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import { type ToolCallBlock, ToolDefinitionSchema } from "@the-delegation/shared/llm-messages"
-import { answerToolCalls, getToolDefinitions, runToolCall } from "../../src/agent/ToolRegistry"
+import { answerToolCalls, getToolDefinitions, runToolCall } from "../../src/agent/tool-registry"
 import type { ToolContext } from "../../src/agent/tools/types"
 import { getAgentRoster } from "../../src/team"
-import { FakeProject } from "../support/fakeProject"
+import { FakeProject } from "../support/fake-project"
 import { TEST_TEAM } from "../support/team"
 
 const team = TEST_TEAM

@@ -7,13 +7,12 @@ import {
   type ExpressionKey,
   type ICharacterDriver,
 } from "../types"
-
-import { CharacterStateMachine } from "./behavior/CharacterStateMachine"
-import { MOVEMENT_STRIDE, type MovementBuffers } from "./behavior/characterMovement"
-import type { CharacterManager } from "./entities/CharacterManager"
-import { CharacterCrowd } from "./pathfinding/CharacterCrowd"
-import type { NavMeshManager } from "./pathfinding/NavMeshManager"
-import type { PoiManager } from "./world/PoiManager"
+import { MOVEMENT_STRIDE, type MovementBuffers } from "./behavior/character-movement"
+import { CharacterStateMachine } from "./behavior/character-state-machine"
+import type { CharacterManager } from "./entities/character-manager"
+import { CharacterCrowd } from "./pathfinding/character-crowd"
+import type { NavMeshManager } from "./pathfinding/nav-mesh-manager"
+import type { PoiManager } from "./world/poi-manager"
 
 const ORIGIN = new THREE.Vector3(0, 0, 0)
 /** Per-frame walk step below which a walker's facing is left as it was, rather than set to noise. */

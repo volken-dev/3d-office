@@ -8,7 +8,7 @@ import {
   BLINK_INTERVAL_RANGE,
   SPEAKING_FRAME_DURATION,
 } from "../constants"
-import { Vec4Texture } from "../Vec4Texture"
+import { Vec4Texture } from "../vec4-texture"
 
 const EXPRESSIONS: Record<ExpressionKey, { eyes: AtlasCoords; mouth: AtlasCoords }> = {
   idle: { eyes: { col: 0, row: 3 }, mouth: { col: 1, row: 3 } },

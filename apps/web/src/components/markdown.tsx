@@ -1,7 +1,7 @@
 import React from "react"
 import ReactMarkdown, { type Components, defaultUrlTransform } from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { ExternalLink } from "@/components/ExternalLink"
+import { ExternalLink } from "@/components/external-link"
 import { cn } from "@/lib/utils"
 
 const REMARK_PLUGINS = [remarkGfm]

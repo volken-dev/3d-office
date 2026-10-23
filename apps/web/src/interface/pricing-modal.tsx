@@ -1,6 +1,6 @@
 import { DEFAULT_LEAD_MODEL_ID, DEFAULT_TEAM_MODEL_ID, MODELS } from "@the-delegation/llm/registry"
 import { ArrowUpRight, Sparkles } from "lucide-react"
-import { ExternalLink } from "@/components/ExternalLink"
+import { ExternalLink } from "@/components/external-link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {

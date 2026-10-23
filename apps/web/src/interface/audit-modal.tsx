@@ -1,6 +1,6 @@
 import { AlertCircle, CheckCircle2, GitPullRequest } from "lucide-react"
 import { useState } from "react"
-import { Markdown } from "@/components/Markdown"
+import { Markdown } from "@/components/markdown"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,11 +16,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { getAgentByIndex } from "../data/agents"
-import { useCoreStore } from "../integration/store/coreStore"
-import { useActiveTeam } from "../integration/store/teamStore"
-import { useUiStore } from "../integration/store/uiStore"
-import { Avatar } from "./components/Avatar"
-import { InfoBubble } from "./components/InfoBubble"
+import { useCoreStore } from "../integration/store/core-store"
+import { useActiveTeam } from "../integration/store/team-store"
+import { useUiStore } from "../integration/store/ui-store"
+import { Avatar } from "./components/avatar"
+import { InfoBubble } from "./components/info-bubble"
 
 interface AuditModalProps {
   taskId: string

@@ -2,7 +2,7 @@ import { Send } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { useUiStore } from "../integration/store/uiStore"
+import { useUiStore } from "../integration/store/ui-store"
 
 /** How long after the last keystroke the player's typing animation keeps playing. */
 const TYPING_IDLE_MS = 1000

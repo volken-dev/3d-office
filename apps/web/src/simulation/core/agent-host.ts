@@ -1,11 +1,11 @@
-import { AgentBrain, type BrainHost } from "@the-delegation/agents/agent/AgentBrain"
+import { AgentBrain, type BrainHost } from "@the-delegation/agents/agent/agent-brain"
 import { canChatWith } from "@the-delegation/agents/orchestration/policy"
 import type { AgentWorkStatus } from "@the-delegation/agents/project/types"
 import { type AgentNode, isLeadAgent } from "@the-delegation/agents/team"
-import { zustandOrchestrationDeps } from "../../integration/orchestration/zustandDeps"
-import { useCoreStore } from "../../integration/store/coreStore"
-import { useUiStore } from "../../integration/store/uiStore"
-import type { AgentSimulation } from "./AgentSimulation"
+import { zustandOrchestrationDeps } from "../../integration/orchestration/zustand-deps"
+import { useCoreStore } from "../../integration/store/core-store"
+import { useUiStore } from "../../integration/store/ui-store"
+import type { AgentSimulation } from "./agent-simulation"
 
 /** Runtime wrapper around one team member: its brain, task and status. */
 export class AgentHost implements BrainHost {

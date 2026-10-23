@@ -27,6 +27,6 @@ For each file, report violations as `file:line` with a concrete fix. Do not edit
 **Copy & a11y**
 - No em-dashes, bullet glyphs, emoji, exclamation marks or audit ids in user-facing strings OR JSX text. (The copy hook catches string literals; you catch the JSX-text cases it can't.) Buttons verb-first, sentence case.
 - Every interactive element is keyboard-reachable with a visible focus ring; icon-only buttons have a label; `aria-label`s don't interpolate sensitive values (the API key).
-- LLM output renders through `components/Markdown.tsx` only.
+- LLM output renders through `components/markdown.tsx` only.
 
 End with a short verdict: clean, or a prioritised fix list. Read-only unless I ask you to apply fixes.

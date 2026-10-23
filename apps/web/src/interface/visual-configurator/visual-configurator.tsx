@@ -27,15 +27,14 @@ import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { getAgentSet, getAllCharacters } from "../../data/agents"
-import { useCoreStore } from "../../integration/store/coreStore"
-import { useTeamStore } from "../../integration/store/teamStore"
-import { AgentConfigPanel } from "./AgentConfigPanel"
-import { DisabledReason } from "./Field"
-import { flowEdgeTypes, flowNodeTypes } from "./flowTypes"
-import { useFlowFocus } from "./hooks/useFlowFocus"
-import { TeamJsonDialog } from "./TeamJsonDialog"
-import { TeamsPanel } from "./TeamsPanel"
-import { systemToFlow, type VisualAgentNode } from "./teamFlowGraph"
+import { useCoreStore } from "../../integration/store/core-store"
+import { useTeamStore } from "../../integration/store/team-store"
+import { AgentConfigPanel } from "./agent-config-panel"
+import { DisabledReason } from "./field"
+import { flowEdgeTypes, flowNodeTypes } from "./flow-types"
+import { useFlowFocus } from "./hooks/use-flow-focus"
+import { systemToFlow, type VisualAgentNode } from "./team-flow-graph"
+import { TeamJsonDialog } from "./team-json-dialog"
 import {
   type AgentDraft,
   addSubagent,
@@ -48,7 +47,8 @@ import {
   placeNewSubagent,
   removeAgent,
   updateAgent,
-} from "./teamTree"
+} from "./team-tree"
+import { TeamsPanel } from "./teams-panel"
 
 const ROSTER_LOCKED = "Agents cannot be added or removed while this team is working on a project."
 

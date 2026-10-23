@@ -1,17 +1,17 @@
 import { describe, expect, test } from "bun:test"
 import type { AgenticSystem, AgentNode } from "@the-delegation/agents/team"
 import * as THREE from "three/webgpu"
-import { CharacterController } from "../../src/simulation/CharacterController"
+import { CharacterController } from "../../src/simulation/character-controller"
 import {
   DEFAULT_CHARACTER_MODEL_ID,
   findCharacterModel,
-} from "../../src/simulation/characters/characterModels"
+} from "../../src/simulation/characters/character-models"
 import {
   CharacterManager,
   type LoadedCharacterModel,
-} from "../../src/simulation/entities/CharacterManager"
-import { NavMeshManager } from "../../src/simulation/pathfinding/NavMeshManager"
-import { PoiManager } from "../../src/simulation/world/PoiManager"
+} from "../../src/simulation/entities/character-manager"
+import { NavMeshManager } from "../../src/simulation/pathfinding/nav-mesh-manager"
+import { PoiManager } from "../../src/simulation/world/poi-manager"
 import { AgentBehavior } from "../../src/types"
 
 function agent(index: number, subagents?: AgentNode[]): AgentNode {

@@ -2,13 +2,13 @@ import { displayTextOf } from "@the-delegation/agents/agent/history"
 import type { AgentMessage } from "@the-delegation/agents/llm/types"
 import { FileSearch } from "lucide-react"
 import React from "react"
-import { Markdown } from "@/components/Markdown"
+import { Markdown } from "@/components/markdown"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { useCoreStore } from "../integration/store/coreStore"
-import { useUiStore } from "../integration/store/uiStore"
+import { useCoreStore } from "../integration/store/core-store"
+import { useUiStore } from "../integration/store/ui-store"
 import { USER_COLOR } from "../theme/brand"
-import { Avatar, type AvatarType } from "./components/Avatar"
+import { Avatar, type AvatarType } from "./components/avatar"
 
 function ReviewTaskCallout({ taskId }: { taskId: string }) {
   const isPending = useCoreStore(

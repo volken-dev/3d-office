@@ -1,6 +1,6 @@
-import type { LoadedCharacterModel } from "../entities/CharacterManager"
+import type { LoadedCharacterModel } from "../entities/character-manager"
 import type { SceneLoader } from "../loaders"
-import { findCharacterModel } from "./characterModels"
+import { findCharacterModel } from "./character-models"
 
 /** Downloads and decodes the registered models with these ids, in parallel; unknown ids are skipped. */
 export async function loadCharacterModels(

@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { defineTool, requiredText } from "./toolArgs"
+import { defineTool, requiredText } from "./tool-args"
 import { fail } from "./types"
 
 export const completeTask = defineTool({

@@ -1,9 +1,9 @@
 import { EMPTY_USAGE } from "@/lib/usage"
-import { useCoreStore } from "../integration/store/coreStore"
-import { useTeamRoster } from "../integration/store/teamStore"
-import { SectionHeading } from "./components/SectionHeading"
+import { useCoreStore } from "../integration/store/core-store"
+import { useTeamRoster } from "../integration/store/team-store"
+import { SectionHeading } from "./components/section-heading"
 import { EYEBROW } from "./components/styles"
-import { TokenUsageRow } from "./components/TokenUsageRow"
+import { TokenUsageRow } from "./components/token-usage-row"
 
 interface AgentStatusPanelProps {
   agentIndex: number

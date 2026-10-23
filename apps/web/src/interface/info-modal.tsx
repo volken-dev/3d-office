@@ -1,4 +1,4 @@
-import { ExternalLink } from "@/components/ExternalLink"
+import { ExternalLink } from "@/components/external-link"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -8,7 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { BrandLogo, GitHubIcon } from "./components/BrandLogo"
+import { BrandLogo, GitHubIcon } from "./components/brand-logo"
 
 interface InfoModalProps {
   isOpen?: boolean

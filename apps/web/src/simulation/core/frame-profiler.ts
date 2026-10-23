@@ -1,5 +1,5 @@
 import * as THREE from "three/webgpu"
-import { publishFrameStats } from "../../integration/frameStats"
+import { publishFrameStats } from "../../integration/frame-stats"
 
 /** About two seconds at 60 fps: long enough for a stable p95, short enough to follow a change. */
 const FRAME_SAMPLE_COUNT = 120

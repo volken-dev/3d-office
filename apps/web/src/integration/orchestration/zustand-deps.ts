@@ -5,10 +5,10 @@ import type {
 } from "@the-delegation/agents/orchestration/ports"
 import type { AutonomyPause } from "@the-delegation/agents/project/types"
 import { toast } from "sonner"
-import { createGatewayClient } from "../llm/gatewayClient"
-import { useCoreStore } from "../store/coreStore"
-import { getActiveAgentSet } from "../store/teamStore"
-import { useUiStore } from "../store/uiStore"
+import { createGatewayClient } from "../llm/gateway-client"
+import { useCoreStore } from "../store/core-store"
+import { getActiveAgentSet } from "../store/team-store"
+import { useUiStore } from "../store/ui-store"
 
 /** Delay before the lead's chat closes after the brief is set; the project's first planning turn waits for it. */
 const CLOSE_CHAT_AFTER_BRIEF_MS = 3_000

@@ -2,8 +2,8 @@ import { type Intent, nextAutonomyStep, pauseForError } from "../orchestration/a
 import type { OrchestrationDeps, ProjectSnapshot } from "../orchestration/ports"
 import type { AgentWorkStatus } from "../project/types"
 import type { AgentNode } from "../team"
-import { reactToBoardChange } from "./boardReaction"
-import { runModelTurn, SKIPPED, type TurnOutcome, type TurnTrigger } from "./modelTurn"
+import { reactToBoardChange } from "./board-reaction"
+import { runModelTurn, SKIPPED, type TurnOutcome, type TurnTrigger } from "./model-turn"
 
 /** What the brain needs from the agent runtime that owns it (AgentHost). */
 export interface BrainHost {

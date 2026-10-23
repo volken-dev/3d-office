@@ -1,7 +1,7 @@
 import React from "react"
 import { formatTime } from "@/lib/format"
-import type { ActionLogEntry } from "../integration/store/coreStore"
-import type { LogAgent } from "./ActionLogDebugEntry"
+import type { ActionLogEntry } from "../integration/store/core-store"
+import type { LogAgent } from "./action-log-debug-entry"
 
 const ActivityItem = React.memo(function ActivityItem({
   entry,

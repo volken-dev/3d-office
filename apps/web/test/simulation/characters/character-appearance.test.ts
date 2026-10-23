@@ -3,7 +3,7 @@ import type { AgenticSystem, AgentNode } from "@the-delegation/agents/team"
 import {
   appearanceFor,
   modelIdsUsedBy,
-} from "../../../src/simulation/characters/characterAppearance"
+} from "../../../src/simulation/characters/character-appearance"
 
 function agent(index: number, extra: Partial<AgentNode> = {}): AgentNode {
   return {

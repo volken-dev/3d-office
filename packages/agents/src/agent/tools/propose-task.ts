@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { MAX_TASKS_PER_PROJECT } from "../../orchestration/policy"
 import { getAgentRoster, getSubtreeIndices, isLeadAgent, isUserIndex } from "../../team"
-import { defineTool, optionalFlag, optionalInteger, requiredText } from "./toolArgs"
+import { defineTool, optionalFlag, optionalInteger, requiredText } from "./tool-args"
 import { fail } from "./types"
 
 export const proposeTask = defineTool({

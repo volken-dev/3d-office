@@ -10,7 +10,7 @@ import {
   projectIntents,
   selectionForClick,
   teamIntents,
-} from "../../src/integration/sceneIntents"
+} from "../../src/integration/scene-intents"
 
 function agent(index: number, subagents: AgentNode[] = []): AgentNode {
   return {

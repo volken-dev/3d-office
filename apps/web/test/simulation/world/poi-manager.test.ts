@@ -6,10 +6,10 @@ import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js"
 import { type GLTF, GLTFLoader, type GLTFLoaderPlugin } from "three/addons/loaders/GLTFLoader.js"
 import * as THREE from "three/webgpu"
 import { AGENTIC_SETS } from "../../../src/data/agents"
-import { NavMeshManager } from "../../../src/simulation/pathfinding/NavMeshManager"
-import { PoiManager } from "../../../src/simulation/world/PoiManager"
-import { BOARDROOM_POI_ID, deskPoiId, spawnPoiId } from "../../../src/simulation/world/poiIds"
-import { isNavMeshName } from "../../../src/simulation/world/WorldManager"
+import { NavMeshManager } from "../../../src/simulation/pathfinding/nav-mesh-manager"
+import { BOARDROOM_POI_ID, deskPoiId, spawnPoiId } from "../../../src/simulation/world/poi-ids"
+import { PoiManager } from "../../../src/simulation/world/poi-manager"
+import { isNavMeshName } from "../../../src/simulation/world/world-manager"
 
 const OFFICE_GLB = path.resolve(import.meta.dir, "../../../public/models/office.glb")
 

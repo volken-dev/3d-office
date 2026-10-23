@@ -11,10 +11,10 @@ import type {
   DebugLogEntry,
   RequestDebugLogEntry,
   ResponseDebugLogEntry,
-} from "../integration/store/coreStore"
-import { ToolCallCard } from "./ActionLogToolCallCard"
-import { serializeDebugEntry } from "./actionLogSerialize"
-import { CopyButton } from "./components/CopyButton"
+} from "../integration/store/core-store"
+import { serializeDebugEntry } from "./action-log-serialize"
+import { ToolCallCard } from "./action-log-tool-call-card"
+import { CopyButton } from "./components/copy-button"
 
 /** The roster fields a log row needs to label and colour an agent. */
 export interface LogAgent {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
-import { setUserBrief } from "../../../src/agent/tools/setUserBrief"
+import { setUserBrief } from "../../../src/agent/tools/set-user-brief"
 import type { ToolContext } from "../../../src/agent/tools/types"
-import { FakeProject } from "../../support/fakeProject"
+import { FakeProject } from "../../support/fake-project"
 import { TEST_TEAM } from "../../support/team"
 
 describe("setUserBrief.run", () => {

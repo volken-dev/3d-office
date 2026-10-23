@@ -5,7 +5,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
 /** The app reads localStorage in its stores and boots a WebGPU scene, so it is never rendered on the server. */
-const App = dynamic(() => import("@/App"), {
+const App = dynamic(() => import("@/app-shell"), {
   ssr: false,
   loading: () => <div className="h-dvh w-screen bg-background" />,
 })

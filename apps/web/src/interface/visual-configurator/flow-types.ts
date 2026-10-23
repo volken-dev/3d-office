@@ -1,6 +1,6 @@
 import type { EdgeTypes, NodeTypes } from "@xyflow/react"
-import { DirectionalEdge } from "./edges/DirectionalEdge"
-import { VisualFlowNode } from "./nodes/VisualFlowNode"
+import { DirectionalEdge } from "./edges/directional-edge"
+import { VisualFlowNode } from "./nodes/visual-flow-node"
 
 /** Shared by the editor and the read-only TeamFlowModal; module-level so React Flow never sees new objects. */
 export const flowNodeTypes: NodeTypes = {

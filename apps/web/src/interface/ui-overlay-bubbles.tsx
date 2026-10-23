@@ -3,8 +3,8 @@ import { MessageSquareWarning, PartyPopper, Siren } from "lucide-react"
 import type React from "react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { useAgentAnchor } from "../integration/screenPositions"
-import type { ProjectPhase, Task } from "../integration/store/coreStore"
+import { useAgentAnchor } from "../integration/screen-positions"
+import type { ProjectPhase, Task } from "../integration/store/core-store"
 
 /**
  * These bubbles move every frame over the WebGPU canvas, so they use opaque fills instead of

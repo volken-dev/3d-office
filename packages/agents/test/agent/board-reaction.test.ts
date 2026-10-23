@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { type HostView, reactToBoardChange } from "../../src/agent/boardReaction"
+import { type HostView, reactToBoardChange } from "../../src/agent/board-reaction"
 import type { ProjectSnapshot } from "../../src/orchestration/ports"
 import type { Task, TaskStatus } from "../../src/project/types"
 

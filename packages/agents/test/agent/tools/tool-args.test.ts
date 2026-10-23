@@ -6,7 +6,7 @@ import {
   parseToolArgs,
   requiredText,
   toToolInputSchema,
-} from "../../../src/agent/tools/toolArgs"
+} from "../../../src/agent/tools/tool-args"
 
 const titleArgs = z.strictObject({ title: requiredText(20) })
 const assigneeArgs = z.strictObject({ agentId: optionalInteger(), urgent: optionalFlag() })

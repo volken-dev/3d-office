@@ -6,11 +6,11 @@ import type {
 } from "@the-delegation/shared/llm-messages"
 import type { ProjectPhase } from "../project/types"
 import type { AgenticSystem, AgentNode } from "../team"
-import { completeTask } from "./tools/completeTask"
-import { deliverProject } from "./tools/deliverProject"
-import { proposeTask } from "./tools/proposeTask"
-import { setUserBrief } from "./tools/setUserBrief"
-import { parseToolArgs } from "./tools/toolArgs"
+import { completeTask } from "./tools/complete-task"
+import { deliverProject } from "./tools/deliver-project"
+import { proposeTask } from "./tools/propose-task"
+import { setUserBrief } from "./tools/set-user-brief"
+import { parseToolArgs } from "./tools/tool-args"
 import { fail, type ToolContext, type ToolResult, type ToolSpec } from "./tools/types"
 
 interface RegisteredTool {

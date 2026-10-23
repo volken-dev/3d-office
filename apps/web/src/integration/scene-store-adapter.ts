@@ -1,5 +1,5 @@
 import type { AgenticSystem } from "@the-delegation/agents/team"
-import { SceneManager } from "../simulation/SceneManager"
+import { SceneManager } from "../simulation/scene-manager"
 import {
   chatIntents,
   initialSceneIntents,
@@ -8,14 +8,14 @@ import {
   type SceneIntent,
   selectionForClick,
   teamIntents,
-} from "./sceneIntents"
-import { useCoreStore } from "./store/coreStore"
-import { getActiveAgentSet, useTeamStore } from "./store/teamStore"
-import { useUiStore } from "./store/uiStore"
+} from "./scene-intents"
+import { useCoreStore } from "./store/core-store"
+import { getActiveAgentSet, useTeamStore } from "./store/team-store"
+import { useUiStore } from "./store/ui-store"
 
 /**
  * Connects a `SceneManager` to the stores: store changes become scene intents (see
- * `sceneIntents.ts`), and the user's clicks and hovers in the scene become store updates. It is
+ * `scene-intents.ts`), and the user's clicks and hovers in the scene become store updates. It is
  * also the imperative scene API components reach through `SceneContext`.
  */
 export class SceneStoreAdapter {

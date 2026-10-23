@@ -1,8 +1,8 @@
 import { canChatWith } from "@the-delegation/agents/orchestration/policy"
 import { isLeadAgent } from "@the-delegation/agents/team"
-import { useCoreStore } from "../store/coreStore"
-import { useActiveTeam } from "../store/teamStore"
-import { useUiStore } from "../store/uiStore"
+import { useCoreStore } from "../store/core-store"
+import { useActiveTeam } from "../store/team-store"
+import { useUiStore } from "../store/ui-store"
 
 export interface ChatAvailability {
   canChat: boolean

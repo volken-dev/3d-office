@@ -7,11 +7,11 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { type Task, type TaskStatus, useCoreStore } from "../integration/store/coreStore"
-import { useTeamRoster } from "../integration/store/teamStore"
-import { useUiStore } from "../integration/store/uiStore"
-import { selectAgent } from "./components/selectAgent"
-import DeleteTaskModal from "./DeleteTaskModal"
+import { type Task, type TaskStatus, useCoreStore } from "../integration/store/core-store"
+import { useTeamRoster } from "../integration/store/team-store"
+import { useUiStore } from "../integration/store/ui-store"
+import { selectAgent } from "./components/select-agent"
+import DeleteTaskModal from "./delete-task-modal"
 
 /** The viewport child must fill the height so each column scrolls on its own. */
 const COLUMNS_FILL_HEIGHT = "[&_[data-slot=scroll-area-viewport]>div]:h-full"

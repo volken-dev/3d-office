@@ -22,7 +22,7 @@ import { costOfUsage, findModel } from "@the-delegation/llm/registry"
 import type { Usage } from "@the-delegation/shared/llm-messages"
 import { create } from "zustand"
 import { EMPTY_USAGE } from "../../lib/usage"
-import { useTeamStore } from "./teamStore"
+import { useTeamStore } from "./team-store"
 
 export type {
   ActionLogEntry,

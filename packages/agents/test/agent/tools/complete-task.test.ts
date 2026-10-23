@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { completeTask } from "../../../src/agent/tools/completeTask"
-import { parseToolArgs } from "../../../src/agent/tools/toolArgs"
+import { completeTask } from "../../../src/agent/tools/complete-task"
+import { parseToolArgs } from "../../../src/agent/tools/tool-args"
 import type { ToolContext } from "../../../src/agent/tools/types"
 import type { AgentWorkStatus } from "../../../src/project/types"
 import type { AgentNode } from "../../../src/team"
-import { FakeProject } from "../../support/fakeProject"
+import { FakeProject } from "../../support/fake-project"
 import { TEST_TEAM } from "../../support/team"
 
 const team = TEST_TEAM

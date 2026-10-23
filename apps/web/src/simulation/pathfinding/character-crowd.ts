@@ -6,7 +6,7 @@ import {
   type MovementBuffers,
   WALK_SPEED,
   writeWalkerMotion,
-} from "../behavior/characterMovement"
+} from "../behavior/character-movement"
 
 /** Half the 0.6 distance under which two characters visibly overlap. */
 export const CHARACTER_RADIUS = 0.3

@@ -23,22 +23,22 @@ import {
 import * as THREE from "three/webgpu"
 import { getAgentByIndex } from "../../data/agents"
 import { AgentBehavior, AnimationName, type ExpressionKey, type PoiDef } from "../../types"
-import { AgentStateBuffer } from "../behavior/AgentStateBuffer"
-import { MOVEMENT_STRIDE, type MovementBuffers } from "../behavior/characterMovement"
-import { ExpressionBuffer } from "../behavior/ExpressionBuffer"
-import { appearanceFor } from "../characters/characterAppearance"
+import { AgentStateBuffer } from "../behavior/agent-state-buffer"
+import { MOVEMENT_STRIDE, type MovementBuffers } from "../behavior/character-movement"
+import { ExpressionBuffer } from "../behavior/expression-buffer"
+import { appearanceFor } from "../characters/character-appearance"
 import {
   type AccessoryId,
   type CharacterModelDef,
   DEFAULT_CHARACTER_MODEL_ID,
   type PartRule,
   partRuleFor,
-} from "../characters/characterModels"
+} from "../characters/character-models"
 import { ALPHA_LERP_RATE, OVERLAP_ALPHA, OVERLAP_DIST_SQ } from "../constants"
-import { isMesh, isSkinnedMesh } from "../sceneGraphGuards"
-import { Vec4Texture } from "../Vec4Texture"
-import type { PoiManager } from "../world/PoiManager"
-import { CharacterSlots } from "./CharacterSlots"
+import { isMesh, isSkinnedMesh } from "../scene-graph-guards"
+import { Vec4Texture } from "../vec4-texture"
+import type { PoiManager } from "../world/poi-manager"
+import { CharacterSlots } from "./character-slots"
 
 /** Velocity length above which the vertex shader faces along the velocity instead of the facing override. */
 const MOVING_VELOCITY_THRESHOLD = 0.01
