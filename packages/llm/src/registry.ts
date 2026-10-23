@@ -1,4 +1,9 @@
-import type { Effort, LlmProvider, Usage } from "@the-delegation/shared/llm-messages"
+import {
+  EFFORT_LEVELS,
+  type Effort,
+  type LlmProvider,
+  type Usage,
+} from "@the-delegation/shared/llm-messages"
 
 /** US dollars per million tokens. `cacheWritePer1M` is 0 where the provider does not bill cache writes. */
 export interface ModelPricing {
@@ -20,7 +25,7 @@ export interface ModelEntry {
   backupModelId?: string
 }
 
-const ALL_EFFORT_LEVELS: readonly Effort[] = ["low", "medium", "high", "xhigh", "max"]
+const ALL_EFFORT_LEVELS: readonly Effort[] = EFFORT_LEVELS
 
 /**
  * Models the gateway serves, with prices checked on 2026-10-23 against the Anthropic Claude API skill's
