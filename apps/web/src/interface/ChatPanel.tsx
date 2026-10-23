@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 import { useCoreStore } from "../integration/store/coreStore"
 import { useTeamRoster } from "../integration/store/teamStore"
 import { useUiStore } from "../integration/store/uiStore"
-import { useSceneManager } from "../simulation/SceneContext"
+import { useScene } from "../simulation/SceneContext"
 import { ChatInput } from "./ChatInput"
 import { ChatMessage } from "./ChatMessage"
 import { avatarTypeFor } from "./components/Avatar"
@@ -48,7 +48,7 @@ function ChatPanel() {
       selectedNpcIndex: state.selectedNpcIndex,
     })),
   )
-  const scene = useSceneManager()
+  const scene = useScene()
   const { system: activeTeam, byIndex } = useTeamRoster()
   const agent = selectedNpcIndex !== null ? byIndex.get(selectedNpcIndex) : undefined
   const history =

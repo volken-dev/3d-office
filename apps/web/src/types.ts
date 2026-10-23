@@ -1,4 +1,5 @@
 import type * as THREE from "three/webgpu"
+import type { OfficePoiKind } from "./simulation/world/officePoiExtras"
 
 export enum AnimationName {
   IDLE = "Idle",
@@ -20,11 +21,11 @@ export enum AnimationName {
 
 /** Stored as a float in the GPU agent buffer (.w component). */
 export enum AgentBehavior {
-  /** Position locked, velocity zero, facing follows the waypoint field (if non-zero). */
+  /** Position locked, velocity zero, facing follows the facing field (if non-zero). */
   IDLE = 0,
-  /** Moves toward the target waypoint (.x/.z of the agent buffer). */
+  /** Walking: the crowd moves it toward its destination. */
   GOTO = 1,
-  /** Position locked, velocity zero: the character is seated, treated like IDLE by the movement step. */
+  /** Position locked, velocity zero: the character is seated, held still like IDLE. */
   SEATED = 2,
 }
 
@@ -73,7 +74,9 @@ export interface CharacterStateDef {
 }
 
 export interface PoiDef {
+  /** Built by `poiIdFor` in `simulation/world/poiIds.ts`. */
   id: string
+  kind: OfficePoiKind
   /** World-space position to walk toward. */
   position: THREE.Vector3
   /** World-space quaternion for orientation. */
@@ -97,7 +100,6 @@ export interface ICharacterDriver {
   setSpeaking(index: number, isSpeaking: boolean): void
   getAgentState(index: number): AgentBehavior
   getAnimationDuration(index: number, name: AnimationName): number
-  getCPUPositions(): Float32Array | null
 }
 
 /**
@@ -106,7 +108,7 @@ export interface ICharacterDriver {
  */
 export interface IAgentDriver {
   readonly agentIndex: number
-  update(positions: Float32Array, delta: number): void
+  update(deltaSeconds: number): void
   dispose(): void
 }
 

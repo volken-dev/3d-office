@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { removeLegacyApiKey } from "./integration/llm/legacyApiKey"
+import { SceneStoreAdapter } from "./integration/SceneStoreAdapter"
 import { useCoreStore } from "./integration/store/coreStore"
 import { useUiStore } from "./integration/store/uiStore"
 import { ActionLogPanel } from "./interface/ActionLogPanel"
@@ -14,20 +15,29 @@ import { KanbanDock } from "./interface/KanbanDock"
 import { OutputReviewModal } from "./interface/OutputReviewModal"
 import SimulationView from "./interface/SimulationView"
 import { SceneContext } from "./simulation/SceneContext"
-import { SceneManager } from "./simulation/SceneManager"
 
 type DrawerPanel = "logs" | "inspector" | null
+
+/** A lost GPU device is recovered by rebuilding the scene, at most this often within the window. */
+const MAX_DEVICE_LOSS_RECOVERIES = 3
+const DEVICE_LOSS_WINDOW_MS = 60_000
 
 /**
  * The app shell. Panel visibility is layout state only, so it lives here rather than in a store.
  * Below lg the side panels live in drawers so the canvas keeps the width. The scene stays mounted
  * in design mode (hidden and paused) so it does not reload on return. Radix dialogs mark the
- * Escape that closes them as handled, so only an unhandled Escape leaves focus mode.
+ * Escape that closes them as handled, so only an unhandled Escape leaves focus mode. A lost GPU
+ * device rebuilds the scene through the same effect that creates it, so StrictMode's double mount
+ * covers recovery too; past the recovery budget the scene reports itself unavailable. The ref is
+ * cleared before disposing, so a dispose that throws on a dead context cannot block the rebuild.
  */
 export default function App() {
   const canvasRef = useRef<HTMLDivElement>(null)
-  const managerRef = useRef<SceneManager | null>(null)
-  const [sceneManager, setSceneManager] = useState<SceneManager | null>(null)
+  const sceneRef = useRef<SceneStoreAdapter | null>(null)
+  const [scene, setScene] = useState<SceneStoreAdapter | null>(null)
+  const [sceneGeneration, setSceneGeneration] = useState(0)
+  const [isSceneLost, setSceneLost] = useState(false)
+  const deviceLossTimesRef = useRef<number[]>([])
   const viewMode = useCoreStore((state) => state.viewMode)
   const [isLogOpen, setLogOpen] = useState(true)
   const [isKanbanOpen, setKanbanOpen] = useState(true)
@@ -41,20 +51,31 @@ export default function App() {
     void useUiStore.getState().checkGateway()
   }, [])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new sceneGeneration rebuilds the scene after a lost GPU device
   useEffect(() => {
-    if (canvasRef.current && !managerRef.current) {
-      const manager = new SceneManager(canvasRef.current)
-      managerRef.current = manager
-      setSceneManager(manager)
+    const onDeviceLost = () => {
+      const now = Date.now()
+      const recentLosses = deviceLossTimesRef.current.filter(
+        (lossTime) => now - lossTime < DEVICE_LOSS_WINDOW_MS,
+      )
+      recentLosses.push(now)
+      deviceLossTimesRef.current = recentLosses
+      if (recentLosses.length > MAX_DEVICE_LOSS_RECOVERIES) setSceneLost(true)
+      else setSceneGeneration((generation) => generation + 1)
+    }
+    if (canvasRef.current && !sceneRef.current) {
+      const connectedScene = new SceneStoreAdapter(canvasRef.current, onDeviceLost)
+      sceneRef.current = connectedScene
+      setScene(connectedScene)
     }
     return () => {
-      if (managerRef.current) {
-        managerRef.current.dispose()
-        managerRef.current = null
-        setSceneManager(null)
-      }
+      const connectedScene = sceneRef.current
+      if (!connectedScene) return
+      sceneRef.current = null
+      setScene(null)
+      connectedScene.dispose()
     }
-  }, [])
+  }, [sceneGeneration])
 
   useEffect(() => {
     if (!isFocusMode) return
@@ -95,7 +116,7 @@ export default function App() {
   const showChrome = !isFocusMode && !isDesign
 
   return (
-    <SceneContext.Provider value={sceneManager}>
+    <SceneContext.Provider value={scene}>
       <div className="flex h-dvh w-screen flex-col overflow-hidden bg-background">
         {!isFocusMode && <Header panels={panels} />}
 
@@ -109,6 +130,7 @@ export default function App() {
             >
               <SimulationView
                 canvasRef={canvasRef}
+                isSceneLost={isSceneLost}
                 isFocusMode={isFocusMode}
                 onFocusModeChange={setFocusMode}
               />

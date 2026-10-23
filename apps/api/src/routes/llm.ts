@@ -59,11 +59,10 @@ function toApiError(error: unknown, requestId: string | undefined): ApiHttpError
   throw error
 }
 
-// TODO(#27): require a signed-in session and enforce the per-user spend cap before public deploy (#2)
 /**
  * The LLM gateway. Validates the provider-neutral request, serves it through the router (Claude first, OpenAI
- * on outages) and returns the normalised reply. Not safe to deploy publicly until sign-in lands: CORS, the
- * rate limiter and the schema caps are the only guards.
+ * on outages) and returns the normalised reply. It is a local service with no sign-in: CORS, the rate limiter
+ * and the schema caps are the only guards, so it must not be exposed publicly.
  */
 export function createLlmRoutes(routerForEnv: RouterForEnv) {
   return new Hono<AppEnv>()

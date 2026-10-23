@@ -10,8 +10,6 @@ export const PICK_RADIUS = 0.65
 /** World-space sphere radius used for mouse-picking POIs. */
 export const POI_PICK_RADIUS = 0.4
 
-/** Path to Draco decoders (hosted in public/vendor/). */
-export const DRACO_LIB_PATH = assetUrl("vendor/draco/")
 export const OFFICE_MODEL_URL = assetUrl("models/office.glb")
 
 export const ATLAS_COLS = 2
@@ -25,11 +23,6 @@ export const SPEAKING_FRAME_DURATION = 0.12
 /** Random blink interval range [min, min+range] in seconds. */
 export const BLINK_INTERVAL_MIN = 2
 export const BLINK_INTERVAL_RANGE = 3
-
-/** Distance (world units) at which a path node is considered reached. */
-export const PATH_NODE_ARRIVAL = 0.25
-/** Zone ID used with three-pathfinding. */
-export const NAVMESH_ZONE = "level"
 
 export const SCENE_BACKGROUND_COLOR = 0xfafcfb
 /** Squared XZ distance (0.6 m) below which two characters fade so neither hides the other. */

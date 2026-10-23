@@ -46,7 +46,18 @@ describe("appearanceFor", () => {
 
 describe("modelIdsUsedBy", () => {
   test("lists each model the team uses once", () => {
-    expect(modelIdsUsedBy(team(), 4).sort()).toEqual(["human", "robot"])
-    expect(modelIdsUsedBy(team({ character: "human" }), 4)).toEqual(["human"])
+    expect(modelIdsUsedBy(team()).sort()).toEqual(["human", "robot"])
+    expect(modelIdsUsedBy(team({ character: "human" }))).toEqual(["human"])
+  })
+})
+
+describe("modelIdsUsedBy with a non-contiguous roster", () => {
+  test("finds the lead model when the lead index is beyond the character count", () => {
+    const sparse: AgenticSystem = {
+      ...team(),
+      user: { index: 5, model: "Human" },
+      leadAgent: { ...agent(7), subagents: [agent(3), agent(9)] },
+    }
+    expect(modelIdsUsedBy(sparse).sort()).toEqual(["human", "robot"])
   })
 })

@@ -45,7 +45,8 @@ interface CoreState {
   /** When the user approved (or auto-approval accepted) the final deliverable. */
   finalizedAt: number | null
   totalTokenUsage: Usage
-  agentTokenUsage: Record<number, Usage>
+  /** Only agents that have made a call have an entry. */
+  agentTokenUsage: Partial<Record<number, Usage>>
   totalEstimatedCost: number
   agentEstimatedCost: Record<number, number>
 
@@ -98,6 +99,8 @@ interface CoreState {
 
   appendAgentMessage: (agentIndex: number, message: AgentMessage) => void
 
+  /** Counts one model call against the run's budget; separate from debug logging on purpose. */
+  recordModelCall: () => void
   recordIntentAttempt: (key: string, error?: string) => void
   clearIntentAttempts: (key: string) => void
   pauseAutonomy: (pause: AutonomyPause) => void
@@ -311,7 +314,6 @@ export const useCoreStore = create<CoreState>()((set) => ({
         { ...entry, id: `debug_${uniqueId()}`, timestamp: Date.now(), phase: "request" },
         MAX_DEBUG_LOG,
       ),
-      llmCallCount: state.llmCallCount + 1,
     })),
 
   addResponseLog: (entry) =>
@@ -352,6 +354,8 @@ export const useCoreStore = create<CoreState>()((set) => ({
         ),
       },
     })),
+
+  recordModelCall: () => set((state) => ({ llmCallCount: state.llmCallCount + 1 })),
 
   recordIntentAttempt: (key, error) =>
     set((state) => ({

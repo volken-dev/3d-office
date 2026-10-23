@@ -1,31 +1,22 @@
+import { z } from "zod"
 import { isLeadAgent } from "../../team"
-import { fail, readString, type ToolSpec } from "./types"
+import { defineTool, requiredText } from "./toolArgs"
+import { fail } from "./types"
 
-export const setUserBrief: ToolSpec<{ brief: string }> = {
-  definition: {
-    name: "set_user_brief",
-    description: "Start project with brief.",
-    inputSchema: {
-      type: "object",
-      properties: { brief: { type: "string" } },
-      required: ["brief"],
-      additionalProperties: false,
-    },
-  },
+export const setUserBrief = defineTool({
+  name: "set_user_brief",
+  description: "Start project with brief.",
+  args: z.strictObject({ brief: requiredText(4_000) }),
 
   isOffered: (agent, team, phase) => phase === "idle" && isLeadAgent(team, agent.index),
 
-  parseArgs(raw) {
-    const brief = readString(raw, "brief", 4_000)
-    return !brief.ok ? brief : { ok: true, value: { brief: brief.value } }
-  },
-
-  run({ agent, team, project }, { brief }) {
+  run({ agent, team, project, events }, { brief }) {
     if (!isLeadAgent(team, agent.index)) return fail("Only the lead agent can set the brief.")
     if (project.snapshot().phase !== "idle") return fail("The project has already started.")
 
     project.startProject(brief)
     project.logAction({ agentIndex: agent.index, action: "defined project brief" })
+    events.briefSet(agent.index)
     return { ok: true, summary: "Brief set. The project has started." }
   },
-}
+})

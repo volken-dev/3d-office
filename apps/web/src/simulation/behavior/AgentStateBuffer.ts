@@ -6,9 +6,9 @@ import { Vec4Texture } from "../Vec4Texture"
  * Each instance maps to two vec4 records (8 floats total), at record 2 * index and 2 * index + 1.
  *
  * Record 0 (vec4):
- *   .x = waypoint X  (used when mode == GOTO)
+ *   .x = facing X    (faced whenever the character is not moving fast enough to face its velocity)
  *   .y = animation   (animation index to play)
- *   .z = waypoint Z  (used when mode == GOTO)
+ *   .z = facing Z
  *   .w = mode        (0 = IDLE, 1 = GOTO, 2 = SEATED)
  *
  * Record 1 (vec4):
@@ -17,8 +17,8 @@ import { Vec4Texture } from "../Vec4Texture"
  *   .z = alpha       (1.0 = opaque, <1.0 = transparent)
  *   .w = (unused)
  *
- * The CPU movement step reads the mode and waypoint; the vertex shader reads the animation,
- * the facing override and the alpha.
+ * The vertex shader reads the animation, the facing override and the alpha; the mode tells the rest
+ * of the scene whether a character is walking or seated.
  */
 export class AgentStateBuffer {
   /** Raw Float32Array (8 floats per instance), shared with `texture`. */
@@ -65,21 +65,7 @@ export class AgentStateBuffer {
     return this.array[index * 8 + 6]
   }
 
-  public getWaypointX(index: number): number {
-    return this.array[index * 8 + 0]
-  }
-
-  public getWaypointZ(index: number): number {
-    return this.array[index * 8 + 2]
-  }
-
-  public setWaypoint(index: number, x: number, z: number): void {
-    this.array[index * 8 + 0] = x
-    this.array[index * 8 + 2] = z
-    this.texture.markChanged()
-  }
-
-  /** Used when mode is IDLE to force a specific facing direction. */
+  /** The direction the character faces whenever it is not walking fast enough to face its velocity. */
   public setFacing(index: number, x: number, z: number): void {
     this.array[index * 8 + 0] = x
     this.array[index * 8 + 2] = z

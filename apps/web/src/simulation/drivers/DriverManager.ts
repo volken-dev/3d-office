@@ -41,9 +41,9 @@ export class DriverManager {
   }
 
   /** Call once per frame, after the movement step. */
-  public update(positions: Float32Array, deltaSeconds: number): void {
+  public update(deltaSeconds: number): void {
     for (const driver of this.drivers.values()) {
-      driver.update(positions, deltaSeconds)
+      driver.update(deltaSeconds)
     }
   }
 

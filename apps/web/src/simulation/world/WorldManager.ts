@@ -4,6 +4,11 @@ import type { NavMeshManager } from "../pathfinding/NavMeshManager"
 import { isMesh } from "../sceneGraphGuards"
 import type { PoiManager } from "./PoiManager"
 
+/** The walkable mesh in the office GLB is the one whose name contains "navmesh", in any case. */
+export function isNavMeshName(name: string): boolean {
+  return name.toLowerCase().includes("navmesh")
+}
+
 /** Loads the office GLB: hides and registers the navmesh, converts materials, and reads the POIs. */
 export class WorldManager {
   private office: THREE.Group | null = null
@@ -28,9 +33,7 @@ export class WorldManager {
 
     this.office.traverse((mesh) => {
       if (!isMesh(mesh)) return
-      const name = mesh.name.toLowerCase()
-
-      if (name.includes("navmesh")) {
+      if (isNavMeshName(mesh.name)) {
         this.navMesh.loadFromGeometry(mesh.geometry)
         mesh.visible = false
         this.navMeshes.push(mesh)
@@ -42,7 +45,7 @@ export class WorldManager {
       const previousMaterial = mesh.material
       if (!(previousMaterial instanceof THREE.MeshStandardMaterial)) return
 
-      const isThemed = name.startsWith("colored")
+      const isThemed = mesh.name.toLowerCase().startsWith("colored")
       const material = new THREE.MeshStandardNodeMaterial({
         color: isThemed ? color : previousMaterial.color,
         map: previousMaterial.map,

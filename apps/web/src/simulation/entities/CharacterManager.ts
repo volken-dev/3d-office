@@ -1,4 +1,4 @@
-import { type AgenticSystem, getAllAgents } from "@the-delegation/agents/team"
+import type { AgenticSystem } from "@the-delegation/agents/team"
 import type { GLTF } from "three/addons/loaders/GLTFLoader.js"
 import {
   atan,
@@ -21,10 +21,10 @@ import {
   vec4,
 } from "three/tsl"
 import * as THREE from "three/webgpu"
-import { getAllCharacters } from "../../data/agents"
+import { getAgentByIndex } from "../../data/agents"
 import { AgentBehavior, AnimationName, type ExpressionKey, type PoiDef } from "../../types"
 import { AgentStateBuffer } from "../behavior/AgentStateBuffer"
-import { MOVEMENT_STRIDE, stepCharacterMovement } from "../behavior/characterMovement"
+import { MOVEMENT_STRIDE, type MovementBuffers } from "../behavior/characterMovement"
 import { ExpressionBuffer } from "../behavior/ExpressionBuffer"
 import { appearanceFor } from "../characters/characterAppearance"
 import {
@@ -34,9 +34,11 @@ import {
   type PartRule,
   partRuleFor,
 } from "../characters/characterModels"
+import { ALPHA_LERP_RATE, OVERLAP_ALPHA, OVERLAP_DIST_SQ } from "../constants"
 import { isMesh, isSkinnedMesh } from "../sceneGraphGuards"
 import { Vec4Texture } from "../Vec4Texture"
 import type { PoiManager } from "../world/PoiManager"
+import { CharacterSlots } from "./CharacterSlots"
 
 /** Velocity length above which the vertex shader faces along the velocity instead of the facing override. */
 const MOVING_VELOCITY_THRESHOLD = 0.01
@@ -56,11 +58,6 @@ const ACCESSORY_IDS: Record<AccessoryId, number> = { headphones: 1, cap: 2 }
 /** Surface of every part of a "matte" model. */
 const MATTE_ROUGHNESS = 1
 const MATTE_METALNESS = 0.25
-
-/** Characters on screen: the user plus every agent in the team. */
-function characterCount(team: AgenticSystem): number {
-  return getAllAgents(team).length + 1
-}
 
 /** GLTFLoader only produces standard, physical (a standard subclass) and basic (unlit) materials. */
 function colorMapOf(material: THREE.Material | THREE.Material[]): THREE.Texture | null {
@@ -124,10 +121,13 @@ interface CharacterRig {
   clips: Partial<Record<AnimationName, ClipTiming>>
 }
 
+/** The parts of a loaded GLB a rig is baked from. */
+type CharacterGltf = Pick<GLTF, "scene" | "animations">
+
 /** A model definition with its downloaded GLB, ready to bake. */
 export interface LoadedCharacterModel {
   model: CharacterModelDef
-  gltf: GLTF
+  gltf: CharacterGltf
 }
 
 /** Per-instance position and velocity as the vertex shader reads them. */
@@ -146,15 +146,17 @@ interface MeshAttributes extends MovementTextures {
 
 /**
  * Renders every character as GPU-instanced skinned meshes. Animations are baked to bone-matrix
- * textures at load and sampled in the vertex shader. Walking is stepped on the CPU each frame and
- * uploaded to per-instance position and velocity textures, so CPU positions are always current.
+ * textures at load and sampled in the vertex shader. Walking is stepped on the CPU each frame
+ * (`applyMovement`) and uploaded to per-instance position and velocity textures, so CPU positions
+ * are always current.
  * Per-instance data the shaders index lives in textures (`Vec4Texture`) rather than vertex
  * attributes, because the parts already use WebGPU's default limit of eight vertex buffers, and
  * rather than storage buffers, which the WebGL2 fallback cannot read.
  */
 export class CharacterManager {
   private team: AgenticSystem
-  private instanceCount: number
+  /** Which instance slot each character (the user and every agent) is drawn in. */
+  private slots: CharacterSlots
   private poiManager: PoiManager | null = null
 
   /** Per instance (x, y, z, w); the source of truth for every character's position. */
@@ -168,7 +170,7 @@ export class CharacterManager {
   /** Per instance: index of its rig in `activeRigs`, compared in each rig's shaders. */
   private rigSlotAttribute: THREE.InstancedBufferAttribute | null = null
 
-  /** CPU+GPU waypoint and behaviour state per instance. */
+  /** CPU+GPU facing and behaviour state per instance. */
   private agentStateBuffer: AgentStateBuffer | null = null
 
   /** CPU+GPU eye and mouth atlas offsets per instance. */
@@ -183,7 +185,7 @@ export class CharacterManager {
   private readonly rigs = new Map<string, CharacterRig>()
   /** The rigs the current team uses, in slot order; only these have instanced meshes. */
   private activeRigs: CharacterRig[] = []
-  /** The rig each character is drawn with, by character index. */
+  /** The rig each character is drawn with, by slot. */
   private instanceRigs: CharacterRig[] = []
   /** Model ids the instanced meshes were built for, to know when a team change needs a rebuild. */
   private builtRigKey = ""
@@ -197,7 +199,16 @@ export class CharacterManager {
     team: AgenticSystem,
   ) {
     this.team = team
-    this.instanceCount = characterCount(team)
+    this.slots = CharacterSlots.forTeam(team)
+  }
+
+  private get instanceCount(): number {
+    return this.slots.count
+  }
+
+  /** The slot an agent's per-instance data lives in, or null when it has no character. */
+  private slotOf(agentIndex: number): number | null {
+    return this.slots.slotOf(agentIndex)
   }
 
   public setPoiManager(poiManager: PoiManager) {
@@ -228,7 +239,7 @@ export class CharacterManager {
    * and records each clip's duration per rig. Throws if the model has no meshes or no animations; a missing clip
    * falls back to idle, then to the first clip.
    */
-  private buildRig(model: CharacterModelDef, gltf: GLTF): CharacterRig {
+  private buildRig(model: CharacterModelDef, gltf: CharacterGltf): CharacterRig {
     const root = gltf.scene
 
     const skinnedMeshes: THREE.SkinnedMesh[] = []
@@ -320,12 +331,12 @@ export class CharacterManager {
   private assignRigs() {
     this.instanceRigs = []
     const active: CharacterRig[] = []
-    for (let characterIndex = 0; characterIndex < this.instanceCount; characterIndex++) {
-      const rig = this.rigFor(appearanceFor(this.team, characterIndex).modelId)
-      if (!rig) continue
-      this.instanceRigs[characterIndex] = rig
+    this.slots.agentIndices.forEach((agentIndex, slot) => {
+      const rig = this.rigFor(appearanceFor(this.team, agentIndex).modelId)
+      if (!rig) return
+      this.instanceRigs[slot] = rig
       if (!active.includes(rig)) active.push(rig)
-    }
+    })
     this.activeRigs = active
   }
 
@@ -334,19 +345,17 @@ export class CharacterManager {
   }
 
   /**
-   * Switches the characters to another team. When the character count and the set of models in use are
+   * Switches the characters to another team and rebuilds the slot mapping from its roster, so the
+   * slots stay dense after an agent is removed. When the character count and the set of models in use are
    * unchanged, colours, accessories and models are rewritten in place, so no GPU resources or pipelines are
    * rebuilt. Either way every character is reset to its initial spawn state. Load any new models with
    * `addModels` first; a character whose model is missing is drawn with the default model.
    */
   public setTeam(team: AgenticSystem) {
     this.team = team
-    const count = characterCount(team)
-    if (!this.isLoaded) {
-      this.instanceCount = count
-      return
-    }
-    this.instanceCount = count
+    this.slots = CharacterSlots.forTeam(team)
+    if (!this.isLoaded) return
+    const count = this.instanceCount
     this.assignRigs()
     if (count !== this.positionTexture?.recordCount || this.activeRigKey() !== this.builtRigKey) {
       this.cleanupInstances()
@@ -357,20 +366,21 @@ export class CharacterManager {
     this.writeInitialState()
   }
 
-  /**
-   * Advances shader time, blinking and speaking, and steps every walker one frame, then uploads
-   * the new positions and velocities for this frame's render.
-   */
+  /** Advances shader time, blinking and speaking. */
   public update(deltaSeconds: number) {
     this.currentTime += deltaSeconds
     this.timeUniform.value = this.currentTime
     this.expressionBuffer?.update(deltaSeconds)
+  }
 
-    const { positions, velocities, agentStateBuffer, positionTexture, velocityTexture } = this
-    if (!positions || !velocities || !agentStateBuffer || !positionTexture || !velocityTexture) {
-      return
-    }
-    stepCharacterMovement(positions, velocities, agentStateBuffer, this.instanceCount, deltaSeconds)
+  /**
+   * Runs one movement step over every character's position and velocity, addressed by slot, then
+   * uploads both for this frame's render.
+   */
+  public applyMovement(step: (buffers: MovementBuffers) => void): void {
+    const { positions, velocities, positionTexture, velocityTexture } = this
+    if (!positions || !velocities || !positionTexture || !velocityTexture) return
+    step({ positions, velocities, slotOf: (agentIndex) => this.slotOf(agentIndex) })
     positionTexture.markChanged()
     velocityTexture.markChanged()
   }
@@ -462,50 +472,48 @@ export class CharacterManager {
 
     const scratchColor = new THREE.Color()
 
-    const spawnPois = this.poiManager?.getFreePoisByPrefix("spawn") || []
+    const spawnPois = this.poiManager?.getFreePoisOfKind("spawn") ?? []
     let spawnIndex = 0
 
-    const spawnPoiByCharacter: (PoiDef | null)[] = []
+    const spawnPoiBySlot: (PoiDef | null)[] = []
 
     const system = this.team
-    const allCharacters = getAllCharacters(system)
 
-    for (let characterIndex = 0; characterIndex < this.instanceCount; characterIndex++) {
-      const character =
-        allCharacters.find((candidate) => candidate.index === characterIndex) || system.leadAgent
+    this.slots.agentIndices.forEach((agentIndex, slot) => {
+      const character = getAgentByIndex(system, agentIndex) ?? system.leadAgent
       scratchColor.set(character.color)
 
-      if (characterIndex === system.user.index) {
-        positions[characterIndex * 4 + 0] = 0
-        positions[characterIndex * 4 + 2] = 0
-        spawnPoiByCharacter[characterIndex] = null
+      if (agentIndex === system.user.index) {
+        positions[slot * 4 + 0] = 0
+        positions[slot * 4 + 2] = 0
+        spawnPoiBySlot[slot] = null
       } else {
         const poi = spawnPois[spawnIndex % spawnPois.length]
         if (poi) {
-          this.poiManager?.occupy(poi.id, characterIndex)
-          positions[characterIndex * 4 + 0] = poi.position.x
-          positions[characterIndex * 4 + 2] = poi.position.z
+          this.poiManager?.occupy(poi.id, agentIndex)
+          positions[slot * 4 + 0] = poi.position.x
+          positions[slot * 4 + 2] = poi.position.z
           spawnIndex++
-          spawnPoiByCharacter[characterIndex] = poi
+          spawnPoiBySlot[slot] = poi
         } else {
-          positions[characterIndex * 4 + 0] = (Math.random() - 0.5) * SPAWN_RADIUS * 2
-          positions[characterIndex * 4 + 2] = (Math.random() - 0.5) * SPAWN_RADIUS * 2
-          spawnPoiByCharacter[characterIndex] = null
+          positions[slot * 4 + 0] = (Math.random() - 0.5) * SPAWN_RADIUS * 2
+          positions[slot * 4 + 2] = (Math.random() - 0.5) * SPAWN_RADIUS * 2
+          spawnPoiBySlot[slot] = null
         }
-        positions[characterIndex * 4 + 3] = 1
-        velocities[characterIndex * 4 + 0] = (Math.random() - 0.5) * 0.1
-        velocities[characterIndex * 4 + 2] = (Math.random() - 0.5) * 0.1
+        positions[slot * 4 + 3] = 1
+        velocities[slot * 4 + 0] = (Math.random() - 0.5) * 0.1
+        velocities[slot * 4 + 2] = (Math.random() - 0.5) * 0.1
       }
 
-      colors[characterIndex * 3 + 0] = scratchColor.r
-      colors[characterIndex * 3 + 1] = scratchColor.g
-      colors[characterIndex * 3 + 2] = scratchColor.b
+      colors[slot * 3 + 0] = scratchColor.r
+      colors[slot * 3 + 1] = scratchColor.g
+      colors[slot * 3 + 2] = scratchColor.b
 
-      const { accessory } = appearanceFor(system, characterIndex)
-      accessories[characterIndex] = accessory ? ACCESSORY_IDS[accessory] : ACCESSORY_NONE
-      const rig = this.instanceRigs[characterIndex]
-      rigSlots[characterIndex] = rig ? this.activeRigs.indexOf(rig) : -1
-    }
+      const { accessory } = appearanceFor(system, agentIndex)
+      accessories[slot] = accessory ? ACCESSORY_IDS[accessory] : ACCESSORY_NONE
+      const rig = this.instanceRigs[slot]
+      rigSlots[slot] = rig ? this.activeRigs.indexOf(rig) : -1
+    })
 
     positionTexture.markChanged()
     velocityTexture.markChanged()
@@ -513,26 +521,27 @@ export class CharacterManager {
     accessoryAttribute.needsUpdate = true
     rigSlotAttribute.needsUpdate = true
 
-    for (let characterIndex = 0; characterIndex < this.instanceCount; characterIndex++) {
-      agentStateBuffer.setAlpha(characterIndex, 1)
-      this.setPhysicsMode(characterIndex, AgentBehavior.IDLE)
+    for (let slot = 0; slot < this.instanceCount; slot++) {
+      agentStateBuffer.setAlpha(slot, 1)
+      agentStateBuffer.setState(slot, AgentBehavior.IDLE)
 
-      const idleClip = this.instanceRigs[characterIndex]?.clips[AnimationName.IDLE]
+      const idleClip = this.instanceRigs[slot]?.clips[AnimationName.IDLE]
       if (idleClip) {
         agentStateBuffer.setAnimation(
-          characterIndex,
+          slot,
           idleClip.index,
           true,
           -Math.random() * IDLE_DESYNC_SECONDS,
         )
       }
 
-      const poi = spawnPoiByCharacter[characterIndex]
-      if (poi && (poi.id.includes("spawn") || poi.id.includes("sit"))) {
-        this.setOrientation(characterIndex, poi.quaternion)
+      const poi = spawnPoiBySlot[slot]
+      if (poi) {
+        const forward = this.forwardOf(poi.quaternion)
+        agentStateBuffer.setFacing(slot, forward.x, forward.z)
       }
-      expressionBuffer.setSpeaking(characterIndex, false)
-      expressionBuffer.setExpression(characterIndex, "idle")
+      expressionBuffer.setSpeaking(slot, false)
+      expressionBuffer.setExpression(slot, "idle")
     }
   }
 
@@ -787,87 +796,114 @@ export class CharacterManager {
     }
   }
 
-  public getCount() {
-    return this.instanceCount
+  /** Agent indices of every character, in slot order. */
+  public getAgentIndices(): readonly number[] {
+    return this.slots.agentIndices
   }
 
-  /** Per-instance waypoint, behavior mode, animation and alpha. */
-  public getAgentStateBuffer(): AgentStateBuffer | null {
-    return this.agentStateBuffer
-  }
-
-  /** Every character's position (MOVEMENT_STRIDE floats each), updated in place every frame. */
-  public getCPUPositions(): Float32Array | null {
-    return this.positions
-  }
-
-  /** Writes a character's world position into `out`. Returns false if the index is unknown. */
-  public getCPUPosition(index: number, out: THREE.Vector3): boolean {
-    if (!this.positions || index < 0 || index >= this.instanceCount) return false
-    const offset = index * MOVEMENT_STRIDE
+  /** Writes a character's world position into `out`. Returns false if the agent has no character. */
+  public getCPUPosition(agentIndex: number, out: THREE.Vector3): boolean {
+    const slot = this.slotOf(agentIndex)
+    if (!this.positions || slot === null) return false
+    const offset = slot * MOVEMENT_STRIDE
     out.set(this.positions[offset], this.positions[offset + 1], this.positions[offset + 2])
     return true
   }
 
-  public setPhysicsMode(index: number, mode: AgentBehavior) {
-    if (!this.agentStateBuffer || index < 0 || index >= this.instanceCount) return
-    this.agentStateBuffer.setState(index, mode)
+  public setPhysicsMode(agentIndex: number, mode: AgentBehavior) {
+    const slot = this.slotOf(agentIndex)
+    if (!this.agentStateBuffer || slot === null) return
+    this.agentStateBuffer.setState(slot, mode)
   }
 
   /** Teleports a character to an exact world position, uploaded with this frame's render. */
-  public setPosition(index: number, position: THREE.Vector3): void {
-    if (!this.positions || !this.positionTexture || index < 0 || index >= this.instanceCount) {
-      return
-    }
-    const offset = index * MOVEMENT_STRIDE
+  public setPosition(agentIndex: number, position: THREE.Vector3): void {
+    const slot = this.slotOf(agentIndex)
+    if (!this.positions || !this.positionTexture || slot === null) return
+    const offset = slot * MOVEMENT_STRIDE
     this.positions[offset] = position.x
     this.positions[offset + 1] = position.y
     this.positions[offset + 2] = position.z
     this.positionTexture.markChanged()
   }
 
-  /** Force a specific facing direction when IDLE. */
-  public setFacing(index: number, x: number, z: number) {
-    if (!this.agentStateBuffer || index < 0 || index >= this.instanceCount) return
-    this.agentStateBuffer.setFacing(index, x, z)
+  /** The direction a character faces whenever it is not walking fast enough to face its velocity. */
+  public setFacing(agentIndex: number, x: number, z: number) {
+    const slot = this.slotOf(agentIndex)
+    if (!this.agentStateBuffer || slot === null) return
+    this.agentStateBuffer.setFacing(slot, x, z)
   }
 
   /** Force a specific orientation based on a quaternion. */
-  public setOrientation(index: number, quaternion: THREE.Quaternion) {
-    const forward = this.scratchForward.set(0, 0, 1).applyQuaternion(quaternion)
-    this.setFacing(index, forward.x, forward.z)
+  public setOrientation(agentIndex: number, quaternion: THREE.Quaternion) {
+    const forward = this.forwardOf(quaternion)
+    this.setFacing(agentIndex, forward.x, forward.z)
   }
 
-  public getAgentState(index: number): AgentBehavior {
-    if (!this.agentStateBuffer || index < 0 || index >= this.instanceCount)
-      return AgentBehavior.IDLE
-    return this.agentStateBuffer.getState(index)
+  private forwardOf(quaternion: THREE.Quaternion): THREE.Vector3 {
+    return this.scratchForward.set(0, 0, 1).applyQuaternion(quaternion)
   }
 
-  public setAnimation(index: number, name: AnimationName, loop: boolean = true) {
-    if (this.agentStateBuffer && index >= 0 && index < this.instanceCount) {
-      const clip = this.instanceRigs[index]?.clips[name]
-      if (clip) {
-        this.agentStateBuffer.setAnimation(index, clip.index, loop, this.currentTime)
-      }
-    }
+  public getAgentState(agentIndex: number): AgentBehavior {
+    const slot = this.slotOf(agentIndex)
+    if (!this.agentStateBuffer || slot === null) return AgentBehavior.IDLE
+    return this.agentStateBuffer.getState(slot)
+  }
+
+  public setAnimation(agentIndex: number, name: AnimationName, loop: boolean = true) {
+    const slot = this.slotOf(agentIndex)
+    if (!this.agentStateBuffer || slot === null) return
+    const clip = this.instanceRigs[slot]?.clips[name]
+    if (clip) this.agentStateBuffer.setAnimation(slot, clip.index, loop, this.currentTime)
   }
 
   /** The clip's duration in seconds for this character's model; 1.0 if the clip is not found. */
-  public getAnimationDuration(index: number, name: AnimationName): number {
-    return this.instanceRigs[index]?.clips[name]?.duration ?? 1.0
+  public getAnimationDuration(agentIndex: number, name: AnimationName): number {
+    const slot = this.slotOf(agentIndex)
+    if (slot === null) return 1.0
+    return this.instanceRigs[slot]?.clips[name]?.duration ?? 1.0
   }
 
-  public setExpression(index: number, name: ExpressionKey) {
-    if (this.expressionBuffer) {
-      this.expressionBuffer.setExpression(index, name)
-    }
+  public setExpression(agentIndex: number, name: ExpressionKey) {
+    const slot = this.slotOf(agentIndex)
+    if (this.expressionBuffer && slot !== null) this.expressionBuffer.setExpression(slot, name)
   }
 
   /** Mouth animation only; callers choose the talk/listen body animation. */
-  public setSpeaking(index: number, isSpeaking: boolean) {
-    if (this.expressionBuffer) {
-      this.expressionBuffer.setSpeaking(index, isSpeaking)
+  public setSpeaking(agentIndex: number, isSpeaking: boolean) {
+    const slot = this.slotOf(agentIndex)
+    if (this.expressionBuffer && slot !== null) this.expressionBuffer.setSpeaking(slot, isSpeaking)
+  }
+
+  /** Fades characters that overlap so neither hides the other. */
+  public updateOverlapFading(deltaSeconds: number) {
+    const { positions, agentStateBuffer } = this
+    if (!positions || !agentStateBuffer) return
+    const count = this.instanceCount
+    for (let slot = 0; slot < count; slot++) {
+      let overlap = false
+      for (let otherSlot = 0; otherSlot < count; otherSlot++) {
+        if (slot === otherSlot) continue
+        if (
+          (positions[slot * 4] - positions[otherSlot * 4]) ** 2 +
+            (positions[slot * 4 + 2] - positions[otherSlot * 4 + 2]) ** 2 <
+          OVERLAP_DIST_SQ
+        ) {
+          overlap = true
+          break
+        }
+      }
+      const currentAlpha = agentStateBuffer.getAlpha(slot)
+      const targetAlpha = overlap ? OVERLAP_ALPHA : 1.0
+      if (Math.abs(currentAlpha - targetAlpha) > 0.01)
+        agentStateBuffer.setAlpha(
+          slot,
+          THREE.MathUtils.lerp(
+            currentAlpha,
+            targetAlpha,
+            Math.min(deltaSeconds * ALPHA_LERP_RATE, 1.0),
+          ),
+        )
     }
   }
 
