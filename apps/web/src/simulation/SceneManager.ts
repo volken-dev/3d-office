@@ -20,6 +20,7 @@ import { CharacterManager } from "./entities/CharacterManager"
 import { InputManager } from "./input/InputManager"
 import { createSceneLoader } from "./loaders"
 import { NavMeshManager } from "./pathfinding/NavMeshManager"
+import { loadNavigationRuntime } from "./pathfinding/navigationRuntime"
 import { PoiManager } from "./world/PoiManager"
 import { BOARDROOM_POI_ID, deskPoiId, spawnPoiId } from "./world/poiIds"
 import { WorldManager } from "./world/WorldManager"
@@ -106,15 +107,17 @@ export class SceneManager {
   }
 
   /**
-   * Renderer init and every model download/decode overlap; only the setup after them is ordered.
+   * Renderer init, the navigation runtime and every model download/decode overlap; only the setup
+   * after them is ordered.
    * The world is set up before the characters because character spawns need its POIs. Only the
    * character models this team uses are loaded, plus the default model every missing one falls back to.
    * Shaders are compiled before the first frame, so `ready` resolves on a scene that renders smoothly.
    */
   private async init() {
     const loader = createSceneLoader()
-    const [, officeGltf, characterModels] = await Promise.all([
+    const [, , officeGltf, characterModels] = await Promise.all([
       this.engine.init(),
+      loadNavigationRuntime(),
       loader.load(OFFICE_MODEL_URL),
       loadCharacterModels(loader, this.characterModelsFor(this.team)),
     ])
@@ -404,9 +407,9 @@ export class SceneManager {
   }
 
   /**
-   * One frame. Skipped in design mode, where the canvas is hidden behind the editor. Characters
-   * step on the CPU, then paths, drivers and overlap fading react to this frame's positions
-   * before the render.
+   * One frame. Skipped in design mode, where the canvas is hidden behind the editor. The crowd
+   * moves the characters on the CPU, then drivers and overlap fading react to this frame's
+   * positions before the render.
    */
   private animate = () => {
     this.engine.timer.update()
@@ -418,7 +421,6 @@ export class SceneManager {
     this.stage.update()
     if (controller) {
       controller.update(deltaSeconds)
-      controller.updatePaths()
       this.driverManager?.update(deltaSeconds)
       controller.updateOverlapFading(deltaSeconds)
     }
@@ -472,6 +474,8 @@ export class SceneManager {
     this.inputManager = null
     this.resizeObserver.disconnect()
     this.driverManager?.dispose()
+    this.controller?.dispose()
+    this.navMesh.dispose()
     this.stage.dispose()
     this.characterManager.dispose()
     this.worldManager.dispose()
