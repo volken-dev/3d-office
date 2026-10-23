@@ -32,9 +32,9 @@ export interface PartRule {
 export type SurfaceStyle = "matte" | "authored"
 
 /**
- * A character model the scene can draw. To add a character, add its GLB to public/models and an entry here:
- * every model must be skinned to a skeleton with the shared clip names (AnimationName); missing clips fall back
- * to idle. Models are loaded only when a team uses them.
+ * A character model the scene can draw. To add a character, export its GLB to assets-src/models, run
+ * `bun run assets` and add an entry here: every model must be skinned to a skeleton with the shared clip names
+ * (AnimationName); missing clips fall back to idle. Models are loaded only when a team uses them.
  */
 export interface CharacterModelDef {
   id: string

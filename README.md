@@ -41,6 +41,22 @@ This is a [Turborepo](https://turborepo.com) monorepo using Bun workspaces:
 
 Common tasks run from the repo root through Turborepo: `bun dev`, `bun run build`, `bun run lint`, `bun run typecheck`, `bun run test`. Target one package with `bunx turbo run <task> --filter=web`.
 
+### 3D models
+
+Exported models are sources, not what the browser loads. They live in `apps/web/assets-src/models/`; `bun run assets` (in `apps/web`) builds the optimised copies in `apps/web/public/models/`, which are committed alongside them.
+
+1. Export from Blender with **File > Export > glTF 2.0**:
+   - Format: **glTF Binary (.glb)**.
+   - Include: the objects you want, plus **Custom Properties** if the model uses extras.
+   - Mesh: **Apply Modifiers**, **UVs** and **Normals** on; tangents and vertex colours off. **Compression off**: the pipeline compresses (it can still read Draco-compressed files).
+   - Material: **Export**; images **Automatic** (PNG or JPEG).
+   - Animation: **Skinning** on, shape keys off, actions exported as clips named after `AnimationName` (`Idle`, `Walk`, `Sit_Work`, ...). Missing clips fall back to `Idle`.
+   - Office naming the scene relies on: the walkable mesh is named `navmesh`, team-coloured meshes start with `colored`, points of interest are empties named `poi-<state>-<id>` (for example `poi-sit_work-desk_02`).
+2. Save the `.glb` to `apps/web/assets-src/models/`. A new character also needs an entry in `apps/web/src/simulation/characters/characterModels.ts`.
+3. Run `bun run assets` in `apps/web` and commit both the source and the output.
+
+The script ([`apps/web/scripts/optimize-models.ts`](apps/web/scripts/optimize-models.ts), using [glTF Transform](https://gltf-transform.dev)) deduplicates, prunes unreferenced data (keeping names, empty POI nodes and extras), welds identical vertices, resamples animations, quantizes normals and skin weights, and applies Meshopt compression (`EXT_meshopt_compression`, decoded in the browser by three's `MeshoptDecoder`). Positions and UVs stay full precision so the scene looks exactly as exported. It always starts from the sources, so it is safe to rerun: unchanged sources give byte-identical output.
+
 ## Backend
 
 `apps/api` is the [Hono](https://hono.dev) LLM gateway. The web app sends every model call here; the gateway holds the provider keys, so the browser never sees one. Agents run on Claude, and the gateway fails over to OpenAI when Anthropic is rate limited, overloaded or down.
