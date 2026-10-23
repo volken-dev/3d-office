@@ -77,7 +77,7 @@ bun dev                                     # web on :3000, gateway on :8787
 ### Embodied Simulation
 
 - **Hybrid GPU/CPU Architecture:** A high-performance **3D simulation** built with **Three.js WebGPU** where autonomous LLM-powered characters collaborate in a shared physical workspace.
-- **Intelligent Pathfinding:** NPCs utilize a NavMesh to navigate the office, finding and claiming specific "Points of Interest" (desks, seats, computers) based on their current task. Pathfinding is powered by [three-pathfinding](https://github.com/donmccurdy/three-pathfinding).
+- **Intelligent Pathfinding:** NPCs utilize a NavMesh to navigate the office, finding and claiming specific "Points of Interest" (desks, seats, computers) based on their current task. Navigation is powered by [recast-navigation-js](https://github.com/isaac-mason/recast-navigation-js): characters walk through a Detour crowd, so they steer around each other.
 - **Dynamic State Machine:** Characters transition naturally between walking, sitting, working, and talking, with sync'ed 3D speech bubbles and expressions.
 
 ### Interactive UI

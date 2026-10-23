@@ -16,6 +16,8 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@recast-navigation/core": "0.43.1",
+    "@recast-navigation/three": "0.43.1",
     "@the-delegation/agents": "workspace:*",
     "@the-delegation/llm": "workspace:*",
     "@the-delegation/shared": "workspace:*",
@@ -33,7 +35,6 @@
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
     "three": "^0.183.0",
-    "three-pathfinding": "^1.3.0",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

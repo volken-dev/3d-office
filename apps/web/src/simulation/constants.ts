@@ -26,11 +26,6 @@ export const SPEAKING_FRAME_DURATION = 0.12
 export const BLINK_INTERVAL_MIN = 2
 export const BLINK_INTERVAL_RANGE = 3
 
-/** Distance (world units) at which a path node is considered reached. */
-export const PATH_NODE_ARRIVAL = 0.25
-/** Zone ID used with three-pathfinding. */
-export const NAVMESH_ZONE = "level"
-
 export const SCENE_BACKGROUND_COLOR = 0xfafcfb
 /** Squared XZ distance (0.6 m) below which two characters fade so neither hides the other. */
 export const OVERLAP_DIST_SQ = 0.36

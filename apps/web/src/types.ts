@@ -20,11 +20,11 @@ export enum AnimationName {
 
 /** Stored as a float in the GPU agent buffer (.w component). */
 export enum AgentBehavior {
-  /** Position locked, velocity zero, facing follows the waypoint field (if non-zero). */
+  /** Position locked, velocity zero, facing follows the facing field (if non-zero). */
   IDLE = 0,
-  /** Moves toward the target waypoint (.x/.z of the agent buffer). */
+  /** Walking: the crowd moves it toward its destination. */
   GOTO = 1,
-  /** Position locked, velocity zero: the character is seated, treated like IDLE by the movement step. */
+  /** Position locked, velocity zero: the character is seated, held still like IDLE. */
   SEATED = 2,
 }
 

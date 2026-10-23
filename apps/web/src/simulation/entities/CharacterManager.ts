@@ -24,7 +24,7 @@ import * as THREE from "three/webgpu"
 import { getAllCharacters } from "../../data/agents"
 import { AgentBehavior, AnimationName, type ExpressionKey, type PoiDef } from "../../types"
 import { AgentStateBuffer } from "../behavior/AgentStateBuffer"
-import { MOVEMENT_STRIDE, stepCharacterMovement } from "../behavior/characterMovement"
+import { MOVEMENT_STRIDE } from "../behavior/characterMovement"
 import { ExpressionBuffer } from "../behavior/ExpressionBuffer"
 import { appearanceFor } from "../characters/characterAppearance"
 import {
@@ -141,8 +141,9 @@ interface MeshAttributes extends MovementStorage {
 
 /**
  * Renders every character as GPU-instanced skinned meshes. Animations are baked to bone-matrix
- * buffers at load and sampled in the vertex shader. Walking is stepped on the CPU each frame and
- * uploaded to per-instance position and velocity buffers, so CPU positions are always current.
+ * buffers at load and sampled in the vertex shader. Walking is stepped on the CPU each frame
+ * (`applyMovement`) and uploaded to per-instance position and velocity buffers, so CPU positions
+ * are always current.
  * Those buffers are storage buffers rather than vertex attributes because the parts already use
  * WebGPU's default limit of eight vertex buffers.
  */
@@ -162,7 +163,7 @@ export class CharacterManager {
   /** Per instance: index of its rig in `activeRigs`, compared in each rig's shaders. */
   private rigSlotAttribute: THREE.InstancedBufferAttribute | null = null
 
-  /** CPU+GPU waypoint and behaviour state per instance. */
+  /** CPU+GPU facing and behaviour state per instance. */
   private agentStateBuffer: AgentStateBuffer | null = null
 
   /** CPU+GPU eye and mouth atlas offsets per instance. */
@@ -351,26 +352,21 @@ export class CharacterManager {
     this.writeInitialState()
   }
 
-  /**
-   * Advances shader time, blinking and speaking, and steps every walker one frame, then uploads
-   * the new positions and velocities for this frame's render.
-   */
+  /** Advances shader time, blinking and speaking. */
   public update(deltaSeconds: number) {
     this.currentTime += deltaSeconds
     this.timeUniform.value = this.currentTime
     this.expressionBuffer?.update(deltaSeconds)
+  }
 
-    const { positions, velocities, agentStateBuffer, positionAttribute, velocityAttribute } = this
-    if (
-      !positions ||
-      !velocities ||
-      !agentStateBuffer ||
-      !positionAttribute ||
-      !velocityAttribute
-    ) {
-      return
-    }
-    stepCharacterMovement(positions, velocities, agentStateBuffer, this.instanceCount, deltaSeconds)
+  /**
+   * Runs one movement step over every character's position and velocity, then uploads both for
+   * this frame's render.
+   */
+  public applyMovement(step: (positions: Float32Array, velocities: Float32Array) => void): void {
+    const { positions, velocities, positionAttribute, velocityAttribute } = this
+    if (!positions || !velocities || !positionAttribute || !velocityAttribute) return
+    step(positions, velocities)
     positionAttribute.needsUpdate = true
     velocityAttribute.needsUpdate = true
   }
@@ -786,7 +782,7 @@ export class CharacterManager {
     return this.instanceCount
   }
 
-  /** Per-instance waypoint, behavior mode, animation and alpha. */
+  /** Per-instance facing, behavior mode, animation and alpha. */
   public getAgentStateBuffer(): AgentStateBuffer | null {
     return this.agentStateBuffer
   }

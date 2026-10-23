@@ -10,20 +10,30 @@ import {
 
 import type { AgentStateBuffer } from "./behavior/AgentStateBuffer"
 import { CharacterStateMachine } from "./behavior/CharacterStateMachine"
+import { MOVEMENT_STRIDE } from "./behavior/characterMovement"
 import type { CharacterManager } from "./entities/CharacterManager"
+import { CharacterCrowd } from "./pathfinding/CharacterCrowd"
 import type { NavMeshManager } from "./pathfinding/NavMeshManager"
-import { PathAgent } from "./pathfinding/PathAgent"
 import type { PoiManager } from "./world/PoiManager"
 
 const ORIGIN = new THREE.Vector3(0, 0, 0)
+/** Per-frame walk step below which a walker's facing is left as it was, rather than set to noise. */
+const FACING_STEP_THRESHOLD = 0.0001
+
+/** What happens when a walker arrives: it faces along its path's last leg, then the callback runs. */
+interface Arrival {
+  facingX: number
+  facingZ: number
+  onArrival: (index: number) => void
+}
 
 /**
  * CharacterController — unified API for controlling any character (player or NPC).
  *
  * Composes:
- *  - CharacterManager     → movement, GPU rendering, animation baking, expression buffers
+ *  - CharacterManager     → position buffers, GPU rendering, animation baking, expression buffers
  *  - CharacterStateMachine → declarative state→animation+expression mapping
- *  - PathAgent[]          → per-agent CPU path following
+ *  - CharacterCrowd       → walking, with characters steering around each other
  *  - NavMeshManager       → path queries
  *  - PoiManager           → POI lookup and occupancy
  *
@@ -34,9 +44,9 @@ const ORIGIN = new THREE.Vector3(0, 0, 0)
  */
 export class CharacterController implements ICharacterDriver {
   private stateMachine!: CharacterStateMachine
-  private pathAgents: PathAgent[] = []
-  /** Per-agent callback fired when the agent reaches its path destination. */
-  private arrivalCallbacks: ((index: number) => void)[] = []
+  private crowd: CharacterCrowd | null = null
+  /** Per walker: what to do when it reaches its destination. */
+  private arrivals: (Arrival | null)[] = []
 
   constructor(
     public readonly characterManager: CharacterManager,
@@ -48,19 +58,19 @@ export class CharacterController implements ICharacterDriver {
   }
 
   /**
-   * Fresh state machine and path followers sized to the current character count. Needs the
-   * characters to be loaded, since path followers write into their state buffer.
+   * Fresh state machine and crowd sized to the current character count, with the crowd's agents at
+   * the characters' positions. Needs the characters to be loaded. Without a navmesh there is no
+   * crowd, and nobody walks.
    */
   private resetAgents(): void {
     const count = this.characterManager.getCount()
-    const stateBuffer = this.characterManager.getAgentStateBuffer()
-    if (!stateBuffer) throw new Error("CharacterController needs loaded characters")
+    const positions = this.characterManager.getCPUPositions()
+    if (!positions) throw new Error("CharacterController needs loaded characters")
     this.stateMachine = new CharacterStateMachine(count)
-    this.pathAgents = []
-    this.arrivalCallbacks = []
-    for (let agentIndex = 0; agentIndex < count; agentIndex++) {
-      this.pathAgents.push(new PathAgent(agentIndex, stateBuffer))
-    }
+    this.crowd?.dispose()
+    const navMesh = this.navMesh.getNavMesh()
+    this.crowd = navMesh ? new CharacterCrowd(navMesh, positions, count) : null
+    this.arrivals = new Array(count).fill(null)
   }
 
   /**
@@ -85,13 +95,13 @@ export class CharacterController implements ICharacterDriver {
   /**
    * Walk a character to a world-space position using the navmesh.
    * Automatically transitions to 'walk' and then to `arrivalState` on arrival.
-   * The path's last node is replaced by the exact target, not the nearest navmesh polygon
-   * boundary. The player can end up just off the navmesh, where no path exists; it is teleported
-   * rather than ignoring the click.
+   * The crowd walks it to the exact target, not the nearest navmesh point, steering around the
+   * other characters on the way. On arrival it faces along the path's last leg. The player can end
+   * up just off the navmesh, where no path exists; it is teleported rather than ignoring the click.
    *
    * @param arrivalState State to enter upon reaching the destination (default: 'idle')
    * @param onArrival    Optional callback fired when the destination is reached
-   * @param fromPosition Optional start position (defaults to current CPU position)
+   * @param fromPosition Optional start position for the path query (defaults to current CPU position)
    * @param targetOrientation Optional orientation to snap to upon arrival
    */
   public moveTo(
@@ -133,15 +143,23 @@ export class CharacterController implements ICharacterDriver {
       return false
     }
 
-    path[path.length - 1] = target.clone()
+    const positions = this.characterManager.getCPUPositions()
+    if (!positions || !this.crowd?.walk(index, positions, target.x, target.z)) return false
 
-    this.pathAgents[index].setPath(path, from)
-    this.arrivalCallbacks[index] = (arrivedIndex) => {
-      if (targetOrientation) {
-        this.characterManager.setOrientation(arrivedIndex, targetOrientation)
-      }
-      this.play(arrivedIndex, arrivalState)
-      onArrival?.(arrivedIndex)
+    const lastLegStart = path.length > 1 ? path[path.length - 2] : from
+    const facing = new THREE.Vector3(target.x - lastLegStart.x, 0, target.z - lastLegStart.z)
+    if (facing.lengthSq() === 0) facing.set(0, 0, 1)
+    facing.normalize()
+    this.arrivals[index] = {
+      facingX: facing.x,
+      facingZ: facing.z,
+      onArrival: (arrivedIndex) => {
+        if (targetOrientation) {
+          this.characterManager.setOrientation(arrivedIndex, targetOrientation)
+        }
+        this.play(arrivedIndex, arrivalState)
+        onArrival?.(arrivedIndex)
+      },
     }
 
     this.setPhysicsMode(index, AgentBehavior.GOTO)
@@ -215,36 +233,47 @@ export class CharacterController implements ICharacterDriver {
     return this.stateMachine.getState(index)
   }
 
-  /** Once per frame: expressions and the movement step, then state machine timers. */
+  /**
+   * Once per frame: expressions, then the crowd moves the walkers, then state machine timers, then
+   * arrivals. A walker faces the way it moves, so it keeps that facing whenever its step is too
+   * short for the vertex shader to turn it by velocity. An arriving walker faces along its path's
+   * last leg, switches to IDLE and runs its arrival callback.
+   */
   public update(deltaSeconds: number): void {
     this.characterManager.update(deltaSeconds)
+    const crowd = this.crowd
+    let arrived: number[] = []
+    if (crowd) {
+      this.characterManager.applyMovement((positions, velocities) => {
+        arrived = crowd.step(positions, velocities, deltaSeconds)
+        this.faceWalkDirections(crowd, velocities)
+      })
+    }
     this.stateMachine.update(deltaSeconds, this)
+    for (const agentIndex of arrived) {
+      const arrival = this.arrivals[agentIndex]
+      this.arrivals[agentIndex] = null
+      if (arrival) this.characterManager.setFacing(agentIndex, arrival.facingX, arrival.facingZ)
+      this.setPhysicsMode(agentIndex, AgentBehavior.IDLE)
+      arrival?.onArrival(agentIndex)
+    }
   }
 
-  /**
-   * Advance path agents. Call after `update` so positions include this frame's step.
-   * Fires arrival callbacks for agents that reach their destination, after keeping their last
-   * movement direction as the IDLE facing.
-   */
-  public updatePaths(positions: Float32Array): void {
-    for (let agentIndex = 0; agentIndex < this.pathAgents.length; agentIndex++) {
-      const pathAgent = this.pathAgents[agentIndex]
-      if (!pathAgent.isMoving) continue
-
-      const arrived = pathAgent.update(positions[agentIndex * 4], positions[agentIndex * 4 + 2])
-      if (arrived) {
-        const lastDirection = pathAgent.getLastDirection()
-        this.characterManager.setFacing(agentIndex, lastDirection.x, lastDirection.z)
-
-        this.setPhysicsMode(agentIndex, AgentBehavior.IDLE)
-        this.arrivalCallbacks[agentIndex]?.(agentIndex)
+  private faceWalkDirections(crowd: CharacterCrowd, velocities: Float32Array): void {
+    for (let agentIndex = 0; agentIndex < this.getCount(); agentIndex++) {
+      if (!crowd.isWalking(agentIndex)) continue
+      const stepX = velocities[agentIndex * MOVEMENT_STRIDE]
+      const stepZ = velocities[agentIndex * MOVEMENT_STRIDE + 2]
+      if (Math.hypot(stepX, stepZ) > FACING_STEP_THRESHOLD) {
+        this.characterManager.setFacing(agentIndex, stepX, stepZ)
       }
     }
   }
 
   /** Cancel movement for an agent and return to idle. */
   public cancelMovement(index: number): void {
-    this.pathAgents[index].cancel()
+    this.crowd?.stop(index)
+    this.arrivals[index] = null
     this.setPhysicsMode(index, AgentBehavior.IDLE)
   }
 
@@ -299,6 +328,12 @@ export class CharacterController implements ICharacterDriver {
     this.characterManager.setTeam(team)
     this.playerIndex = team.user.index
     this.resetAgents()
+  }
+
+  /** Frees the crowd. */
+  public dispose(): void {
+    this.crowd?.dispose()
+    this.crowd = null
   }
 
   public setPhysicsMode(index: number, mode: AgentBehavior): void {
