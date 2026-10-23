@@ -16,8 +16,14 @@ import type {
   ResponseInputItem,
   ResponseReasoningItem,
 } from "openai/resources/responses/responses"
-import { type CompletionOptions, DEFAULT_EFFORT, type ProviderAdapter } from "../adapter"
-import { ProviderError, type ProviderErrorKind } from "../errors"
+import {
+  assertObjectToolSchema,
+  type CompletionOptions,
+  DEFAULT_EFFORT,
+  maxOutputTokensFor,
+  type ProviderAdapter,
+} from "../adapter"
+import { ProviderError, type ProviderErrorKind, toProviderError } from "../errors"
 import type { ModelEntry } from "../registry"
 
 /** Sends one Responses API request and resolves with the complete response. */
@@ -25,8 +31,6 @@ export type OpenAISend = (
   params: ResponseCreateParamsNonStreaming,
   signal: AbortSignal | undefined,
 ) => Promise<Response>
-
-const DEFAULT_MAX_OUTPUT_TOKENS = 64_000
 
 /** A tool result that failed is marked in its text, since function_call_output has no error flag. */
 const ERROR_RESULT_PREFIX = "Error: "
@@ -59,13 +63,7 @@ function isStrictEligible(schema: JsonSchema): boolean {
 }
 
 function toTool(tool: ToolDefinition): FunctionTool {
-  if (tool.inputSchema.type !== "object") {
-    throw new ProviderError(
-      "invalid_request",
-      "openai",
-      `Tool "${tool.name}" input schema must be an object`,
-    )
-  }
+  assertObjectToolSchema(tool, "openai")
   return {
     type: "function",
     name: tool.name,
@@ -171,6 +169,10 @@ function fromResponse(response: Response): MessagesResponse {
   }
 }
 
+function statusOf(error: unknown): number | undefined {
+  return error instanceof OpenAI.APIError ? error.status : undefined
+}
+
 function classify(error: unknown): ProviderErrorKind {
   if (error instanceof OpenAI.APIUserAbortError) return "aborted"
   if (error instanceof OpenAI.APIConnectionError) return "unavailable"
@@ -187,13 +189,6 @@ function classify(error: unknown): ProviderErrorKind {
   return "other"
 }
 
-function toProviderError(error: unknown): ProviderError {
-  if (error instanceof ProviderError) return error
-  const status = error instanceof OpenAI.APIError ? error.status : undefined
-  const detail = error instanceof Error ? error.message : String(error)
-  return new ProviderError(classify(error), "openai", detail, { cause: error, status })
-}
-
 /**
  * Builds a stateless Responses API request: nothing is stored on OpenAI's side, so the whole history is sent
  * and reasoning items (with their encrypted content) are replayed from it.
@@ -208,10 +203,7 @@ export function toOpenAIParams(
     input: request.messages.flatMap(toInputItems),
     ...(request.tools?.length ? { tools: request.tools.map(toTool) } : {}),
     reasoning: { effort: effortFor(model, request) },
-    max_output_tokens: Math.min(
-      request.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
-      model.maxOutputTokens,
-    ),
+    max_output_tokens: maxOutputTokensFor(model, request),
     store: false,
     include: ["reasoning.encrypted_content"],
   }
@@ -236,7 +228,7 @@ export function createOpenAIAdapter(send: OpenAISend): ProviderAdapter {
         const params = toOpenAIParams(model, request)
         return fromResponse(await send(params, options?.signal))
       } catch (error) {
-        throw toProviderError(error)
+        throw toProviderError("openai", error, classify, statusOf(error))
       }
     },
   }

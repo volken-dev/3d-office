@@ -1,7 +1,6 @@
 /**
  * Why a model call failed, from the agent loop's point of view:
  * - not_configured: the gateway has no working provider credentials; only an operator can fix it.
- * - unauthorized: the user is not signed in or not allowed to call the gateway.
  * - rate_limited: the provider or the gateway is throttling; pause until the user resumes.
  * - unavailable: network, timeout or provider outage; safe to retry with backoff.
  * - invalid_request: the request was rejected as malformed; retrying will not help.
@@ -9,7 +8,6 @@
  */
 export type LLMErrorKind =
   | "not_configured"
-  | "unauthorized"
   | "rate_limited"
   | "unavailable"
   | "invalid_request"

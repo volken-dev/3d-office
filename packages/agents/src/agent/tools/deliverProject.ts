@@ -1,29 +1,18 @@
+import { z } from "zod"
 import { isLeadAgent } from "../../team"
-import { fail, readString, type ToolSpec } from "./types"
+import { defineTool, requiredText } from "./toolArgs"
+import { fail } from "./types"
 
-export const deliverProject: ToolSpec<{ output: string }> = {
-  definition: {
-    name: "deliver_project",
-    description: "Final delivery of the full project results.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        output: {
-          type: "string",
-          description: "Full project document in Markdown. NO attribution needed.",
-        },
-      },
-      required: ["output"],
-      additionalProperties: false,
-    },
-  },
+export const deliverProject = defineTool({
+  name: "deliver_project",
+  description: "Final delivery of the full project results.",
+  args: z.strictObject({
+    output: requiredText(100_000).describe(
+      "Full project document in Markdown. NO attribution needed.",
+    ),
+  }),
 
   isOffered: (agent, team, phase) => phase === "working" && isLeadAgent(team, agent.index),
-
-  parseArgs(raw) {
-    const output = readString(raw, "output", 100_000)
-    return !output.ok ? output : { ok: true, value: { output: output.value } }
-  },
 
   run({ agent, team, project }, { output }) {
     if (!isLeadAgent(team, agent.index)) return fail("Only the lead agent can deliver the project.")
@@ -50,4 +39,4 @@ export const deliverProject: ToolSpec<{ output: string }> = {
         : "Deliverable accepted. The project is done.",
     }
   },
-}
+})

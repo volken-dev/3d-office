@@ -26,8 +26,11 @@ These five govern everything below. When a specific rule is missing, decide by t
   ports; `packages/llm` owns the providers and runs only behind the gateway (`apps/api`);
   `apps/web/src/integration/` adapts the agents to Zustand, React and the gateway; `simulation/`
   renders. The UI never reaches into package internals, and `packages/agents` never imports a store.
-- **P4 — Spend is the user's money.** Every path that can call the LLM goes through the single
-  retry/budget policy in `AgentBrain`. Nothing loops, retries, or re-sparks an agent outside it.
+- **P4 — Spend is the user's money.** Every LLM call is counted against the project's call budget
+  (`recordModelCall`, never a side effect of logging), and all autonomous work goes through the
+  single retry/budget policy: the loop in `AgentBrain`, the decisions in
+  `orchestration/autonomy.ts`. A user's own chat message is counted but not gated. Nothing loops,
+  retries, or re-sparks an agent outside it.
 - **P5 — Fix what you find; leave nothing broken silently.** If you discover a bug during any
   task — even one you did not cause — fix it when it is safe and in reach, or file a `Type: Bug` /
   `Type: Tech Debt` issue when it is risky or large. Never walk past a known defect and say nothing.
@@ -86,12 +89,13 @@ These five govern everything below. When a specific rule is missing, decide by t
 
 ## 4. Agents and the LLM
 
-16. **Tools follow the `ToolSpec` shape** (`packages/agents/src/agent/tools/types.ts`): a closed
-    `inputSchema` (`additionalProperties: false`), an
-    `isOffered(agent, team, phase)` gate, a `parseArgs` that validates every argument (`readString`
-    and friends in `types.ts`, with length caps), and a `run` that returns a `ToolResult`. Success
-    carries a `summary` and failure an `error`; both go back to the model as a `tool_result`,
-    never thrown.
+16. **Tools are built with `defineTool`** (`packages/agents/src/agent/tools/toolArgs.ts`, shape in
+    `types.ts`): a `z.strictObject` args schema built from `requiredText` and friends (length caps
+    included), an `isOffered(agent, team, phase)` gate, and a `run` that returns a `ToolResult`.
+    The args schema is the single source: the input schema sent to the model is derived from it,
+    cut down to the keywords strict tools accept, and the same schema parses every call. Never
+    hand-write a tool's JSON Schema. Success carries a `summary` and failure an `error`; both go
+    back to the model as a `tool_result`, never thrown.
 17. **A tool is offered only where it may run.** `runToolCall` rejects a tool that wasn't in the
     offered set for that request; keep `isOffered` and authorisation in agreement.
 18. **Prompts:** the system part stays static; dynamic state (board, history) is passed as tagged,
@@ -101,11 +105,12 @@ These five govern everything below. When a specific rule is missing, decide by t
     stored exactly as returned (opaque reasoning included); the cap trims only at a boundary that
     keeps calls and results together (`appendToHistory`). Display-only notices carry
     `displayOnly` and are never sent to the model.
-20. **Every LLM call is cancellable and time-limited** (one `AbortController` per think, combined
-    with a timeout). Reset, team switch, task removal and dispose abort in-flight calls.
+20. **Every LLM call is cancellable and time-limited** (one `AbortController` per model turn,
+    combined with a timeout). Reset, team switch, task removal and dispose abort in-flight calls.
 21. **Errors are classified** (`packages/agents/src/llm/errors.ts`): rate limiting pauses the run;
-    a gateway that is not configured or not authorised pauses it for access and re-checks the
-    gateway status; everything else is a toast or a task error. On the gateway, provider failures
+    a gateway with no provider key pauses it until it is configured and re-checks the gateway
+    status; everything else is a toast or a task error. The gateway is a local service with no
+    sign-in, so there is no "unauthorised" case. On the gateway, provider failures
     map to our error codes and messages (`apps/api/src/routes/llm.ts`); only outages fail over.
 22. **Agent identity:** do not add new code that assumes positional agent indices or that indices
     start at 1 (ARCH-03, CODE-04).
@@ -232,7 +237,8 @@ These are absolute. No exception without an explicit, in-session user instructio
 5. **Never add a barrel `index.ts`**, and never create `utils.ts` / `helpers.ts` / `misc.ts`.
 6. **Never hand-roll interactive HTML** or override a shadcn primitive at the call site.
 7. **Never use em-dashes, bullet glyphs, emoji or exclamation marks in user-facing copy.**
-8. **Never add a second retry loop or an LLM call outside the `AgentBrain` policy.**
+8. **Never add a second retry loop or an LLM call outside the `AgentBrain` policy** (decisions in
+   `orchestration/autonomy.ts`, the loop in `AgentBrain`).
 9. **Never trust LLM output** as instructions, as HTML, or as valid tool arguments.
 10. **Never import a store, React, or the scene from `packages/agents`**, and never import a
     provider SDK outside `packages/llm`.
