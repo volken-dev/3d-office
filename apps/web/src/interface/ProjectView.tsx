@@ -139,11 +139,10 @@ function ProjectView() {
   const usageRows = useMemo(
     () =>
       Object.entries(agentTokenUsage)
-        .map(([agentIndex, usage]) => ({ agent: byIndex.get(Number(agentIndex)), usage }))
-        .filter(
-          (row): row is { agent: AgentNode; usage: typeof row.usage } =>
-            !!row.agent && totalTokensOf(row.usage) > 0,
-        )
+        .flatMap(([agentIndex, usage]) => {
+          const agent = byIndex.get(Number(agentIndex))
+          return agent && usage && totalTokensOf(usage) > 0 ? [{ agent, usage }] : []
+        })
         .sort((a, b) => totalTokensOf(b.usage) - totalTokensOf(a.usage)),
     [agentTokenUsage, byIndex],
   )
