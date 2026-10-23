@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils"
 import { AGENTIC_SETS, DEFAULT_AGENTIC_SET_ID } from "../../data/agents"
 import { useCoreStore } from "../../integration/store/coreStore"
 import { useTeamStore } from "../../integration/store/teamStore"
-import { useSceneManager } from "../../simulation/SceneContext"
+import { useScene } from "../../simulation/SceneContext"
 import { TeamOutputBadge } from "../components/TeamOutputBadge"
 import { ColorPicker, isColorTooLight } from "./ColorPicker"
 import { FieldHint, MICRO_LABEL } from "./Field"
@@ -111,7 +111,7 @@ export function TeamCard({
 
 function useTeamSwitcher() {
   const setActiveTeam = useTeamStore((state) => state.setActiveTeam)
-  const scene = useSceneManager()
+  const scene = useScene()
   return (id: string) => {
     scene?.resetScene()
     setActiveTeam(id)

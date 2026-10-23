@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { removeLegacyApiKey } from "./integration/llm/legacyApiKey"
+import { SceneStoreAdapter } from "./integration/SceneStoreAdapter"
 import { useCoreStore } from "./integration/store/coreStore"
 import { useUiStore } from "./integration/store/uiStore"
 import { ActionLogPanel } from "./interface/ActionLogPanel"
@@ -14,7 +15,6 @@ import { KanbanDock } from "./interface/KanbanDock"
 import { OutputReviewModal } from "./interface/OutputReviewModal"
 import SimulationView from "./interface/SimulationView"
 import { SceneContext } from "./simulation/SceneContext"
-import { SceneManager } from "./simulation/SceneManager"
 
 type DrawerPanel = "logs" | "inspector" | null
 
@@ -26,8 +26,8 @@ type DrawerPanel = "logs" | "inspector" | null
  */
 export default function App() {
   const canvasRef = useRef<HTMLDivElement>(null)
-  const managerRef = useRef<SceneManager | null>(null)
-  const [sceneManager, setSceneManager] = useState<SceneManager | null>(null)
+  const sceneRef = useRef<SceneStoreAdapter | null>(null)
+  const [scene, setScene] = useState<SceneStoreAdapter | null>(null)
   const viewMode = useCoreStore((state) => state.viewMode)
   const [isLogOpen, setLogOpen] = useState(true)
   const [isKanbanOpen, setKanbanOpen] = useState(true)
@@ -42,16 +42,16 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (canvasRef.current && !managerRef.current) {
-      const manager = new SceneManager(canvasRef.current)
-      managerRef.current = manager
-      setSceneManager(manager)
+    if (canvasRef.current && !sceneRef.current) {
+      const connectedScene = new SceneStoreAdapter(canvasRef.current)
+      sceneRef.current = connectedScene
+      setScene(connectedScene)
     }
     return () => {
-      if (managerRef.current) {
-        managerRef.current.dispose()
-        managerRef.current = null
-        setSceneManager(null)
+      if (sceneRef.current) {
+        sceneRef.current.dispose()
+        sceneRef.current = null
+        setScene(null)
       }
     }
   }, [])
@@ -95,7 +95,7 @@ export default function App() {
   const showChrome = !isFocusMode && !isDesign
 
   return (
-    <SceneContext.Provider value={sceneManager}>
+    <SceneContext.Provider value={scene}>
       <div className="flex h-dvh w-screen flex-col overflow-hidden bg-background">
         {!isFocusMode && <Header panels={panels} />}
 

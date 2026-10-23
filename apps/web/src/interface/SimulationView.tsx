@@ -5,10 +5,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import type { SceneStoreAdapter } from "../integration/SceneStoreAdapter"
 import { useActiveTeam } from "../integration/store/teamStore"
 import { useUiStore } from "../integration/store/uiStore"
-import { useSceneManager } from "../simulation/SceneContext"
-import type { SceneManager } from "../simulation/SceneManager"
+import { useScene } from "../simulation/SceneContext"
 import { AuditModal } from "./AuditModal"
 import { TeamBadge } from "./components/TeamBadge"
 import { TeamOutputBadge } from "./components/TeamOutputBadge"
@@ -19,9 +19,9 @@ const TeamFlowModal = lazy(() => import("./TeamFlowModal"))
 
 type SceneStatus = "loading" | "ready" | "error"
 
-/** Tracks SceneManager.ready so a missing WebGPU/WebGL2 or a failed model download is visible instead of a blank canvas. */
-function useSceneStatus(scene: SceneManager | null): SceneStatus {
-  const [settled, setSettled] = useState<{ scene: SceneManager; ok: boolean } | null>(null)
+/** Tracks the scene's ready promise so a missing WebGPU/WebGL2 or a failed model download is visible instead of a blank canvas. */
+function useSceneStatus(scene: SceneStoreAdapter | null): SceneStatus {
+  const [settled, setSettled] = useState<{ scene: SceneStoreAdapter; ok: boolean } | null>(null)
   useEffect(() => {
     if (!scene) return
     let active = true
@@ -54,7 +54,7 @@ function SimulationView({ canvasRef, isFocusMode, onFocusModeChange }: Simulatio
   const setActiveAuditTaskId = useUiStore((state) => state.setActiveAuditTaskId)
   const activeTeam = useActiveTeam()
   const [isFlowModalOpen, setIsFlowModalOpen] = useState(false)
-  const sceneStatus = useSceneStatus(useSceneManager())
+  const sceneStatus = useSceneStatus(useScene())
   const focusLabel = isFocusMode ? "Exit focus (Esc)" : "Focus 3D view"
 
   return (
