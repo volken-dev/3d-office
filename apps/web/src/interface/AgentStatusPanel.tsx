@@ -1,10 +1,16 @@
+import type { Usage } from "@the-delegation/shared/llm-messages"
 import { useCoreStore } from "../integration/store/coreStore"
 import { useTeamRoster } from "../integration/store/teamStore"
 import { SectionHeading } from "./components/SectionHeading"
 import { EYEBROW } from "./components/styles"
 import { TokenUsageRow } from "./components/TokenUsageRow"
 
-const NO_USAGE = { promptTokens: 0, completionTokens: 0 }
+const NO_USAGE: Usage = {
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+}
 
 interface AgentStatusPanelProps {
   agentIndex: number
@@ -17,7 +23,7 @@ function AgentStatusPanel({ agentIndex }: AgentStatusPanelProps) {
       (task) => task.assignedAgentId === agentIndex && task.status === "in_progress",
     ),
   )
-  const usage = useCoreStore((state) => state.agentTokenUsage[agentIndex]) ?? NO_USAGE
+  const usage: Usage | undefined = useCoreStore((state) => state.agentTokenUsage[agentIndex])
   const agent = useTeamRoster().byIndex.get(agentIndex)
   if (!agent) return null
 
@@ -38,7 +44,7 @@ function AgentStatusPanel({ agentIndex }: AgentStatusPanelProps) {
         </section>
         <section>
           <SectionHeading label="Token usage" className="mb-2" />
-          <TokenUsageRow usage={usage} />
+          <TokenUsageRow usage={usage ?? NO_USAGE} />
         </section>
       </div>
 
