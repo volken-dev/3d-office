@@ -1,11 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import {
-  castMemberAt,
-  modelIdsUsedBy,
-  nonPlayerMembers,
-  userIndexOf,
-} from "../../src/simulation/scene-cast"
-import { castOf } from "../support/cast"
+import { castMemberAt, modelIdsUsedBy, nonPlayerMembers, userIndexOf } from "../src/scene-cast"
+import { castOf } from "./support/cast"
 
 describe("scene cast helpers", () => {
   test("find the user, the non-player members and a member by index", () => {

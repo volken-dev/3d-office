@@ -1,19 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import * as THREE from "three/webgpu"
-import { CharacterController } from "../../src/simulation/character-controller"
-import {
-  DEFAULT_CHARACTER_MODEL_ID,
-  findCharacterModel,
-} from "../../src/simulation/characters/character-models"
-import {
-  CharacterManager,
-  type LoadedCharacterModel,
-} from "../../src/simulation/entities/character-manager"
-import { NavMeshManager } from "../../src/simulation/pathfinding/nav-mesh-manager"
-import { nonPlayerMembers, type SceneCast, userIndexOf } from "../../src/simulation/scene-cast"
-import { AgentBehavior } from "../../src/simulation/scene-types"
-import { PoiManager } from "../../src/simulation/world/poi-manager"
-import { castOf } from "../support/cast"
+import { CharacterController } from "../src/character-controller"
+import { DEFAULT_CHARACTER_MODEL_ID, findCharacterModel } from "../src/characters/character-models"
+import { CharacterManager, type LoadedCharacterModel } from "../src/entities/character-manager"
+import { NavMeshManager } from "../src/pathfinding/nav-mesh-manager"
+import { nonPlayerMembers, type SceneCast, userIndexOf } from "../src/scene-cast"
+import { AgentBehavior } from "../src/scene-types"
+import { PoiManager } from "../src/world/poi-manager"
+import { castOf } from "./support/cast"
 
 /** A one-bone skinned box with an idle clip: enough for CharacterManager to bake a rig headless. */
 function fakeHumanModel(): LoadedCharacterModel {

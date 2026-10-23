@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { assetUrlFor } from "../../src/simulation/loaders"
+import { assetUrlFor } from "../src/loaders"
 
 describe("assetUrlFor", () => {
   test("joins a base URL and an asset path with exactly one slash", () => {

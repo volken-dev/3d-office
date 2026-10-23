@@ -1,4 +1,4 @@
-import type { CastMember, SceneCast } from "../../src/simulation/scene-cast"
+import type { CastMember, SceneCast } from "../../src/scene-cast"
 
 /** A cast of plain human characters: the user, then the lead (the first agent), then members. */
 export function castOf(userIndex: number, agentIndices: readonly number[]): SceneCast {

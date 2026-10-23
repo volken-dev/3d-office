@@ -6,7 +6,7 @@ import {
   MOVEMENT_STRIDE,
   WALK_SPEED,
   writeWalkerMotion,
-} from "../../../src/simulation/behavior/character-movement"
+} from "../../src/behavior/character-movement"
 
 const FRAME_AT_60_FPS = 1 / 60
 

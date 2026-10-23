@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { type AgenticSystem, type AgentNode, MAX_AGENTS } from "@the-delegation/agents/team"
+import { WANDER_SPREAD_DIRECTIONS } from "@the-delegation/scene/constants"
 import { getAllCharacters } from "../../src/data/agents"
 import { castForTeam } from "../../src/integration/scene-cast"
-import { WANDER_SPREAD_DIRECTIONS } from "../../src/simulation/constants"
 
 function agent(index: number, extra: Partial<AgentNode> = {}): AgentNode {
   return {

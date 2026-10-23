@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { CharacterSlots } from "../../../src/simulation/entities/character-slots"
-import { castOf } from "../../support/cast"
+import { CharacterSlots } from "../../src/entities/character-slots"
+import { castOf } from "../support/cast"
 
 describe("CharacterSlots", () => {
   test("gives the user and every agent a dense slot in roster order", () => {

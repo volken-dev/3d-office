@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { readdirSync, readFileSync } from "node:fs"
 import path from "node:path"
 
-const SCENE_DIR = path.resolve(import.meta.dir, "../../src/simulation")
+const SCENE_DIR = path.resolve(import.meta.dir, "../src")
 const ALLOWED_PACKAGES = [/^three(\/|$)/, /^@recast-navigation\//, /^zod$/]
 const IMPORT_SPECIFIER = /(?:from|import)\s*\(?\s*"([^"]+)"/g
 

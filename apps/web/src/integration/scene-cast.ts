@@ -1,11 +1,11 @@
 import { type AgenticSystem, isLeadAgent } from "@the-delegation/agents/team"
-import { getAllCharacters } from "../data/agents"
 import {
   DEFAULT_CHARACTER_MODEL_ID,
   findCharacterModel,
   LEAD_CHARACTER_MODEL_ID,
-} from "../simulation/characters/character-models"
-import type { CastMember, SceneCast } from "../simulation/scene-cast"
+} from "@the-delegation/scene/characters/character-models"
+import type { CastMember, SceneCast } from "@the-delegation/scene/scene-cast"
+import { getAllCharacters } from "../data/agents"
 
 /**
  * The scene's cast for a team: the user, then every agent, lead first. The user is a plain human.

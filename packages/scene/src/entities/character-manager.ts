@@ -33,6 +33,7 @@ import {
 import { ALPHA_LERP_RATE, OVERLAP_ALPHA, OVERLAP_DIST_SQ } from "../constants"
 import { castMemberAt, type SceneCast } from "../scene-cast"
 import { isMesh, isSkinnedMesh } from "../scene-graph-guards"
+import "../tsl-typing-gaps"
 import { AgentBehavior, AnimationName, type ExpressionKey, type PoiDef } from "../scene-types"
 import { Vec4Texture } from "../vec4-texture"
 import type { PoiManager } from "../world/poi-manager"

@@ -1,6 +1,6 @@
 import type { AgenticSystem } from "@the-delegation/agents/team"
-import type { SceneIntent } from "../simulation/scene-intent"
-import { SceneManager } from "../simulation/scene-manager"
+import type { SceneIntent } from "@the-delegation/scene/scene-intent"
+import { SceneManager } from "@the-delegation/scene/scene-manager"
 import { publishFrameStats } from "./frame-stats"
 import type { TeamRuntime } from "./orchestration/team-runtime"
 import { castForTeam } from "./scene-cast"
@@ -48,7 +48,7 @@ export class SceneStoreAdapter {
         onPoiHover: (id, label, position) =>
           useUiStore.getState().setHoveredPoi(id, label, position),
         onDeviceLost,
-        onFrameStats: publishFrameStats,
+        onFrameStats: process.env.NODE_ENV === "development" ? publishFrameStats : undefined,
       },
       {
         assetBaseUrl: "/",

@@ -1,17 +1,15 @@
 import { beforeAll, describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import path from "node:path"
-import { getAllAgents } from "@the-delegation/agents/team"
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js"
 import { type GLTF, GLTFLoader, type GLTFLoaderPlugin } from "three/addons/loaders/GLTFLoader.js"
 import * as THREE from "three/webgpu"
-import { AGENTIC_SETS } from "../../../src/data/agents"
-import { NavMeshManager } from "../../../src/simulation/pathfinding/nav-mesh-manager"
-import { BOARDROOM_POI_ID, deskPoiId, spawnPoiId } from "../../../src/simulation/world/poi-ids"
-import { PoiManager } from "../../../src/simulation/world/poi-manager"
-import { isNavMeshName } from "../../../src/simulation/world/world-manager"
+import { NavMeshManager } from "../../src/pathfinding/nav-mesh-manager"
+import { BOARDROOM_POI_ID, deskPoiId, spawnPoiId } from "../../src/world/poi-ids"
+import { PoiManager } from "../../src/world/poi-manager"
+import { isNavMeshName } from "../../src/world/world-manager"
 
-const OFFICE_GLB = path.resolve(import.meta.dir, "../../../public/models/office.glb")
+const OFFICE_GLB = path.resolve(import.meta.dir, "../../../../apps/web/public/models/office.glb")
 
 /** There is no image decoder in bun, so textures load as blanks; the contract is in the nodes. */
 const blankTextures: GLTFLoaderPlugin = {
@@ -118,9 +116,8 @@ describe("office.glb contract", () => {
     expect(navMeshCount).toBe(1)
   })
 
-  const agentIndices = [
-    ...new Set(AGENTIC_SETS.flatMap((system) => getAllAgents(system).map((agent) => agent.index))),
-  ].sort((a, b) => a - b)
+  /** The agent indices the team templates use; apps/web checks the templates stay within them. */
+  const agentIndices = [1, 2, 3, 4, 5]
 
   const requiredPoiIds = [
     BOARDROOM_POI_ID,

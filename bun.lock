@@ -28,10 +28,9 @@
       "name": "web",
       "version": "0.2.0",
       "dependencies": {
-        "@recast-navigation/core": "0.43.1",
-        "@recast-navigation/three": "0.43.1",
         "@the-delegation/agents": "workspace:*",
         "@the-delegation/llm": "workspace:*",
+        "@the-delegation/scene": "workspace:*",
         "@the-delegation/shared": "workspace:*",
         "@xyflow/react": "^12.10.1",
         "class-variance-authority": "^0.7.1",
@@ -46,8 +45,6 @@
         "remark-gfm": "^4.0.1",
         "sonner": "^2.0.8",
         "tailwind-merge": "^3.7.0",
-        "three": "^0.183.0",
-        "zod": "^4.6.7",
         "zustand": "^5.0.11",
       },
       "devDependencies": {
@@ -59,7 +56,6 @@
         "@types/node": "^22.14.0",
         "@types/react": "^19.3.0",
         "@types/react-dom": "^19.3.0",
-        "@types/three": "0.183.1",
         "api": "workspace:*",
         "draco3dgltf": "^1.5.9",
         "meshoptimizer": "^1.3.0",
@@ -91,6 +87,21 @@
       },
       "devDependencies": {
         "@types/bun": "^1.4.3",
+        "typescript": "~5.9.3",
+      },
+    },
+    "packages/scene": {
+      "name": "@the-delegation/scene",
+      "version": "0.1.0",
+      "dependencies": {
+        "@recast-navigation/core": "0.43.1",
+        "@recast-navigation/three": "0.43.1",
+        "three": "^0.183.0",
+        "zod": "^4.6.7",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.3",
+        "@types/three": "0.183.1",
         "typescript": "~5.9.3",
       },
     },
@@ -403,6 +414,8 @@
     "@the-delegation/agents": ["@the-delegation/agents@workspace:packages/agents"],
 
     "@the-delegation/llm": ["@the-delegation/llm@workspace:packages/llm"],
+
+    "@the-delegation/scene": ["@the-delegation/scene@workspace:packages/scene"],
 
     "@the-delegation/shared": ["@the-delegation/shared@workspace:packages/shared"],
 

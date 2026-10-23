@@ -28,25 +28,21 @@ export class Engine {
 
   /**
    * The canvas is sized by CSS so it stretches immediately while the drawing buffer catches up on
-   * resize. Shadows use the default PCF map: VSM is unreliable with WebGPU node materials. GPU
-   * timestamp queries are only requested in development, for the performance overlay.
+   * resize. Shadows use the default PCF map: VSM is unreliable with WebGPU node materials.
    * A lost GPU device (driver reset, GPU switch, sleep) or WebGL context stops the render loop,
    * since nothing can draw on it any more, and is reported so the owner can rebuild the scene.
-   * Frame stats are measured only in development and only when the owner listens for them; the
-   * literal environment check lets the production build drop the profiler entirely.
+   * Frame stats, and the GPU timestamp queries behind them, are measured only when the owner
+   * listens for them; hosts pass `onFrameStats` in development builds only.
    */
   constructor(
     container: HTMLElement,
     onDeviceLost: () => void,
     onFrameStats?: (stats: FrameStats) => void,
   ) {
-    this.profiler =
-      process.env.NODE_ENV === "development" && onFrameStats
-        ? new FrameProfiler(onFrameStats)
-        : null
+    this.profiler = onFrameStats ? new FrameProfiler(onFrameStats) : null
     this.renderer = new THREE.WebGPURenderer({
       antialias: true,
-      trackTimestamp: process.env.NODE_ENV === "development",
+      trackTimestamp: onFrameStats !== undefined,
     })
     this.renderer.onDeviceLost = (info) => {
       console.error(`[Engine] ${info.api} device lost:`, info.message, info.reason ?? "")

@@ -16,7 +16,7 @@ import path from "node:path"
 import {
   type OfficePoiExtras,
   OfficePoiExtrasSchema,
-} from "../src/simulation/world/office-poi-extras"
+} from "@the-delegation/scene/world/office-poi-extras"
 
 const OFFICE_SOURCE = path.resolve(import.meta.dirname, "..", "assets-src", "models", "office.glb")
 

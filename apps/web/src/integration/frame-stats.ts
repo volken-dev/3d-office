@@ -1,5 +1,5 @@
+import type { FrameStats } from "@the-delegation/scene/core/frame-profiler"
 import { useSyncExternalStore } from "react"
-import type { FrameStats } from "../simulation/core/frame-profiler"
 
 let latest: FrameStats | null = null
 const listeners = new Set<() => void>()

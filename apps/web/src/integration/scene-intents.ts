@@ -1,6 +1,6 @@
 import type { ProjectPhase, Task, TaskStatus } from "@the-delegation/agents/project/types"
 import { type AgenticSystem, getAllAgents, hasSameRoster } from "@the-delegation/agents/team"
-import type { AgentWork, SceneIntent, SceneViewMode } from "../simulation/scene-intent"
+import type { AgentWork, SceneIntent, SceneViewMode } from "@the-delegation/scene/scene-intent"
 import { castForTeam } from "./scene-cast"
 
 /** The project state the scene reacts to. */

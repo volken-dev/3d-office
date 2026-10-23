@@ -1,11 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import * as THREE from "three/webgpu"
-import {
-  NAVMESH_EDGE_TOLERANCE,
-  NavMeshManager,
-} from "../../../src/simulation/pathfinding/nav-mesh-manager"
-import { loadNavigationRuntime } from "../../../src/simulation/pathfinding/navigation-runtime"
-import { buildFloorGeometry, type FloorRect } from "../../support/floor-geometry"
+import { NAVMESH_EDGE_TOLERANCE, NavMeshManager } from "../../src/pathfinding/nav-mesh-manager"
+import { loadNavigationRuntime } from "../../src/pathfinding/navigation-runtime"
+import { buildFloorGeometry, type FloorRect } from "../support/floor-geometry"
 
 const FLOOR: FloorRect = { minX: -5, minZ: -5, maxX: 5, maxZ: 5 }
 /** A table in the middle of the room that paths must go around. */

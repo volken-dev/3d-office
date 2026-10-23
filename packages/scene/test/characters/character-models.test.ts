@@ -8,10 +8,10 @@ import {
   findCharacterModel,
   LEAD_CHARACTER_MODEL_ID,
   partRuleFor,
-} from "../../../src/simulation/characters/character-models"
-import { AnimationName } from "../../../src/simulation/scene-types"
+} from "../../src/characters/character-models"
+import { AnimationName } from "../../src/scene-types"
 
-const PUBLIC_DIR = path.resolve(import.meta.dir, "../../../public")
+const PUBLIC_DIR = path.resolve(import.meta.dir, "../../../../apps/web/public")
 
 interface GltfJson {
   meshes?: { name?: string; primitives: { material?: number }[] }[]
