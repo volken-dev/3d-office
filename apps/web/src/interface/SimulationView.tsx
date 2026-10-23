@@ -46,18 +46,26 @@ function useSceneStatus(scene: SceneManager | null): SceneStatus {
 
 interface SimulationViewProps {
   canvasRef: React.RefObject<HTMLDivElement | null>
+  /** The GPU device kept being lost and the scene is no longer rebuilt. */
+  isSceneLost: boolean
   isFocusMode: boolean
   onFocusModeChange: (value: boolean) => void
 }
 
 /** The canvas column: team bar, the 3D view with its overlays and load states, and the task review dialog. */
-function SimulationView({ canvasRef, isFocusMode, onFocusModeChange }: SimulationViewProps) {
+function SimulationView({
+  canvasRef,
+  isSceneLost,
+  isFocusMode,
+  onFocusModeChange,
+}: SimulationViewProps) {
   const selectedNpcIndex = useUiStore((state) => state.selectedNpcIndex)
   const activeAuditTaskId = useUiStore((state) => state.activeAuditTaskId)
   const setActiveAuditTaskId = useUiStore((state) => state.setActiveAuditTaskId)
   const activeTeam = useActiveTeam()
   const [isFlowModalOpen, setIsFlowModalOpen] = useState(false)
-  const sceneStatus = useSceneStatus(useSceneManager())
+  const loadStatus = useSceneStatus(useSceneManager())
+  const sceneStatus: SceneStatus = isSceneLost ? "error" : loadStatus
   const focusLabel = isFocusMode ? "Exit focus (Esc)" : "Focus 3D view"
 
   return (
@@ -119,9 +127,9 @@ function SimulationView({ canvasRef, isFocusMode, onFocusModeChange }: Simulatio
               <MonitorX />
               <AlertTitle>The 3D office could not load</AlertTitle>
               <AlertDescription>
-                It needs WebGPU or WebGL2 (a recent Chrome, Edge, Safari or Firefox) and a working
-                connection to download the models. The panels and agents still work; reload to try
-                again.
+                It needs WebGPU or WebGL2 (a recent Chrome, Edge, Safari or Firefox), a working
+                graphics driver and a connection to download the models. The panels and agents still
+                work; reload to try again.
               </AlertDescription>
             </Alert>
           </div>

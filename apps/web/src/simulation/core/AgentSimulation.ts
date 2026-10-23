@@ -187,8 +187,7 @@ export class AgentSimulation {
   public async handleUserMessage(agentIndex: number, text: string): Promise<boolean> {
     const agent = this.getAgent(agentIndex)
     if (!agent?.canChat()) return false
-    agent.appendHistory({ role: "user", content: [{ type: "text", text }] })
-    await agent.think(text, { isChat: true })
+    await agent.chat(text)
     return true
   }
 

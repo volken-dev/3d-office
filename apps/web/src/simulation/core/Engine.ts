@@ -31,12 +31,19 @@ export class Engine {
    * The canvas is sized by CSS so it stretches immediately while the drawing buffer catches up on
    * resize. Shadows use the default PCF map: VSM is unreliable with WebGPU node materials. GPU
    * timestamp queries are only requested in development, for the performance overlay.
+   * A lost GPU device (driver reset, GPU switch, sleep) or WebGL context stops the render loop,
+   * since nothing can draw on it any more, and is reported so the owner can rebuild the scene.
    */
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, onDeviceLost: () => void) {
     this.renderer = new THREE.WebGPURenderer({
       antialias: true,
       trackTimestamp: process.env.NODE_ENV === "development",
     })
+    this.renderer.onDeviceLost = (info) => {
+      console.error(`[Engine] ${info.api} device lost:`, info.message, info.reason ?? "")
+      this.renderer.setAnimationLoop(null)
+      onDeviceLost()
+    }
     this.maxPixelRatio = Math.max(
       MIN_PIXEL_RATIO,
       Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO),
@@ -58,6 +65,11 @@ export class Engine {
   /** Rejects when neither WebGPU nor the WebGL2 fallback is available. */
   public async init(): Promise<void> {
     await this.renderer.init()
+  }
+
+  /** Builds every shader and pipeline the scene needs up front, so the first frames don't stutter. */
+  public async compile(scene: THREE.Scene, camera: THREE.PerspectiveCamera): Promise<void> {
+    await this.renderer.compileAsync(scene, camera)
   }
 
   /**

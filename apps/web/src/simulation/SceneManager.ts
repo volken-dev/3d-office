@@ -30,6 +30,7 @@ import { InputManager } from "./input/InputManager"
 import { createSceneLoader } from "./loaders"
 import { NavMeshManager } from "./pathfinding/NavMeshManager"
 import { PoiManager } from "./world/PoiManager"
+import { BOARDROOM_POI_ID, deskPoiId, spawnPoiId } from "./world/poiIds"
 import { WorldManager } from "./world/WorldManager"
 
 /** Clamp so a long pause (hidden tab, design mode) doesn't teleport characters through walls. */
@@ -78,13 +79,16 @@ export class SceneManager {
   /** Resolves once the scene renders; rejects if WebGPU/WebGL2 or the models fail to load. */
   public readonly ready: Promise<void>
 
-  constructor(container: HTMLElement) {
+  /** `onDeviceLost` fires once the GPU device is gone; this scene can no longer render and should be rebuilt. */
+  constructor(container: HTMLElement, onDeviceLost: () => void) {
     this.container = container
     this.viewportWidth = container.clientWidth
     this.viewportHeight = container.clientHeight
     this.team = getActiveAgentSet()
 
-    this.engine = new Engine(container)
+    this.engine = new Engine(container, () => {
+      if (!this.isDisposed) onDeviceLost()
+    })
     this.stage = new Stage(this.engine.renderer.domElement)
     this.characterManager = new CharacterManager(this.stage.scene, this.team)
     this.navMesh = new NavMeshManager()
@@ -109,6 +113,7 @@ export class SceneManager {
    * Renderer init and every model download/decode overlap; only the setup after them is ordered.
    * The world is set up before the characters because character spawns need its POIs. Only the
    * character models this team uses are loaded, plus the default model every missing one falls back to.
+   * Shaders are compiled before the first frame, so `ready` resolves on a scene that renders smoothly.
    */
   private async init() {
     const loader = createSceneLoader()
@@ -116,7 +121,7 @@ export class SceneManager {
       this.engine.init(),
       loader.load(OFFICE_MODEL_URL),
       loadCharacterModels(loader, this.characterModelsFor(this.team)),
-    ]).finally(() => loader.dispose())
+    ])
     if (this.isDisposed) return
 
     this.worldManager.setup(officeGltf, this.team.color)
@@ -153,6 +158,9 @@ export class SceneManager {
         onPoiClick: (id) => this.driverManager?.getPlayerDriver()?.onPoiClick(id),
       },
     )
+
+    await this.engine.compile(this.stage.scene, this.stage.camera)
+    if (this.isDisposed) return
 
     this.startWatchingUiStore()
     this.engine.renderer.setAnimationLoop(this.animate)
@@ -284,7 +292,6 @@ export class SceneManager {
         console.error("[SceneManager] Character models failed to load:", error)
         if (!this.isDisposed && this.team === team) this.rebuildForTeam(team)
       })
-      .finally(() => loader.dispose())
   }
 
   /**
@@ -392,12 +399,12 @@ export class SceneManager {
     }
   }
 
-  /** Sends the agent to its own desk (`sit_work-<index>`), or to a desk picked by index if the office has none for it. */
+  /** Sends the agent to its own desk (`deskPoiId`), or to a desk picked by index if the office has none for it. */
   public setNpcWorking(index: number): void {
     if (!this.controller) return
-    let poi = this.poiManager.getPoi(`sit_work-${index}`)
+    let poi = this.poiManager.getPoi(deskPoiId(index))
     if (!poi) {
-      const desks = this.poiManager.getPoisByPrefix("sit_work")
+      const desks = this.poiManager.getPoisOfKind("desk")
       // TODO(#12): assumes agent indices start at 1
       if (desks.length > 0) poi = desks[(index - 1) % desks.length]
     }
@@ -406,13 +413,13 @@ export class SceneManager {
 
   public moveNpcToBoardroom(index: number): void {
     if (!this.controller) return
-    const poi = this.poiManager.getPoi("area-boardroom") || this.poiManager.getPoi("boardroom")
+    const poi = this.poiManager.getPoi(BOARDROOM_POI_ID)
     if (poi) this.controller.walkToPoi(index, poi.id)
   }
 
   public moveNpcToSpawn(index: number): void {
     if (!this.controller) return
-    const poi = this.poiManager.getPoi(`spawn-${index}`)
+    const poi = this.poiManager.getPoi(spawnPoiId(index))
     if (poi)
       this.controller.moveTo(index, poi.position, "idle", undefined, undefined, poi.quaternion)
   }
