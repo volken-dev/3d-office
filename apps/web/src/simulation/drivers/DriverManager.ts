@@ -4,7 +4,7 @@ import type { CharacterController } from "../CharacterController"
 import { NpcAgentDriver } from "./NpcAgentDriver"
 import { PlayerInputDriver } from "./PlayerInputDriver"
 
-/** Owns the per-character drivers (one player, the rest NPCs) and ticks them after each position readback. */
+/** Owns the per-character drivers (one player, the rest NPCs) and ticks them once per frame after movement. */
 export class DriverManager {
   private drivers = new Map<number, IAgentDriver>()
   private playerDriver: PlayerInputDriver | null = null
@@ -40,7 +40,7 @@ export class DriverManager {
     }
   }
 
-  /** Call after each GPU position readback. */
+  /** Call once per frame, after the movement step. */
   public update(positions: Float32Array, deltaSeconds: number): void {
     for (const driver of this.drivers.values()) {
       driver.update(positions, deltaSeconds)

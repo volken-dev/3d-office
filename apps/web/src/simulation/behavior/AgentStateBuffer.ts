@@ -18,7 +18,8 @@ import * as THREE from "three/webgpu"
  *   .z = alpha       (1.0 = opaque, <1.0 = transparent)
  *   .w = (unused)
  *
- * CPU writes metadata, GPU shader reads them.
+ * The CPU movement step reads the mode and waypoint; the vertex shader reads the animation,
+ * the facing override and the alpha.
  */
 export class AgentStateBuffer {
   /** Raw Float32Array (8 floats per instance). */
@@ -67,6 +68,14 @@ export class AgentStateBuffer {
 
   public getAlpha(index: number): number {
     return this.array[index * 8 + 6]
+  }
+
+  public getWaypointX(index: number): number {
+    return this.array[index * 8 + 0]
+  }
+
+  public getWaypointZ(index: number): number {
+    return this.array[index * 8 + 2]
   }
 
   public setWaypoint(index: number, x: number, z: number): void {

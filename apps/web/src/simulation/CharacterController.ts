@@ -21,7 +21,7 @@ const ORIGIN = new THREE.Vector3(0, 0, 0)
  * CharacterController — unified API for controlling any character (player or NPC).
  *
  * Composes:
- *  - CharacterManager     → GPU rendering, animation baking, expression buffers
+ *  - CharacterManager     → movement, GPU rendering, animation baking, expression buffers
  *  - CharacterStateMachine → declarative state→animation+expression mapping
  *  - PathAgent[]          → per-agent CPU path following
  *  - NavMeshManager       → path queries
@@ -155,10 +155,9 @@ export class CharacterController implements ICharacterDriver {
    * Occupies the POI immediately; releases existing ones first, but only once a path exists.
    *
    * A sit target is armed before walking, so when the sit_down timer expires the state machine
-   * reads it directly, immune to the async gap between syncFromGPU and stateMachine.update. On
-   * arrival the character snaps to the exact POI position (removing any navmesh offset) and, except
-   * for 'area' POIs, its facing; seated arrivals switch the GPU to SEATED so a stray GOTO can't move
-   * them.
+   * reads it directly. On arrival the character snaps to the exact POI position (removing any
+   * navmesh offset) and, except for 'area' POIs, its facing; seated arrivals switch to SEATED so a
+   * stray GOTO can't move them.
    */
   public walkToPoi(
     index: number,
@@ -216,19 +215,14 @@ export class CharacterController implements ICharacterDriver {
     return this.stateMachine.getState(index)
   }
 
-  /** Once per frame: expressions and the movement compute pass on the GPU, then state machine timers. */
-  public update(deltaSeconds: number, renderer: THREE.WebGPURenderer): void {
-    this.characterManager.update(deltaSeconds, renderer)
+  /** Once per frame: expressions and the movement step, then state machine timers. */
+  public update(deltaSeconds: number): void {
+    this.characterManager.update(deltaSeconds)
     this.stateMachine.update(deltaSeconds, this)
   }
 
-  /** GPU→CPU position readback (async, about one frame behind). */
-  public async syncFromGPU(renderer: THREE.WebGPURenderer): Promise<Float32Array | null> {
-    return this.characterManager.syncFromGPU(renderer)
-  }
-
   /**
-   * Advance path agents. Call after syncFromGPU resolves so positions are fresh.
+   * Advance path agents. Call after `update` so positions include this frame's step.
    * Fires arrival callbacks for agents that reach their destination, after keeping their last
    * movement direction as the IDLE facing.
    */

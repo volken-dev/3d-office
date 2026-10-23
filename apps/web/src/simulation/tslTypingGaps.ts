@@ -12,11 +12,6 @@ declare module "three/src/nodes/core/Node.js" {
     min: (other: Node<"uint">) => Node<"uint">
   }
 
-  interface FloatExtensions {
-    /** TSL logical operators convert float operands to bool; the typings only allow bool. */
-    and: (other: Node<"bool">) => Node<"bool">
-  }
-
   interface MatExtensions<TMat extends MatType> {
     /** WGSL supports matrix-by-scalar multiplication; the typings only cover matrix and vector operands. */
     mul: (scale: Node<"float">) => Node<TMat>

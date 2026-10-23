@@ -24,6 +24,7 @@ import * as THREE from "three/webgpu"
 import { getAllCharacters } from "../../data/agents"
 import { AgentBehavior, AnimationName, type ExpressionKey, type PoiDef } from "../../types"
 import { AgentStateBuffer } from "../behavior/AgentStateBuffer"
+import { MOVEMENT_STRIDE, stepCharacterMovement } from "../behavior/characterMovement"
 import { ExpressionBuffer } from "../behavior/ExpressionBuffer"
 import { appearanceFor } from "../characters/characterAppearance"
 import {
@@ -38,17 +39,6 @@ import type { PoiManager } from "../world/PoiManager"
 
 type Vec4StorageNode = THREE.StorageBufferNode<"vec4">
 
-/** Walk step per compute dispatch at 60 fps (the shader multiplies it by GOTO_SPEED_MULTIPLIER). */
-const BASE_WALK_SPEED = 0.015
-const REFERENCE_FPS = 60
-/**
- * Lower bound on the frame-time speed scale. Keeps per-dispatch velocity above the vertex
- * shader's MOVING_VELOCITY_THRESHOLD, so walkers keep facing their path on 240 Hz+ displays.
- */
-const MIN_SPEED_SCALE = 0.25
-const GOTO_SPEED_MULTIPLIER = 3.0
-/** Within this distance of the waypoint the compute shader snaps to it; the CPU then switches to IDLE. */
-const WAYPOINT_ARRIVAL_RADIUS = 0.2
 /** Velocity length above which the vertex shader faces along the velocity instead of the facing override. */
 const MOVING_VELOCITY_THRESHOLD = 0.01
 const BAKE_FRAMES_PER_SECOND = 60
@@ -135,13 +125,14 @@ export interface LoadedCharacterModel {
   gltf: GLTF
 }
 
-interface InstanceStorage {
+/** Per-instance position and velocity as the vertex shader reads them. */
+interface MovementStorage {
   positionStorage: Vec4StorageNode
   velocityStorage: Vec4StorageNode
-  agentStateBuffer: AgentStateBuffer
 }
 
-interface MeshAttributes extends InstanceStorage {
+interface MeshAttributes extends MovementStorage {
+  agentStateBuffer: AgentStateBuffer
   colorAttribute: THREE.InstancedBufferAttribute
   accessoryAttribute: THREE.InstancedBufferAttribute
   rigSlotAttribute: THREE.InstancedBufferAttribute
@@ -150,14 +141,20 @@ interface MeshAttributes extends InstanceStorage {
 
 /**
  * Renders every character as GPU-instanced skinned meshes. Animations are baked to bone-matrix
- * buffers at load and sampled in the vertex shader, and walking runs in a compute shader, so the
- * CPU only writes waypoints and state and reads positions back about a frame late.
+ * buffers at load and sampled in the vertex shader. Walking is stepped on the CPU each frame and
+ * uploaded to per-instance position and velocity buffers, so CPU positions are always current.
+ * Those buffers are storage buffers rather than vertex attributes because the parts already use
+ * WebGPU's default limit of eight vertex buffers.
  */
 export class CharacterManager {
   private team: AgenticSystem
   private instanceCount: number
   private poiManager: PoiManager | null = null
 
+  /** Per instance (x, y, z, w); the source of truth for every character's position. */
+  private positions: Float32Array | null = null
+  /** Per instance: this frame's walk step, which the vertex shader faces along. */
+  private velocities: Float32Array | null = null
   private positionAttribute: THREE.StorageInstancedBufferAttribute | null = null
   private velocityAttribute: THREE.StorageInstancedBufferAttribute | null = null
   private colorAttribute: THREE.InstancedBufferAttribute | null = null
@@ -171,16 +168,9 @@ export class CharacterManager {
   /** CPU+GPU eye and mouth atlas offsets per instance. */
   private expressionBuffer: ExpressionBuffer | null = null
 
-  /** CPU-side mirror of GPU positions, refreshed in place by each GPU readback. */
-  private cpuPositions: Float32Array | null = null
-  /** Bumped on every CPU position write, so a readback started before it is discarded instead of undoing it. */
-  private positionWrites = 0
-
   /** Global time for animation start times; also drives the pause-safe shader time uniform. */
   private currentTime = 0
   private timeUniform = uniform(0)
-
-  private computeNode: THREE.ComputeNode | null = null
 
   private instancedMeshes: THREE.Mesh[] = []
   /** Every model baked so far, by model id. */
@@ -192,7 +182,6 @@ export class CharacterManager {
   /** Model ids the instanced meshes were built for, to know when a team change needs a rebuild. */
   private builtRigKey = ""
 
-  private walkSpeedUniform = uniform(BASE_WALK_SPEED)
   private readonly scratchForward = new THREE.Vector3()
 
   public isLoaded = false
@@ -363,48 +352,27 @@ export class CharacterManager {
   }
 
   /**
-   * Reads the GPU position buffer back into the CPU mirror (about one frame behind).
-   * Call after renderer.compute(). Returns the mirror, which is updated in place. A readback that
-   * overlaps a rebuild or a teleport is discarded as stale, and a failed readback keeps the last
-   * known positions. The attribute's own CPU array is kept current too, so a later setPosition
-   * upload doesn't push stale positions.
+   * Advances shader time, blinking and speaking, and steps every walker one frame, then uploads
+   * the new positions and velocities for this frame's render.
    */
-  public async syncFromGPU(renderer: THREE.WebGPURenderer): Promise<Float32Array | null> {
-    const positionAttribute = this.positionAttribute
-    const writesBefore = this.positionWrites
-    if (!positionAttribute || !this.cpuPositions) return null
-    try {
-      const buffer: ArrayBuffer = await renderer.getArrayBufferAsync(positionAttribute)
-      if (
-        positionAttribute !== this.positionAttribute ||
-        writesBefore !== this.positionWrites ||
-        !this.cpuPositions
-      ) {
-        return this.cpuPositions
-      }
-      const gpuPositions = new Float32Array(buffer)
-      this.cpuPositions.set(gpuPositions)
-      positionAttribute.array.set(gpuPositions)
-    } catch {}
-    return this.cpuPositions
-  }
-
-  /**
-   * Advances shader time and dispatches the walk compute shader. The shader moves walkers a fixed
-   * step per dispatch, so the step is scaled by frame time to walk at the same speed at any refresh rate.
-   */
-  public update(deltaSeconds: number, renderer: THREE.WebGPURenderer) {
+  public update(deltaSeconds: number) {
     this.currentTime += deltaSeconds
     this.timeUniform.value = this.currentTime
-    this.walkSpeedUniform.value =
-      BASE_WALK_SPEED * Math.max(deltaSeconds * REFERENCE_FPS, MIN_SPEED_SCALE)
+    this.expressionBuffer?.update(deltaSeconds)
 
-    if (this.expressionBuffer) {
-      this.expressionBuffer.update(deltaSeconds)
+    const { positions, velocities, agentStateBuffer, positionAttribute, velocityAttribute } = this
+    if (
+      !positions ||
+      !velocities ||
+      !agentStateBuffer ||
+      !positionAttribute ||
+      !velocityAttribute
+    ) {
+      return
     }
-    if (this.computeNode) {
-      renderer.compute(this.computeNode)
-    }
+    stepCharacterMovement(positions, velocities, agentStateBuffer, this.instanceCount, deltaSeconds)
+    positionAttribute.needsUpdate = true
+    velocityAttribute.needsUpdate = true
   }
 
   private cleanupInstances() {
@@ -415,8 +383,6 @@ export class CharacterManager {
       if (!Array.isArray(material)) material.dispose()
     }
     this.instancedMeshes = []
-    this.computeNode?.dispose()
-    this.computeNode = null
     this.expressionBuffer = null
   }
 
@@ -425,26 +391,20 @@ export class CharacterManager {
     if (this.activeRigs.length === 0) return
 
     const count = this.instanceCount
-    const positionAttribute = new THREE.StorageInstancedBufferAttribute(
-      new Float32Array(count * 4),
-      4,
-    )
-    const velocityAttribute = new THREE.StorageInstancedBufferAttribute(
-      new Float32Array(count * 4),
-      4,
-    )
+    const positions = new Float32Array(count * MOVEMENT_STRIDE)
+    const velocities = new Float32Array(count * MOVEMENT_STRIDE)
+    const positionAttribute = new THREE.StorageInstancedBufferAttribute(positions, MOVEMENT_STRIDE)
+    const velocityAttribute = new THREE.StorageInstancedBufferAttribute(velocities, MOVEMENT_STRIDE)
     const colorAttribute = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3)
     const accessoryAttribute = new THREE.InstancedBufferAttribute(new Float32Array(count), 1)
     const rigSlotAttribute = new THREE.InstancedBufferAttribute(new Float32Array(count), 1)
+    this.positions = positions
+    this.velocities = velocities
     this.positionAttribute = positionAttribute
     this.velocityAttribute = velocityAttribute
     this.colorAttribute = colorAttribute
     this.accessoryAttribute = accessoryAttribute
     this.rigSlotAttribute = rigSlotAttribute
-    this.cpuPositions = new Float32Array(count * 4)
-
-    const positionStorage = storage(positionAttribute, "vec4", count)
-    const velocityStorage = storage(velocityAttribute, "vec4", count)
 
     const agentStateBuffer = new AgentStateBuffer(count)
     const expressionBuffer = new ExpressionBuffer(count)
@@ -452,10 +412,9 @@ export class CharacterManager {
     this.expressionBuffer = expressionBuffer
     this.writeInitialState()
 
-    this.initComputeNode({ positionStorage, velocityStorage, agentStateBuffer })
     this.createInstancedMesh({
-      positionStorage,
-      velocityStorage,
+      positionStorage: storage(positionAttribute, "vec4", count),
+      velocityStorage: storage(velocityAttribute, "vec4", count),
       agentStateBuffer,
       colorAttribute,
       accessoryAttribute,
@@ -471,34 +430,33 @@ export class CharacterManager {
    * spot. Idle animations get random negative start times so they play out of sync.
    */
   private writeInitialState() {
+    const positions = this.positions
+    const velocities = this.velocities
     const positionAttribute = this.positionAttribute
     const velocityAttribute = this.velocityAttribute
     const colorAttribute = this.colorAttribute
     const accessoryAttribute = this.accessoryAttribute
     const rigSlotAttribute = this.rigSlotAttribute
-    const cpuPositions = this.cpuPositions
     const agentStateBuffer = this.agentStateBuffer
     const expressionBuffer = this.expressionBuffer
     if (
+      !positions ||
+      !velocities ||
       !positionAttribute ||
       !velocityAttribute ||
       !colorAttribute ||
       !accessoryAttribute ||
       !rigSlotAttribute ||
-      !cpuPositions ||
       !agentStateBuffer ||
       !expressionBuffer
     ) {
       return
     }
-    const positions = positionAttribute.array
-    const velocities = velocityAttribute.array
     const colors = colorAttribute.array
     const accessories = accessoryAttribute.array
     const rigSlots = rigSlotAttribute.array
     positions.fill(0)
     velocities.fill(0)
-    this.positionWrites++
 
     const scratchColor = new THREE.Color()
 
@@ -547,7 +505,6 @@ export class CharacterManager {
       rigSlots[characterIndex] = rig ? this.activeRigs.indexOf(rig) : -1
     }
 
-    cpuPositions.set(positions)
     positionAttribute.needsUpdate = true
     velocityAttribute.needsUpdate = true
     colorAttribute.needsUpdate = true
@@ -577,46 +534,6 @@ export class CharacterManager {
     }
   }
 
-  /**
-   * Builds the walk compute shader. Agent buffer element 0 is (waypointX, animation, waypointZ,
-   * mode) with mode 0 = IDLE, 1 = GOTO, 2 = SEATED. GOTO steps toward the waypoint and snaps onto
-   * it inside the arrival radius (the CPU switches to IDLE that frame). IDLE and SEATED are the
-   * same on the GPU (the difference is CPU-only): velocity is zeroed so the vertex shader turns the
-   * character by its facing override instead of a stale walk velocity.
-   */
-  private initComputeNode({ positionStorage, velocityStorage, agentStateBuffer }: InstanceStorage) {
-    const agentStorage = agentStateBuffer.storageNode
-
-    this.computeNode = Fn(() => {
-      const positionElement = positionStorage.element(instanceIndex)
-      const velocityElement = velocityStorage.element(instanceIndex)
-      const agentData = agentStorage.element(instanceIndex.mul(2))
-      const agentMode = agentData.w
-
-      const position = positionElement.xyz.toVar()
-
-      const isGoto = agentMode.greaterThan(float(0.5)).and(agentMode.lessThan(float(1.5)))
-
-      If(isGoto, () => {
-        const waypoint = vec3(agentData.x, float(0), agentData.z)
-        const toWaypoint = waypoint.sub(position)
-        const distanceToWaypoint = toWaypoint.length()
-        If(distanceToWaypoint.greaterThan(float(WAYPOINT_ARRIVAL_RADIUS)), () => {
-          const stepVelocity = toWaypoint
-            .normalize()
-            .mul(this.walkSpeedUniform.mul(GOTO_SPEED_MULTIPLIER))
-          velocityElement.assign(vec4(stepVelocity, 0.0))
-          positionElement.assign(vec4(position.add(stepVelocity), 1.0))
-        }).Else(() => {
-          positionElement.assign(vec4(agentData.x, position.y, agentData.z, 1.0))
-        })
-      }).Else(() => {
-        velocityElement.assign(vec4(float(0), float(0), float(0), float(0)))
-        positionElement.assign(vec4(position, 1.0))
-      })
-    })().compute(this.instanceCount)
-  }
-
   /** Creates the instanced meshes of every rig in use; each draws only the instances assigned to its slot. */
   private createInstancedMesh(attributes: MeshAttributes) {
     this.activeRigs.forEach((rig, slot) => {
@@ -643,7 +560,7 @@ export class CharacterManager {
       rigSlotAttribute,
       expressionBuffer,
       agentStateBuffer,
-      ...instanceStorage
+      ...movementStorage
     }: MeshAttributes,
   ) {
     const instancedGeometry = toInstancedGeometry(geometry, this.instanceCount)
@@ -730,7 +647,7 @@ export class CharacterManager {
     const isVisible = (wearsAccessory ? inThisSlot.and(wearsAccessory) : inThisSlot).and(
       instanceAlpha.greaterThan(0),
     )
-    const vertexNode = this.createVertexNode(isVisible, instanceStorage, agentStateBuffer, rig)
+    const vertexNode = this.createVertexNode(isVisible, movementStorage, agentStateBuffer, rig)
     material.positionNode = vertexNode
     material.castShadowPositionNode = vertexNode
 
@@ -750,7 +667,7 @@ export class CharacterManager {
    */
   private createVertexNode(
     isVisibleNode: THREE.Node,
-    { positionStorage, velocityStorage }: Omit<InstanceStorage, "agentStateBuffer">,
+    { positionStorage, velocityStorage }: MovementStorage,
     agentStateBuffer: AgentStateBuffer,
     rig: CharacterRig,
   ) {
@@ -874,16 +791,16 @@ export class CharacterManager {
     return this.agentStateBuffer
   }
 
-  /** CPU mirror of positions (vec4 stride), refreshed in place by syncFromGPU. */
+  /** Every character's position (MOVEMENT_STRIDE floats each), updated in place every frame. */
   public getCPUPositions(): Float32Array | null {
-    return this.cpuPositions
+    return this.positions
   }
 
   /** Writes a character's world position into `out`. Returns false if the index is unknown. */
   public getCPUPosition(index: number, out: THREE.Vector3): boolean {
-    if (!this.cpuPositions || index < 0 || index >= this.instanceCount) return false
-    const offset = index * 4
-    out.set(this.cpuPositions[offset], this.cpuPositions[offset + 1], this.cpuPositions[offset + 2])
+    if (!this.positions || index < 0 || index >= this.instanceCount) return false
+    const offset = index * MOVEMENT_STRIDE
+    out.set(this.positions[offset], this.positions[offset + 1], this.positions[offset + 2])
     return true
   }
 
@@ -892,36 +809,16 @@ export class CharacterManager {
     this.agentStateBuffer.setState(index, mode)
   }
 
-  /**
-   * Teleport an agent to an exact world position by writing directly to the CPU→GPU buffer.
-   * The CPU mirror is updated too, so getCPUPosition() is accurate before the next readback.
-   */
+  /** Teleports a character to an exact world position, uploaded with this frame's render. */
   public setPosition(index: number, position: THREE.Vector3): void {
-    if (!this.positionAttribute || index < 0 || index >= this.instanceCount) return
-    const positions = this.positionAttribute.array
-    positions[index * 4 + 0] = position.x
-    positions[index * 4 + 1] = position.y
-    positions[index * 4 + 2] = position.z
+    if (!this.positions || !this.positionAttribute || index < 0 || index >= this.instanceCount) {
+      return
+    }
+    const offset = index * MOVEMENT_STRIDE
+    this.positions[offset] = position.x
+    this.positions[offset + 1] = position.y
+    this.positions[offset + 2] = position.z
     this.positionAttribute.needsUpdate = true
-    this.positionWrites++
-    if (this.cpuPositions) {
-      this.cpuPositions[index * 4 + 0] = position.x
-      this.cpuPositions[index * 4 + 1] = position.y
-      this.cpuPositions[index * 4 + 2] = position.z
-    }
-  }
-
-  /** Teleport an agent and zero their current velocity to avoid sliding. */
-  public setPositionAndZeroVelocity(index: number, position: THREE.Vector3): void {
-    this.setPosition(index, position)
-    if (this.velocityAttribute && index >= 0 && index < this.instanceCount) {
-      const velocities = this.velocityAttribute.array
-      velocities[index * 4 + 0] = 0
-      velocities[index * 4 + 1] = 0
-      velocities[index * 4 + 2] = 0
-      velocities[index * 4 + 3] = 0
-      this.velocityAttribute.needsUpdate = true
-    }
   }
 
   /** Force a specific facing direction when IDLE. */

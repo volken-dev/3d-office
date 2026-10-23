@@ -24,7 +24,7 @@ export enum AgentBehavior {
   IDLE = 0,
   /** Moves toward the target waypoint (.x/.z of the agent buffer). */
   GOTO = 1,
-  /** Position locked, velocity zero: the character is seated, treated like IDLE on the GPU. */
+  /** Position locked, velocity zero: the character is seated, treated like IDLE by the movement step. */
   SEATED = 2,
 }
 

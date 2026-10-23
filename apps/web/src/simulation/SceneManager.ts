@@ -71,8 +71,6 @@ export class SceneManager {
   private resizeObserver: ResizeObserver
   private viewportWidth: number
   private viewportHeight: number
-  private isSyncing = false
-  private pendingSyncDelta = 0
   private readonly scratchPosition = new THREE.Vector3()
 
   /** Resolves once the scene renders; rejects if WebGPU/WebGL2 or the models fail to load. */
@@ -428,9 +426,9 @@ export class SceneManager {
   }
 
   /**
-   * One frame. Skipped in design mode, where the canvas is hidden behind the editor. The GPU→CPU
-   * position readback is async, so a new one is never queued while the previous is in flight; the
-   * frame time it covers accumulates until it resolves.
+   * One frame. Skipped in design mode, where the canvas is hidden behind the editor. Characters
+   * step on the CPU, then paths, drivers and overlap fading react to this frame's positions
+   * before the render.
    */
   private animate = () => {
     this.engine.timer.update()
@@ -440,24 +438,12 @@ export class SceneManager {
     const controller = this.controller
     this.engine.trackFrame(deltaSeconds)
     this.stage.update()
-    controller?.update(deltaSeconds, this.engine.renderer)
-
-    this.pendingSyncDelta += deltaSeconds
-    if (controller && !this.isSyncing) {
-      this.isSyncing = true
-      const syncDelta = this.pendingSyncDelta
-      this.pendingSyncDelta = 0
-      controller
-        .syncFromGPU(this.engine.renderer)
-        .then((positions) => {
-          if (!positions || this.isDisposed || controller !== this.controller) return
-          controller.updatePaths(positions)
-          this.driverManager?.update(positions, syncDelta)
-          this.updateTransparency(positions, syncDelta)
-        })
-        .finally(() => {
-          this.isSyncing = false
-        })
+    const positions = controller?.getCPUPositions()
+    if (controller && positions) {
+      controller.update(deltaSeconds)
+      controller.updatePaths(positions)
+      this.driverManager?.update(positions, deltaSeconds)
+      this.updateTransparency(positions, deltaSeconds)
     }
 
     const player = this.team.user.index
