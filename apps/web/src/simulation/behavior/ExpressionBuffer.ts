@@ -1,5 +1,3 @@
-import { storage } from "three/tsl"
-import * as THREE from "three/webgpu"
 import type { AtlasCoords, ExpressionKey } from "../../types"
 import {
   ATLAS_COLS,
@@ -10,6 +8,7 @@ import {
   BLINK_INTERVAL_RANGE,
   SPEAKING_FRAME_DURATION,
 } from "../constants"
+import { Vec4Texture } from "../Vec4Texture"
 
 const EXPRESSIONS: Record<ExpressionKey, { eyes: AtlasCoords; mouth: AtlasCoords }> = {
   idle: { eyes: { col: 0, row: 3 }, mouth: { col: 1, row: 3 } },
@@ -40,8 +39,8 @@ const SPEAKING_MOUTH_FRAMES: AtlasCoords[] = [
  */
 export class ExpressionBuffer {
   public readonly array: Float32Array
-  public readonly attribute: THREE.StorageInstancedBufferAttribute
-  public readonly storageNode: THREE.StorageBufferNode<"vec4">
+  /** GPU copy of `array`, one vec4 record per instance. */
+  public readonly texture: Vec4Texture
 
   private speakingStates: boolean[] = []
   private speakingFrames: number[] = []
@@ -51,9 +50,8 @@ export class ExpressionBuffer {
   private currentExpressions: ExpressionKey[] = []
 
   constructor(private readonly count: number) {
-    this.array = new Float32Array(count * 4)
-    this.attribute = new THREE.StorageInstancedBufferAttribute(this.array, 4)
-    this.storageNode = storage(this.attribute, "vec4", count)
+    this.texture = new Vec4Texture(count)
+    this.array = this.texture.array
 
     for (let instanceIndex = 0; instanceIndex < count; instanceIndex++) {
       this.speakingStates[instanceIndex] = false
@@ -89,13 +87,13 @@ export class ExpressionBuffer {
   private setEyeOffset(index: number, coords: AtlasCoords) {
     this.array[index * 4 + 0] = coords.col * (1 / ATLAS_COLS)
     this.array[index * 4 + 1] = 1.0 - (coords.row + 1) * (1 / ATLAS_ROWS)
-    this.attribute.needsUpdate = true
+    this.texture.markChanged()
   }
 
   private setMouthOffset(index: number, coords: AtlasCoords) {
     this.array[index * 4 + 2] = coords.col * (1 / ATLAS_COLS)
     this.array[index * 4 + 3] = 1.0 - (coords.row + 1) * (1 / ATLAS_ROWS)
-    this.attribute.needsUpdate = true
+    this.texture.markChanged()
   }
 
   public update(deltaSeconds: number) {
@@ -135,7 +133,11 @@ export class ExpressionBuffer {
     }
 
     if (needsUpdate) {
-      this.attribute.needsUpdate = true
+      this.texture.markChanged()
     }
+  }
+
+  public dispose(): void {
+    this.texture.dispose()
   }
 }
