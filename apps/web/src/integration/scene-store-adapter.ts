@@ -1,5 +1,6 @@
 import type { AgenticSystem } from "@the-delegation/agents/team"
 import { SceneManager } from "../simulation/scene-manager"
+import type { TeamRuntime } from "./orchestration/team-runtime"
 import {
   chatIntents,
   initialSceneIntents,
@@ -20,6 +21,7 @@ import { useUiStore } from "./store/ui-store"
  */
 export class SceneStoreAdapter {
   private readonly scene: SceneManager
+  private readonly runtime: TeamRuntime
   private team: AgenticSystem
   private unsubscribers: (() => void)[] = []
   private isDisposed = false
@@ -27,8 +29,12 @@ export class SceneStoreAdapter {
   /** Resolves once the scene renders; rejects if WebGPU/WebGL2 or the models fail to load. */
   public readonly ready: Promise<void>
 
-  /** `onDeviceLost` fires once the GPU device is gone and the scene must be rebuilt by its owner. */
-  constructor(container: HTMLElement, onDeviceLost: () => void) {
+  /**
+   * `runtime` runs the agents and outlives this adapter. `onDeviceLost` fires once the GPU device
+   * is gone and the scene must be rebuilt by its owner.
+   */
+  constructor(container: HTMLElement, runtime: TeamRuntime, onDeviceLost: () => void) {
+    this.runtime = runtime
     this.team = getActiveAgentSet()
     this.scene = new SceneManager(container, this.team, {
       onAgentClick: (agentIndex) => this.selectAgent(agentIndex),
@@ -81,10 +87,10 @@ export class SceneStoreAdapter {
   /** Sends the user's message to the selected agent; ignored while it is still answering. */
   public async sendMessage(text: string): Promise<void> {
     const { selectedNpcIndex, isThinking } = useUiStore.getState()
-    if (selectedNpcIndex === null || isThinking || !this.scene.canSendMessages) return
+    if (selectedNpcIndex === null || isThinking || this.isDisposed) return
     useUiStore.setState({ isThinking: true, isTyping: false })
     try {
-      await this.scene.sendUserMessage(selectedNpcIndex, text)
+      await this.runtime.sendUserMessage(selectedNpcIndex, text)
     } catch (error) {
       console.error("[SceneStoreAdapter] sendMessage error:", error)
     } finally {

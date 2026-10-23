@@ -2,6 +2,7 @@ import type { LLMErrorKind } from "../llm/errors"
 import type { AgentMessage, LLMClient } from "../llm/types"
 import type {
   ActionLogEntry,
+  AgentWorkStatus,
   AutonomyPause,
   IntentAttempts,
   NewTask,
@@ -48,6 +49,11 @@ export interface TaskBoardPort {
   finalizeOutput(output: string): void
 }
 
+/** The transition the orchestrator makes when it hands a scheduled task to its agent. */
+export interface TaskSchedulingPort {
+  startTask(taskId: string): void
+}
+
 /** The user-visible action log and the request/response debug log. Logging never affects spend. */
 export interface ActivityLogPort {
   logAction(entry: Omit<ActionLogEntry, "id" | "timestamp">): void
@@ -72,6 +78,7 @@ export interface ProjectStatePort
   extends ProjectReader,
     AgentHistoryPort,
     TaskBoardPort,
+    TaskSchedulingPort,
     ActivityLogPort,
     AutonomyBudgetPort {}
 
@@ -103,4 +110,23 @@ export interface OrchestrationDeps {
   team: TeamPort
   createLLMClient(): LLMClient
   events: OrchestratorEvents
+}
+
+/** Where each agent's work status is shown; the orchestrator is its only writer. */
+export interface AgentStatusPort {
+  setAgentStatus(agentIndex: number, status: AgentWorkStatus): void
+}
+
+/** The user's chat with an agent. The lead does not plan while the user is talking to it. */
+export interface ChatSessionPort {
+  /** The agent the user is chatting with, or null when no chat is open. */
+  chatPartner(): number | null
+  /** Calls the listener each time an open chat closes; returns the unsubscribe function. */
+  onChatClosed(listener: () => void): () => void
+}
+
+/** What the team orchestrator needs on top of what each agent's brain needs. */
+export interface TeamOrchestratorDeps extends OrchestrationDeps {
+  agentStatus: AgentStatusPort
+  chat: ChatSessionPort
 }

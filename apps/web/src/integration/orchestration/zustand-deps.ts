@@ -1,7 +1,9 @@
 import type {
+  ChatSessionPort,
   OrchestrationDeps,
   ProjectSnapshot,
   ProjectStatePort,
+  TeamOrchestratorDeps,
 } from "@the-delegation/agents/orchestration/ports"
 import type { AutonomyPause } from "@the-delegation/agents/project/types"
 import { toast } from "sonner"
@@ -94,6 +96,7 @@ const project: ProjectStatePort = {
   completeTask: (taskId, output) => useCoreStore.getState().completeTask(taskId, output),
   requestOutputReview: (output) => useCoreStore.getState().requestOutputReview(output),
   finalizeOutput: (output) => useCoreStore.getState().finalizeOutput(output),
+  startTask: (taskId) => useCoreStore.getState().updateTaskStatus(taskId, "in_progress"),
 
   logAction: (entry) => useCoreStore.getState().addLogEntry(entry),
   logRequest: (entry) => useCoreStore.getState().addRequestLog(entry),
@@ -116,10 +119,26 @@ const project: ProjectStatePort = {
 
 const gatewayClient = createGatewayClient()
 
+const chat: ChatSessionPort = {
+  chatPartner: () => {
+    const { isChatting, selectedNpcIndex } = useUiStore.getState()
+    return isChatting ? selectedNpcIndex : null
+  },
+  onChatClosed: (listener) =>
+    useUiStore.subscribe((state, previousState) => {
+      if (previousState.isChatting && !state.isChatting) listener()
+    }),
+}
+
 /** Wires agent orchestration to the Zustand stores, the model gateway and Sonner toasts. */
-export const zustandOrchestrationDeps: OrchestrationDeps = {
+export const zustandOrchestrationDeps: TeamOrchestratorDeps = {
   project,
   team: { getTeam: getActiveAgentSet },
   createLLMClient: () => gatewayClient,
   events,
+  agentStatus: {
+    setAgentStatus: (agentIndex, status) =>
+      useUiStore.getState().setAgentStatus(agentIndex, status),
+  },
+  chat,
 }

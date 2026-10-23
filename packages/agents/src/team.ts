@@ -62,6 +62,18 @@ export function getAgentRoster(system: AgenticSystem): AgentRoster {
   return roster
 }
 
+/**
+ * Whether two versions of a team have the same agents in the same slots. A different roster needs
+ * new agent runtimes and characters; the same roster with edited agents is updated in place.
+ */
+export function hasSameRoster(previous: AgenticSystem, next: AgenticSystem): boolean {
+  const indicesOf = (system: AgenticSystem) =>
+    getAllAgents(system)
+      .map((agent) => agent.index)
+      .join(",")
+  return previous.id === next.id && indicesOf(previous) === indicesOf(next)
+}
+
 /** Whether this index is the team's lead, which alone may set the brief and deliver the project. */
 export function isLeadAgent(system: AgenticSystem, index: number): boolean {
   return system.leadAgent.index === index

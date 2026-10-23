@@ -1,11 +1,14 @@
-import { AgentBrain, type BrainHost } from "@the-delegation/agents/agent/agent-brain"
-import { canChatWith } from "@the-delegation/agents/orchestration/policy"
-import type { AgentWorkStatus } from "@the-delegation/agents/project/types"
-import { type AgentNode, isLeadAgent } from "@the-delegation/agents/team"
-import { zustandOrchestrationDeps } from "../../integration/orchestration/zustand-deps"
-import { useCoreStore } from "../../integration/store/core-store"
-import { useUiStore } from "../../integration/store/ui-store"
-import type { AgentSimulation } from "./agent-simulation"
+import { AgentBrain, type BrainHost } from "../agent/agent-brain"
+import type { AgentWorkStatus } from "../project/types"
+import { type AgenticSystem, type AgentNode, isLeadAgent } from "../team"
+import { canChatWith } from "./policy"
+import type { TeamOrchestratorDeps } from "./ports"
+
+/** What a host needs from the orchestrator that owns it. */
+export interface AgentHostOwner {
+  readonly system: AgenticSystem
+  processScheduledTasks(): void
+}
 
 /** Runtime wrapper around one team member: its brain, task and status. */
 export class AgentHost implements BrainHost {
@@ -17,16 +20,17 @@ export class AgentHost implements BrainHost {
   constructor(
     /** Replaced in place when the team is edited, so the next LLM turn uses the new model/prompt. */
     public data: AgentNode,
-    public readonly simulation: AgentSimulation,
+    private readonly owner: AgentHostOwner,
+    private readonly dependencies: TeamOrchestratorDeps,
   ) {
-    this.brain = new AgentBrain(this, zustandOrchestrationDeps)
+    this.brain = new AgentBrain(this, dependencies)
   }
 
   /** Same rule the chat UI applies (useChatAvailability), so an accepted message always gets a turn. */
   public canChat(): boolean {
     return canChatWith({
-      phase: useCoreStore.getState().phase,
-      isLead: isLeadAgent(this.simulation.system, this.data.index),
+      phase: this.dependencies.project.snapshot().phase,
+      isLead: isLeadAgent(this.owner.system, this.data.index),
       status: this.state,
     })
   }
@@ -56,21 +60,21 @@ export class AgentHost implements BrainHost {
     this.setState(taskId ? "working" : "idle")
   }
 
-  /** A disposed host belongs to a previous team, and its index may now be someone else's, so it no longer writes the store. */
+  /** A disposed host belongs to a previous team, and its index may now be someone else's, so it no longer reports status. */
   public setState(state: AgentWorkStatus) {
     this.state = state
-    if (!this.disposed) useUiStore.getState().setAgentStatus(this.data.index, state)
+    if (!this.disposed) this.dependencies.agentStatus.setAgentStatus(this.data.index, state)
   }
 
   public onTurnSettled() {
-    this.simulation.processScheduledTasks()
+    this.owner.processScheduledTasks()
   }
 
   public get isThinking(): boolean {
     return this.brain.isThinking
   }
 
-  /** Aborts the in-flight LLM call and drops the brain's store subscription. */
+  /** Aborts the in-flight LLM call and drops the brain's project subscription. */
   public dispose() {
     this.disposed = true
     this.brain.dispose()

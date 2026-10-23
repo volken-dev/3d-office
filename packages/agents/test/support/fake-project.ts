@@ -88,6 +88,10 @@ export class FakeProject implements ProjectStatePort {
     return task
   }
 
+  startTask(taskId: string): void {
+    this.patchTask(taskId, { status: "in_progress" })
+  }
+
   setTaskError(taskId: string, error: string | undefined): void {
     this.patchTask(taskId, { error })
   }

@@ -35,9 +35,11 @@ apps/
 │   └── src/
 │       ├── app/          layout, page, client-app (the ssr:false boundary)
 │       ├── integration/  adapters from packages/agents to React/Zustand and the gateway: store/
-│       │                 (coreStore, uiStore, teamStore), orchestration/zustandDeps, llm/
+│       │                 (coreStore, uiStore, teamStore), orchestration/ (zustandDeps,
+│       │                 TeamRuntime, which runs the agents apart from the scene), llm/
 │       │                 (gatewayClient, gatewayStatus, legacyApiKey), hooks/
-│       ├── simulation/   the 3D scene: SceneManager, Engine, characters, pathfinding, AgentSimulation
+│       ├── simulation/   the 3D scene: SceneManager, Engine, characters, pathfinding (reads no
+│       │                 store; driven by scene intents from integration/)
 │       ├── interface/    React panels and modals
 │       ├── components/   ui/ (shadcn primitives) + shared components (Markdown, ExternalLink)
 │       ├── data/         team templates and the user-including character roster (agents.ts)
@@ -49,7 +51,8 @@ apps/
 packages/
 ├── agents/     @the-delegation/agents: framework-free orchestration. agent/ (AgentBrain,
 │               modelTurn, boardReaction, PromptBuilder, ToolRegistry, history, tools/ with
-│               toolArgs), orchestration/ (ports, policy, autonomy), project/types, llm/
+│               toolArgs), orchestration/ (ports, policy, autonomy, TeamOrchestrator,
+│               AgentHost), project/types, llm/
 │               (AgentMessage, LLMClient, LLMError), team.ts
 ├── llm/        @the-delegation/llm: registry (models, prices, backups), adapter, errors,
 │               providers/ (anthropic, openai), router (fallback + circuit breaker)

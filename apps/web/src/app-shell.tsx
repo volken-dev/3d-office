@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { removeLegacyApiKey } from "./integration/llm/legacy-api-key"
+import { TeamRuntime } from "./integration/orchestration/team-runtime"
 import { SceneStoreAdapter } from "./integration/scene-store-adapter"
 import { useCoreStore } from "./integration/store/core-store"
 import { useUiStore } from "./integration/store/ui-store"
@@ -30,9 +31,12 @@ const DEVICE_LOSS_WINDOW_MS = 60_000
  * device rebuilds the scene through the same effect that creates it, so StrictMode's double mount
  * covers recovery too; past the recovery budget the scene reports itself unavailable. The ref is
  * cleared before disposing, so a dispose that throws on a dead context cannot block the rebuild.
+ * The agents run in a `TeamRuntime` created by an earlier effect, so rebuilding the scene never
+ * interrupts them.
  */
 export default function App() {
   const canvasRef = useRef<HTMLDivElement>(null)
+  const runtimeRef = useRef<TeamRuntime | null>(null)
   const sceneRef = useRef<SceneStoreAdapter | null>(null)
   const [scene, setScene] = useState<SceneStoreAdapter | null>(null)
   const [sceneGeneration, setSceneGeneration] = useState(0)
@@ -51,6 +55,15 @@ export default function App() {
     void useUiStore.getState().checkGateway()
   }, [])
 
+  useEffect(() => {
+    const runtime = new TeamRuntime()
+    runtimeRef.current = runtime
+    return () => {
+      runtimeRef.current = null
+      runtime.dispose()
+    }
+  }, [])
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new sceneGeneration rebuilds the scene after a lost GPU device
   useEffect(() => {
     const onDeviceLost = () => {
@@ -63,8 +76,9 @@ export default function App() {
       if (recentLosses.length > MAX_DEVICE_LOSS_RECOVERIES) setSceneLost(true)
       else setSceneGeneration((generation) => generation + 1)
     }
-    if (canvasRef.current && !sceneRef.current) {
-      const connectedScene = new SceneStoreAdapter(canvasRef.current, onDeviceLost)
+    const runtime = runtimeRef.current
+    if (canvasRef.current && runtime && !sceneRef.current) {
+      const connectedScene = new SceneStoreAdapter(canvasRef.current, runtime, onDeviceLost)
       sceneRef.current = connectedScene
       setScene(connectedScene)
     }

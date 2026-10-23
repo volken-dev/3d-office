@@ -12,7 +12,6 @@ import { modelIdsUsedBy } from "./characters/character-appearance"
 import { DEFAULT_CHARACTER_MODEL_ID } from "./characters/character-models"
 import { loadCharacterModels } from "./characters/load-character-models"
 import { BUBBLE_Y_OFFSET, CHAT_STANDOFF, OFFICE_MODEL_URL } from "./constants"
-import { AgentSimulation } from "./core/agent-simulation"
 import { Engine } from "./core/engine"
 import { Stage } from "./core/stage"
 import { DriverManager } from "./drivers/driver-manager"
@@ -43,7 +42,7 @@ export interface SceneEvents {
 }
 
 /**
- * Owns the 3D office and the agent simulation for a team, and executes scene intents (movement,
+ * Owns the 3D office for a team and executes scene intents (movement,
  * chat, team changes) as character movement and animation. It reads no store: an integration
  * adapter derives the intents from store changes and receives the user's input through
  * `SceneEvents`.
@@ -58,7 +57,6 @@ export class SceneManager {
   private worldManager: WorldManager
   private driverManager: DriverManager | null = null
   private inputManager: InputManager | null = null
-  private simulation: AgentSimulation | null = null
 
   private team: AgenticSystem
   private selectedIndex: number | null = null
@@ -97,8 +95,6 @@ export class SceneManager {
 
     this.resizeObserver = new ResizeObserver(() => this.onResize())
     this.resizeObserver.observe(container)
-
-    this.simulation = new AgentSimulation(this.team)
 
     this.ready = this.init()
     this.ready.catch((error) => {
@@ -219,7 +215,6 @@ export class SceneManager {
         return
       case "updateTeam":
         this.team = intent.team
-        this.simulation?.updateSystem(intent.team)
         return
       case "layoutResizeStarted":
         this.isLayoutResizing = true
@@ -272,13 +267,11 @@ export class SceneManager {
   }
 
   /**
-   * New simulation, characters and drivers for the team, everyone back at spawn. While still
+   * New characters and drivers for the team, everyone back at spawn. While still
    * loading, init() builds everything from this.team instead. Screen positions are cleared so a
    * removed agent's name bubble does not stay pinned where it last stood.
    */
   private rebuildForTeam(team: AgenticSystem) {
-    this.simulation?.dispose()
-    this.simulation = new AgentSimulation(team)
     this.worldManager.updateThemeColor(team.color)
 
     if (!this.controller) return
@@ -357,16 +350,6 @@ export class SceneManager {
       controller.setFacing(user, facingX, facingZ)
       controller.setFacing(npcIndex, -facingX, -facingZ)
     })
-  }
-
-  /** False once disposed, when the agent loop is gone and a message has nowhere to go. */
-  public get canSendMessages(): boolean {
-    return this.simulation !== null
-  }
-
-  /** Hands the user's chat message to the agent's loop; resolves when the agent has replied. */
-  public async sendUserMessage(agentIndex: number, text: string): Promise<void> {
-    await this.simulation?.handleUserMessage(agentIndex, text)
   }
 
   /**
@@ -464,12 +447,10 @@ export class SceneManager {
     this.stage.setChatMode(false, false)
   }
 
-  /** Stops the render loop and the agent loop and releases every listener and GPU resource. Idempotent. */
+  /** Stops the render loop and releases every listener and GPU resource. Idempotent. */
   public dispose() {
     if (this.isDisposed) return
     this.isDisposed = true
-    this.simulation?.dispose()
-    this.simulation = null
     this.inputManager?.dispose()
     this.inputManager = null
     this.resizeObserver.disconnect()
