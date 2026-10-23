@@ -83,7 +83,7 @@ export type DebugLogEntry = RequestDebugLogEntry | ResponseDebugLogEntry
 /** Why autonomous agent work stopped and needs the user to resume it. */
 export interface AutonomyPause {
   reason: string
-  kind: "budget" | "failures" | "quota" | "auth"
+  kind: "budget" | "failures" | "quota" | "not_configured"
   taskId?: string
   agentIndex?: number
 }

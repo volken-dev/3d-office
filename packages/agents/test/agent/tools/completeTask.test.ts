@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { completeTask } from "../../../src/agent/tools/completeTask"
+import { parseToolArgs } from "../../../src/agent/tools/toolArgs"
 import type { ToolContext } from "../../../src/agent/tools/types"
 import type { AgentWorkStatus } from "../../../src/project/types"
 import type { AgentNode } from "../../../src/team"
@@ -25,17 +26,18 @@ function setup(agent: AgentNode, requiresUserApproval = false) {
     agent,
     team,
     project,
+    events: { briefSet: () => {} },
     setStatus: (status) => statuses.push(status),
     appendHistory: (message) => project.appendHistory(agent.index, message),
   }
   return { project, task, statuses, context }
 }
 
-describe("completeTask.parseArgs", () => {
+describe("completeTask.args", () => {
   test("requires both taskId and output", () => {
-    expect(completeTask.parseArgs({ output: "x" }).ok).toBe(false)
-    expect(completeTask.parseArgs({ taskId: "task-1" }).ok).toBe(false)
-    expect(completeTask.parseArgs({ taskId: "task-1", output: " Done " })).toEqual({
+    expect(parseToolArgs(completeTask.args, { output: "x" }).ok).toBe(false)
+    expect(parseToolArgs(completeTask.args, { taskId: "task-1" }).ok).toBe(false)
+    expect(parseToolArgs(completeTask.args, { taskId: "task-1", output: " Done " })).toEqual({
       ok: true,
       value: { taskId: "task-1", output: "Done" },
     })
