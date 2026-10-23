@@ -18,16 +18,26 @@ import { SceneManager } from "./simulation/SceneManager"
 
 type DrawerPanel = "logs" | "inspector" | null
 
+/** A lost GPU device is recovered by rebuilding the scene, at most this often within the window. */
+const MAX_DEVICE_LOSS_RECOVERIES = 3
+const DEVICE_LOSS_WINDOW_MS = 60_000
+
 /**
  * The app shell. Panel visibility is layout state only, so it lives here rather than in a store.
  * Below lg the side panels live in drawers so the canvas keeps the width. The scene stays mounted
  * in design mode (hidden and paused) so it does not reload on return. Radix dialogs mark the
- * Escape that closes them as handled, so only an unhandled Escape leaves focus mode.
+ * Escape that closes them as handled, so only an unhandled Escape leaves focus mode. A lost GPU
+ * device rebuilds the scene through the same effect that creates it, so StrictMode's double mount
+ * covers recovery too; past the recovery budget the scene reports itself unavailable. The ref is
+ * cleared before disposing, so a dispose that throws on a dead context cannot block the rebuild.
  */
 export default function App() {
   const canvasRef = useRef<HTMLDivElement>(null)
   const managerRef = useRef<SceneManager | null>(null)
   const [sceneManager, setSceneManager] = useState<SceneManager | null>(null)
+  const [sceneGeneration, setSceneGeneration] = useState(0)
+  const [isSceneLost, setSceneLost] = useState(false)
+  const deviceLossTimesRef = useRef<number[]>([])
   const viewMode = useCoreStore((state) => state.viewMode)
   const [isLogOpen, setLogOpen] = useState(true)
   const [isKanbanOpen, setKanbanOpen] = useState(true)
@@ -41,20 +51,31 @@ export default function App() {
     void useUiStore.getState().checkGateway()
   }, [])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new sceneGeneration rebuilds the scene after a lost GPU device
   useEffect(() => {
+    const onDeviceLost = () => {
+      const now = Date.now()
+      const recentLosses = deviceLossTimesRef.current.filter(
+        (lossTime) => now - lossTime < DEVICE_LOSS_WINDOW_MS,
+      )
+      recentLosses.push(now)
+      deviceLossTimesRef.current = recentLosses
+      if (recentLosses.length > MAX_DEVICE_LOSS_RECOVERIES) setSceneLost(true)
+      else setSceneGeneration((generation) => generation + 1)
+    }
     if (canvasRef.current && !managerRef.current) {
-      const manager = new SceneManager(canvasRef.current)
+      const manager = new SceneManager(canvasRef.current, onDeviceLost)
       managerRef.current = manager
       setSceneManager(manager)
     }
     return () => {
-      if (managerRef.current) {
-        managerRef.current.dispose()
-        managerRef.current = null
-        setSceneManager(null)
-      }
+      const manager = managerRef.current
+      if (!manager) return
+      managerRef.current = null
+      setSceneManager(null)
+      manager.dispose()
     }
-  }, [])
+  }, [sceneGeneration])
 
   useEffect(() => {
     if (!isFocusMode) return
@@ -109,6 +130,7 @@ export default function App() {
             >
               <SimulationView
                 canvasRef={canvasRef}
+                isSceneLost={isSceneLost}
                 isFocusMode={isFocusMode}
                 onFocusModeChange={setFocusMode}
               />

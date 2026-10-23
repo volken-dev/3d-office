@@ -78,13 +78,16 @@ export class SceneManager {
   /** Resolves once the scene renders; rejects if WebGPU/WebGL2 or the models fail to load. */
   public readonly ready: Promise<void>
 
-  constructor(container: HTMLElement) {
+  /** `onDeviceLost` fires once the GPU device is gone; this scene can no longer render and should be rebuilt. */
+  constructor(container: HTMLElement, onDeviceLost: () => void) {
     this.container = container
     this.viewportWidth = container.clientWidth
     this.viewportHeight = container.clientHeight
     this.team = getActiveAgentSet()
 
-    this.engine = new Engine(container)
+    this.engine = new Engine(container, () => {
+      if (!this.isDisposed) onDeviceLost()
+    })
     this.stage = new Stage(this.engine.renderer.domElement)
     this.characterManager = new CharacterManager(this.stage.scene, this.team)
     this.navMesh = new NavMeshManager()
@@ -109,6 +112,7 @@ export class SceneManager {
    * Renderer init and every model download/decode overlap; only the setup after them is ordered.
    * The world is set up before the characters because character spawns need its POIs. Only the
    * character models this team uses are loaded, plus the default model every missing one falls back to.
+   * Shaders are compiled before the first frame, so `ready` resolves on a scene that renders smoothly.
    */
   private async init() {
     const loader = createSceneLoader()
@@ -153,6 +157,9 @@ export class SceneManager {
         onPoiClick: (id) => this.driverManager?.getPlayerDriver()?.onPoiClick(id),
       },
     )
+
+    await this.engine.compile(this.stage.scene, this.stage.camera)
+    if (this.isDisposed) return
 
     this.startWatchingUiStore()
     this.engine.renderer.setAnimationLoop(this.animate)
