@@ -1,6 +1,6 @@
-import { OfficePoiExtrasSchema, type OfficePoiKind } from "@the-delegation/shared/office-pois"
 import * as THREE from "three/webgpu"
 import type { CharacterStateKey, PoiDef } from "../../types"
+import { OfficePoiExtrasSchema, type OfficePoiKind } from "./officePoiExtras"
 import { poiIdFor } from "./poiIds"
 
 /** The state an agent enters on arriving at each kind of POI. */

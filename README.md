@@ -59,7 +59,7 @@ The script ([`apps/web/scripts/optimize-models.ts`](apps/web/scripts/optimize-mo
 
 #### Points of interest
 
-A point of interest is an empty in the office with a `poi` custom property (exported as glTF node `extras`, which three reads into `userData`). `PoiManager` validates them at load against `OfficePoiExtrasSchema` in [`packages/shared/src/office-pois.ts`](packages/shared/src/office-pois.ts) and throws, naming the node, if one is malformed. The node's name is free.
+A point of interest is an empty in the office with a `poi` custom property (exported as glTF node `extras`, which three reads into `userData`). `PoiManager` validates them at load against `OfficePoiExtrasSchema` in [`apps/web/src/simulation/world/officePoiExtras.ts`](apps/web/src/simulation/world/officePoiExtras.ts) and throws, naming the node, if one is malformed. The node's name is free.
 
 | `poi` | Other property | What agents do there | POI id |
 |---|---|---|---|

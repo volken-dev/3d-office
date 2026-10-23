@@ -5,8 +5,7 @@
   "type": "module",
   "exports": {
     "./api": "./src/api.ts",
-    "./llm-messages": "./src/llm-messages.ts",
-    "./office-pois": "./src/office-pois.ts"
+    "./llm-messages": "./src/llm-messages.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p test",

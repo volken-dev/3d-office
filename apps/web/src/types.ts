@@ -1,5 +1,5 @@
-import type { OfficePoiKind } from "@the-delegation/shared/office-pois"
 import type * as THREE from "three/webgpu"
+import type { OfficePoiKind } from "./simulation/world/officePoiExtras"
 
 export enum AnimationName {
   IDLE = "Idle",

@@ -1,4 +1,4 @@
-import type { OfficePoiExtras } from "@the-delegation/shared/office-pois"
+import type { OfficePoiExtras } from "./officePoiExtras"
 
 /**
  * The one place POI ids are built. PoiManager names every POI it parses with `poiIdFor`, and the

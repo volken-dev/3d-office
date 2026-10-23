@@ -13,7 +13,10 @@
  */
 import { readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
-import { type OfficePoiExtras, OfficePoiExtrasSchema } from "@the-delegation/shared/office-pois"
+import {
+  type OfficePoiExtras,
+  OfficePoiExtrasSchema,
+} from "../src/simulation/world/officePoiExtras"
 
 const OFFICE_SOURCE = path.resolve(import.meta.dirname, "..", "assets-src", "models", "office.glb")
 
