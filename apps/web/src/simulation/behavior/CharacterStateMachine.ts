@@ -74,11 +74,6 @@ const STATE_MAP: Record<CharacterStateKey, CharacterStateDef> = {
   },
 }
 
-/** True when a name read from outside the code (e.g. a GLB POI name) is a declared character state. */
-export function isCharacterStateKey(name: string): name is CharacterStateKey {
-  return Object.hasOwn(STATE_MAP, name)
-}
-
 /**
  * Per-character animation/expression state, driven from STATE_MAP so behaviour is declared as data
  * and one-shot animations hand back to a follow-up state on their own.

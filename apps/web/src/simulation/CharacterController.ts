@@ -151,7 +151,7 @@ export class CharacterController implements ICharacterDriver {
    *
    * A sit target is armed before walking, so when the sit_down timer expires the state machine
    * reads it directly. On arrival the character snaps to the exact POI position (removing any
-   * navmesh offset) and, except for 'area' POIs, its facing; seated arrivals switch to SEATED so a
+   * navmesh offset) and, except for areas, its facing; seated arrivals switch to SEATED so a
    * stray GOTO can't move them.
    */
   public walkToPoi(
@@ -177,7 +177,7 @@ export class CharacterController implements ICharacterDriver {
       (arrivedIndex) => {
         this.characterManager.setPosition(arrivedIndex, poi.position)
 
-        if (!poi.id.startsWith("area")) {
+        if (poi.kind !== "area") {
           this.characterManager.setOrientation(arrivedIndex, poi.quaternion)
         }
 
@@ -267,7 +267,7 @@ export class CharacterController implements ICharacterDriver {
     this.characterManager.setPosition(playerIndex, ORIGIN)
     this.play(playerIndex, "idle")
 
-    const spawnPois = this.poiManager.getPoisByPrefix("spawn")
+    const spawnPois = this.poiManager.getPoisOfKind("spawn")
     npcIndices.forEach((agentIndex, order) => {
       const poi = spawnPois[order % spawnPois.length]
       if (poi) {

@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils"
 import { type ProjectPhase, type Task, useCoreStore } from "../integration/store/coreStore"
 import { useTeamRoster } from "../integration/store/teamStore"
 import { useUiStore } from "../integration/store/uiStore"
-import { useSceneManager } from "../simulation/SceneContext"
+import { useScene } from "../simulation/SceneContext"
 import { Avatar, avatarTypeFor } from "./components/Avatar"
 import { SectionHeading } from "./components/SectionHeading"
 import { selectAgent } from "./components/selectAgent"
@@ -134,16 +134,15 @@ function ProjectView() {
   const [isResetModalOpen, setIsResetModalOpen] = useState(false)
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false)
   const { system: activeTeam, agents, byIndex } = useTeamRoster()
-  const scene = useSceneManager()
+  const scene = useScene()
 
   const usageRows = useMemo(
     () =>
       Object.entries(agentTokenUsage)
-        .map(([agentIndex, usage]) => ({ agent: byIndex.get(Number(agentIndex)), usage }))
-        .filter(
-          (row): row is { agent: AgentNode; usage: typeof row.usage } =>
-            !!row.agent && totalTokensOf(row.usage) > 0,
-        )
+        .flatMap(([agentIndex, usage]) => {
+          const agent = byIndex.get(Number(agentIndex))
+          return agent && usage && totalTokensOf(usage) > 0 ? [{ agent, usage }] : []
+        })
         .sort((a, b) => totalTokensOf(b.usage) - totalTokensOf(a.usage)),
     [agentTokenUsage, byIndex],
   )

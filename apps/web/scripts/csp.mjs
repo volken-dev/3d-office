@@ -14,10 +14,9 @@ const OUT_DIR = path.resolve(process.argv[2] ?? "out")
 
 /**
  * Why the non-'self' sources are needed:
- * - script-src 'wasm-unsafe-eval': the Draco mesh decoder compiles WebAssembly.
+ * - script-src 'wasm-unsafe-eval': the Meshopt mesh decoder compiles WebAssembly (on the main thread, no workers).
  * - style-src 'unsafe-inline': inline style attributes (React, React Flow) and injected <style> tags (sonner).
  * - img-src blob:: GLTFLoader decodes embedded textures through blob: URLs, fetched with fetch() by ImageBitmapLoader.
- * - worker-src blob:: DRACOLoader spawns its decoder worker from a Blob URL.
  */
 const basePolicy = {
   "default-src": ["'self'"],
@@ -25,7 +24,7 @@ const basePolicy = {
   "style-src": ["'self'", "'unsafe-inline'"],
   "img-src": ["'self'", "data:", "blob:"],
   "connect-src": ["'self'", "data:", "blob:", "https://generativelanguage.googleapis.com"],
-  "worker-src": ["'self'", "blob:"],
+  "worker-src": ["'self'"],
   "font-src": ["'self'"],
   "object-src": ["'none'"],
   "base-uri": ["'self'"],

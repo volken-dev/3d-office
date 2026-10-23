@@ -468,7 +468,7 @@ export class CharacterManager {
 
     const scratchColor = new THREE.Color()
 
-    const spawnPois = this.poiManager?.getFreePoisByPrefix("spawn") || []
+    const spawnPois = this.poiManager?.getFreePoisOfKind("spawn") ?? []
     let spawnIndex = 0
 
     const spawnPoiBySlot: (PoiDef | null)[] = []
@@ -532,7 +532,7 @@ export class CharacterManager {
       }
 
       const poi = spawnPoiBySlot[slot]
-      if (poi && (poi.id.includes("spawn") || poi.id.includes("sit"))) {
+      if (poi) {
         const forward = this.forwardOf(poi.quaternion)
         agentStateBuffer.setFacing(slot, forward.x, forward.z)
       }

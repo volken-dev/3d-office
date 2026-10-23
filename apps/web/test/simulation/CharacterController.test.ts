@@ -65,7 +65,8 @@ function officeWithSpawns(spawnCount: number): PoiManager {
   const office = new THREE.Group()
   for (let spawn = 0; spawn < spawnCount; spawn++) {
     const marker = new THREE.Object3D()
-    marker.name = `poi-spawn-${spawn}`
+    marker.name = `spawn ${spawn}`
+    marker.userData = { poi: "spawn", slot: spawn }
     marker.position.set(spawn * 2 + 2, 0, 0)
     office.add(marker)
   }
@@ -158,7 +159,7 @@ describe("CharacterController seats", () => {
     const { controller } = sceneFor(team(0, agent(1, [agent(2), agent(3)])))
     rebuild(controller, team(0, agent(1, [agent(3)])))
 
-    const occupants = controller.poiManager.getPoisByPrefix("spawn").map((poi) => poi.occupiedBy)
+    const occupants = controller.poiManager.getPoisOfKind("spawn").map((poi) => poi.occupiedBy)
     expect(occupants).toEqual([1, 3, null, null, null])
   })
 })

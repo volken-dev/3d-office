@@ -35,7 +35,7 @@ const events: OrchestrationDeps["events"] = {
     const title =
       kind === "rate_limited"
         ? "The model provider is rate limiting requests"
-        : kind === "not_configured" || kind === "unauthorized"
+        : kind === "not_configured"
           ? "The model gateway is not available"
           : `${agent.name} hit an error`
     toast.error(title, { id: `llm-error-${agent.index}`, description: message.slice(0, 240) })
@@ -103,6 +103,7 @@ const project: ProjectStatePort = {
     const { llmCallCount, llmCallLimit } = useCoreStore.getState()
     return { used: llmCallCount, limit: llmCallLimit }
   },
+  recordModelCall: () => useCoreStore.getState().recordModelCall(),
   getIntentAttempts: (key) => useCoreStore.getState().intentAttempts[key],
   recordIntentAttempt: (key, error) => useCoreStore.getState().recordIntentAttempt(key, error),
   clearIntentAttempts: (key) => useCoreStore.getState().clearIntentAttempts(key),
