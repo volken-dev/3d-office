@@ -16,6 +16,9 @@ import InspectorPanel from "./InspectorPanel"
 import UIOverlay from "./UIOverlay"
 
 const TeamFlowModal = lazy(() => import("./TeamFlowModal"))
+/** Development only: the literal check lets the production build drop the overlay's chunk. */
+const PerformanceOverlay =
+  process.env.NODE_ENV === "development" ? lazy(() => import("./PerformanceOverlay")) : null
 
 type SceneStatus = "loading" | "ready" | "error"
 
@@ -103,6 +106,11 @@ function SimulationView({
 
       <div ref={canvasRef} className="relative min-h-0 flex-1 overflow-hidden bg-black/5">
         <UIOverlay />
+        {PerformanceOverlay && (
+          <Suspense fallback={null}>
+            <PerformanceOverlay />
+          </Suspense>
+        )}
         {sceneStatus === "loading" && (
           <div
             role="status"

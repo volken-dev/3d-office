@@ -1,4 +1,5 @@
 import * as THREE from "three/webgpu"
+import { FrameProfiler } from "./FrameProfiler"
 
 /** Retina-sharp; above 2 the fill-rate cost buys no visible gain. */
 const MAX_PIXEL_RATIO = 2
@@ -23,15 +24,21 @@ export class Engine {
   private elapsed = 0
   private sampleTime = 0
   private sampleFrames = 0
+  /** Development only: the literal check lets the production build drop the profiler entirely. */
+  private readonly profiler = process.env.NODE_ENV === "development" ? new FrameProfiler() : null
 
   /**
    * The canvas is sized by CSS so it stretches immediately while the drawing buffer catches up on
-   * resize. Shadows use the default PCF map: VSM is unreliable with WebGPU node materials.
+   * resize. Shadows use the default PCF map: VSM is unreliable with WebGPU node materials. GPU
+   * timestamp queries are only requested in development, for the performance overlay.
    * A lost GPU device (driver reset, GPU switch, sleep) or WebGL context stops the render loop,
    * since nothing can draw on it any more, and is reported so the owner can rebuild the scene.
    */
   constructor(container: HTMLElement, onDeviceLost: () => void) {
-    this.renderer = new THREE.WebGPURenderer({ antialias: true })
+    this.renderer = new THREE.WebGPURenderer({
+      antialias: true,
+      trackTimestamp: process.env.NODE_ENV === "development",
+    })
     this.renderer.onDeviceLost = (info) => {
       console.error(`[Engine] ${info.api} device lost:`, info.message, info.reason ?? "")
       this.renderer.setAnimationLoop(null)
@@ -71,6 +78,7 @@ export class Engine {
    * passing slow patch (asset loading, a busy agent turn) doesn't leave the scene blurry for good.
    */
   public trackFrame(deltaSeconds: number) {
+    this.profiler?.beginFrame()
     this.elapsed += deltaSeconds
     if (this.elapsed < WARMUP_SECONDS) return
 
@@ -98,6 +106,7 @@ export class Engine {
 
   public render(scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     this.renderer.render(scene, camera)
+    this.profiler?.endFrame(this.renderer, this.pixelRatio)
   }
 
   public dispose() {
