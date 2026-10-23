@@ -21,6 +21,7 @@ import type {
 import { costOfUsage, findModel } from "@the-delegation/llm/registry"
 import type { Usage } from "@the-delegation/shared/llm-messages"
 import { create } from "zustand"
+import { EMPTY_USAGE } from "../../lib/usage"
 import { useTeamStore } from "./teamStore"
 
 export type {
@@ -34,13 +35,6 @@ export type {
   TaskRevision,
   TaskStatus,
 } from "@the-delegation/agents/project/types"
-
-const EMPTY_USAGE: Usage = Object.freeze({
-  inputTokens: 0,
-  outputTokens: 0,
-  cacheReadTokens: 0,
-  cacheWriteTokens: 0,
-})
 
 interface CoreState {
   /** Incremented on every reset; in-flight agent work from an older run is discarded. */
