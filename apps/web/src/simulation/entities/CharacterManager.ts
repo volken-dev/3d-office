@@ -12,11 +12,11 @@ import {
   mat4,
   positionLocal,
   sin,
-  storage,
   texture,
   uint,
   uniform,
   uv,
+  varying,
   vec3,
   vec4,
 } from "three/tsl"
@@ -35,14 +35,15 @@ import {
   partRuleFor,
 } from "../characters/characterModels"
 import { isMesh, isSkinnedMesh } from "../sceneGraphGuards"
+import { Vec4Texture } from "../Vec4Texture"
 import type { PoiManager } from "../world/PoiManager"
-
-type Vec4StorageNode = THREE.StorageBufferNode<"vec4">
 
 /** Velocity length above which the vertex shader faces along the velocity instead of the facing override. */
 const MOVING_VELOCITY_THRESHOLD = 0.01
 const BAKE_FRAMES_PER_SECOND = 60
 const FLOATS_PER_MATRIX = 16
+/** A baked bone matrix is stored as its four columns, one vec4 record each. */
+const RECORDS_PER_MATRIX = 4
 /** Upper bound of the random negative idle start time, so idle animations start out of sync. */
 const IDLE_DESYNC_SECONDS = 10
 const SPAWN_RADIUS = 8
@@ -108,14 +109,18 @@ interface ClipTiming {
   duration: number
 }
 
-/** A loaded character model: its parts, skeleton and animations baked to bone-matrix buffers. */
+/**
+ * A loaded character model: its parts, skeleton and animations baked to bone-matrix textures.
+ * `clipTable` holds one record per clip (by AnimationName index): its first matrix in
+ * `bakedAnimations`, its frame count and its duration.
+ */
 interface CharacterRig {
   model: CharacterModelDef
   parts: RigPart[]
   boneCount: number
   headBoneIndex: number
-  bakedAnimationsBuffer: THREE.StorageBufferAttribute
-  metaBuffer: THREE.StorageBufferAttribute
+  bakedAnimations: Vec4Texture
+  clipTable: Vec4Texture
   clips: Partial<Record<AnimationName, ClipTiming>>
 }
 
@@ -126,12 +131,12 @@ export interface LoadedCharacterModel {
 }
 
 /** Per-instance position and velocity as the vertex shader reads them. */
-interface MovementStorage {
-  positionStorage: Vec4StorageNode
-  velocityStorage: Vec4StorageNode
+interface MovementTextures {
+  positionTexture: Vec4Texture
+  velocityTexture: Vec4Texture
 }
 
-interface MeshAttributes extends MovementStorage {
+interface MeshAttributes extends MovementTextures {
   agentStateBuffer: AgentStateBuffer
   colorAttribute: THREE.InstancedBufferAttribute
   accessoryAttribute: THREE.InstancedBufferAttribute
@@ -141,10 +146,11 @@ interface MeshAttributes extends MovementStorage {
 
 /**
  * Renders every character as GPU-instanced skinned meshes. Animations are baked to bone-matrix
- * buffers at load and sampled in the vertex shader. Walking is stepped on the CPU each frame and
- * uploaded to per-instance position and velocity buffers, so CPU positions are always current.
- * Those buffers are storage buffers rather than vertex attributes because the parts already use
- * WebGPU's default limit of eight vertex buffers.
+ * textures at load and sampled in the vertex shader. Walking is stepped on the CPU each frame and
+ * uploaded to per-instance position and velocity textures, so CPU positions are always current.
+ * Per-instance data the shaders index lives in textures (`Vec4Texture`) rather than vertex
+ * attributes, because the parts already use WebGPU's default limit of eight vertex buffers, and
+ * rather than storage buffers, which the WebGL2 fallback cannot read.
  */
 export class CharacterManager {
   private team: AgenticSystem
@@ -155,8 +161,8 @@ export class CharacterManager {
   private positions: Float32Array | null = null
   /** Per instance: this frame's walk step, which the vertex shader faces along. */
   private velocities: Float32Array | null = null
-  private positionAttribute: THREE.StorageInstancedBufferAttribute | null = null
-  private velocityAttribute: THREE.StorageInstancedBufferAttribute | null = null
+  private positionTexture: Vec4Texture | null = null
+  private velocityTexture: Vec4Texture | null = null
   private colorAttribute: THREE.InstancedBufferAttribute | null = null
   private accessoryAttribute: THREE.InstancedBufferAttribute | null = null
   /** Per instance: index of its rig in `activeRigs`, compared in each rig's shaders. */
@@ -260,7 +266,8 @@ export class CharacterManager {
     const animations = gltf.animations
     const animationNames = Object.values(AnimationName)
     const bakedDataList: Float32Array[] = []
-    const metaArray = new Float32Array(animationNames.length * 4)
+    const clipTable = new Vec4Texture(animationNames.length)
+    const clipRecords = clipTable.array
     const clips: Partial<Record<AnimationName, ClipTiming>> = {}
     let currentOffset = 0
 
@@ -278,19 +285,18 @@ export class CharacterManager {
       bakedDataList.push(baked.data)
       clips[name] = { index: animationIndex, duration: baked.duration }
 
-      metaArray[animationIndex * 4 + 0] = currentOffset
-      metaArray[animationIndex * 4 + 1] = baked.frameCount
-      metaArray[animationIndex * 4 + 2] = baked.duration
-      metaArray[animationIndex * 4 + 3] = 0
+      clipRecords[animationIndex * 4 + 0] = currentOffset
+      clipRecords[animationIndex * 4 + 1] = baked.frameCount
+      clipRecords[animationIndex * 4 + 2] = baked.duration
+      clipRecords[animationIndex * 4 + 3] = 0
 
       currentOffset += baked.frameCount * boneCount
     })
 
-    const totalSize = bakedDataList.reduce((total, data) => total + data.length, 0)
-    const combinedData = new Float32Array(totalSize)
+    const bakedAnimations = new Vec4Texture(currentOffset * RECORDS_PER_MATRIX)
     let writeOffset = 0
     for (const data of bakedDataList) {
-      combinedData.set(data, writeOffset)
+      bakedAnimations.array.set(data, writeOffset)
       writeOffset += data.length
     }
 
@@ -299,8 +305,8 @@ export class CharacterManager {
       parts,
       boneCount,
       headBoneIndex,
-      bakedAnimationsBuffer: new THREE.StorageBufferAttribute(combinedData, FLOATS_PER_MATRIX),
-      metaBuffer: new THREE.StorageBufferAttribute(metaArray, 4),
+      bakedAnimations,
+      clipTable,
       clips,
     }
   }
@@ -342,7 +348,7 @@ export class CharacterManager {
     }
     this.instanceCount = count
     this.assignRigs()
-    if (count !== this.positionAttribute?.count || this.activeRigKey() !== this.builtRigKey) {
+    if (count !== this.positionTexture?.recordCount || this.activeRigKey() !== this.builtRigKey) {
       this.cleanupInstances()
       this.initInstances()
       return
@@ -360,19 +366,13 @@ export class CharacterManager {
     this.timeUniform.value = this.currentTime
     this.expressionBuffer?.update(deltaSeconds)
 
-    const { positions, velocities, agentStateBuffer, positionAttribute, velocityAttribute } = this
-    if (
-      !positions ||
-      !velocities ||
-      !agentStateBuffer ||
-      !positionAttribute ||
-      !velocityAttribute
-    ) {
+    const { positions, velocities, agentStateBuffer, positionTexture, velocityTexture } = this
+    if (!positions || !velocities || !agentStateBuffer || !positionTexture || !velocityTexture) {
       return
     }
     stepCharacterMovement(positions, velocities, agentStateBuffer, this.instanceCount, deltaSeconds)
-    positionAttribute.needsUpdate = true
-    velocityAttribute.needsUpdate = true
+    positionTexture.markChanged()
+    velocityTexture.markChanged()
   }
 
   private cleanupInstances() {
@@ -383,6 +383,10 @@ export class CharacterManager {
       if (!Array.isArray(material)) material.dispose()
     }
     this.instancedMeshes = []
+    this.positionTexture?.dispose()
+    this.velocityTexture?.dispose()
+    this.agentStateBuffer?.dispose()
+    this.expressionBuffer?.dispose()
     this.expressionBuffer = null
   }
 
@@ -391,17 +395,15 @@ export class CharacterManager {
     if (this.activeRigs.length === 0) return
 
     const count = this.instanceCount
-    const positions = new Float32Array(count * MOVEMENT_STRIDE)
-    const velocities = new Float32Array(count * MOVEMENT_STRIDE)
-    const positionAttribute = new THREE.StorageInstancedBufferAttribute(positions, MOVEMENT_STRIDE)
-    const velocityAttribute = new THREE.StorageInstancedBufferAttribute(velocities, MOVEMENT_STRIDE)
+    const positionTexture = new Vec4Texture(count)
+    const velocityTexture = new Vec4Texture(count)
     const colorAttribute = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3)
     const accessoryAttribute = new THREE.InstancedBufferAttribute(new Float32Array(count), 1)
     const rigSlotAttribute = new THREE.InstancedBufferAttribute(new Float32Array(count), 1)
-    this.positions = positions
-    this.velocities = velocities
-    this.positionAttribute = positionAttribute
-    this.velocityAttribute = velocityAttribute
+    this.positions = positionTexture.array
+    this.velocities = velocityTexture.array
+    this.positionTexture = positionTexture
+    this.velocityTexture = velocityTexture
     this.colorAttribute = colorAttribute
     this.accessoryAttribute = accessoryAttribute
     this.rigSlotAttribute = rigSlotAttribute
@@ -413,8 +415,8 @@ export class CharacterManager {
     this.writeInitialState()
 
     this.createInstancedMesh({
-      positionStorage: storage(positionAttribute, "vec4", count),
-      velocityStorage: storage(velocityAttribute, "vec4", count),
+      positionTexture,
+      velocityTexture,
       agentStateBuffer,
       colorAttribute,
       accessoryAttribute,
@@ -432,8 +434,8 @@ export class CharacterManager {
   private writeInitialState() {
     const positions = this.positions
     const velocities = this.velocities
-    const positionAttribute = this.positionAttribute
-    const velocityAttribute = this.velocityAttribute
+    const positionTexture = this.positionTexture
+    const velocityTexture = this.velocityTexture
     const colorAttribute = this.colorAttribute
     const accessoryAttribute = this.accessoryAttribute
     const rigSlotAttribute = this.rigSlotAttribute
@@ -442,8 +444,8 @@ export class CharacterManager {
     if (
       !positions ||
       !velocities ||
-      !positionAttribute ||
-      !velocityAttribute ||
+      !positionTexture ||
+      !velocityTexture ||
       !colorAttribute ||
       !accessoryAttribute ||
       !rigSlotAttribute ||
@@ -505,8 +507,8 @@ export class CharacterManager {
       rigSlots[characterIndex] = rig ? this.activeRigs.indexOf(rig) : -1
     }
 
-    positionAttribute.needsUpdate = true
-    velocityAttribute.needsUpdate = true
+    positionTexture.markChanged()
+    velocityTexture.markChanged()
     colorAttribute.needsUpdate = true
     accessoryAttribute.needsUpdate = true
     rigSlotAttribute.needsUpdate = true
@@ -549,6 +551,8 @@ export class CharacterManager {
    *   sit on the body without z-fighting while walls still hide them;
    * - accessory parts show only on characters wearing that accessory and are rigidly skinned to the head bone.
    * Base parts render first (renderOrder 0) so they write depth before overlays and accessories.
+   * The per-instance alpha and expression offsets are read in the vertex stage and passed on as
+   * varyings, so the fragment stage never needs the instance index.
    */
   private createPartMesh(
     rig: CharacterRig,
@@ -560,7 +564,7 @@ export class CharacterManager {
       rigSlotAttribute,
       expressionBuffer,
       agentStateBuffer,
-      ...movementStorage
+      ...movementTextures
     }: MeshAttributes,
   ) {
     const instancedGeometry = toInstancedGeometry(geometry, this.instanceCount)
@@ -571,9 +575,9 @@ export class CharacterManager {
     const instanceColor = attribute<"vec3">("instanceColor", "vec3")
     const accessoryType = attribute<"float">("accessoryType", "float")
     const rigSlot = attribute<"float">("rigSlot", "float")
-    const expressionData = expressionBuffer.storageNode.element(instanceIndex)
-    const animationParams = agentStateBuffer.storageNode.element(instanceIndex.mul(2).add(1))
-    const instanceAlpha = animationParams.z
+    const expressionData = varying(expressionBuffer.texture.element(instanceIndex))
+    const animationParams = agentStateBuffer.texture.element(instanceIndex.mul(2).add(1))
+    const instanceAlpha = varying(animationParams.z)
 
     const material = new THREE.MeshStandardNodeMaterial()
     material.transparent = true
@@ -647,7 +651,7 @@ export class CharacterManager {
     const isVisible = (wearsAccessory ? inThisSlot.and(wearsAccessory) : inThisSlot).and(
       instanceAlpha.greaterThan(0),
     )
-    const vertexNode = this.createVertexNode(isVisible, movementStorage, agentStateBuffer, rig)
+    const vertexNode = this.createVertexNode(isVisible, movementTextures, agentStateBuffer, rig)
     material.positionNode = vertexNode
     material.castShadowPositionNode = vertexNode
 
@@ -667,15 +671,15 @@ export class CharacterManager {
    */
   private createVertexNode(
     isVisibleNode: THREE.Node,
-    { positionStorage, velocityStorage }: MovementStorage,
+    { positionTexture, velocityTexture }: MovementTextures,
     agentStateBuffer: AgentStateBuffer,
     rig: CharacterRig,
   ) {
     return Fn(() => {
-      const instancePosition = positionStorage.element(instanceIndex).xyz
-      const velocity = velocityStorage.element(instanceIndex).xyz
-      const agentData = agentStateBuffer.storageNode.element(instanceIndex.mul(2))
-      const animationParams = agentStateBuffer.storageNode.element(instanceIndex.mul(2).add(1))
+      const instancePosition = positionTexture.element(instanceIndex).xyz
+      const velocity = velocityTexture.element(instanceIndex).xyz
+      const agentData = agentStateBuffer.texture.element(instanceIndex.mul(2))
+      const animationParams = agentStateBuffer.texture.element(instanceIndex.mul(2).add(1))
 
       const isMoving = velocity.length().greaterThan(float(MOVING_VELOCITY_THRESHOLD))
       const facingOverride = vec3(agentData.x, float(0), agentData.z)
@@ -701,18 +705,13 @@ export class CharacterManager {
       const finalPosition = positionLocal.toVar()
 
       {
-        const bakedAnimationStorage = new THREE.StorageBufferNode<"mat4">(
-          rig.bakedAnimationsBuffer,
-          "mat4",
-          rig.bakedAnimationsBuffer.count,
-        )
-        const metaStorage = storage(rig.metaBuffer, "vec4", rig.metaBuffer.count)
+        const { bakedAnimations } = rig
 
         const animationIndex = agentData.y.toUint()
 
-        const animationMeta = metaStorage.element(animationIndex)
+        const animationMeta = rig.clipTable.element(animationIndex)
         const animationOffset = uint(animationMeta.x)
-        const frameCount = uint(animationMeta.y)
+        const frameCount = float(animationMeta.y)
         const duration = float(animationMeta.z)
 
         const startTime = animationParams.x
@@ -723,8 +722,7 @@ export class CharacterManager {
           ? elapsed.div(duration).fract()
           : elapsed.div(duration).clamp(0, 1)
 
-        const currentFrame = progress.mul(frameCount.toFloat()).toUint()
-        const safeFrame = currentFrame.min(frameCount.sub(uint(1)))
+        const safeFrame = progress.mul(frameCount).floor().min(frameCount.sub(1)).toUint()
 
         const skinIndex = attribute<"vec4">("skinIndex")
         const skinWeight = attribute<"vec4">("skinWeight")
@@ -733,10 +731,17 @@ export class CharacterManager {
         const boneCount = rig.boneCount
         function addInfluence(boneIndexNode: THREE.Node<"float">, weightNode: THREE.Node<"float">) {
           If(weightNode.greaterThan(0), () => {
-            const address = animationOffset
+            const matrixIndex = animationOffset
               .add(safeFrame.mul(uint(boneCount)))
               .add(boneIndexNode.toUint())
-            skinMatrix.addAssign(bakedAnimationStorage.element(address).mul(weightNode))
+            const firstColumn = matrixIndex.mul(uint(RECORDS_PER_MATRIX))
+            const boneMatrix = mat4(
+              bakedAnimations.element(firstColumn),
+              bakedAnimations.element(firstColumn.add(uint(1))),
+              bakedAnimations.element(firstColumn.add(uint(2))),
+              bakedAnimations.element(firstColumn.add(uint(3))),
+            )
+            skinMatrix.addAssign(boneMatrix.mul(weightNode))
           })
         }
 
@@ -811,14 +816,14 @@ export class CharacterManager {
 
   /** Teleports a character to an exact world position, uploaded with this frame's render. */
   public setPosition(index: number, position: THREE.Vector3): void {
-    if (!this.positions || !this.positionAttribute || index < 0 || index >= this.instanceCount) {
+    if (!this.positions || !this.positionTexture || index < 0 || index >= this.instanceCount) {
       return
     }
     const offset = index * MOVEMENT_STRIDE
     this.positions[offset] = position.x
     this.positions[offset + 1] = position.y
     this.positions[offset + 2] = position.z
-    this.positionAttribute.needsUpdate = true
+    this.positionTexture.markChanged()
   }
 
   /** Force a specific facing direction when IDLE. */
@@ -868,6 +873,11 @@ export class CharacterManager {
 
   public dispose() {
     this.cleanupInstances()
+    for (const rig of this.rigs.values()) {
+      rig.bakedAnimations.dispose()
+      rig.clipTable.dispose()
+    }
+    this.rigs.clear()
     this.isLoaded = false
   }
 }

@@ -7,11 +7,6 @@ import type Node from "three/src/nodes/core/Node.js"
 import type { MatType } from "three/src/nodes/core/Node.js"
 
 declare module "three/src/nodes/core/Node.js" {
-  interface UintExtensions {
-    /** `min()` is typed for float vectors only; WGSL `min` also takes u32. */
-    min: (other: Node<"uint">) => Node<"uint">
-  }
-
   interface MatExtensions<TMat extends MatType> {
     /** WGSL supports matrix-by-scalar multiplication; the typings only cover matrix and vector operands. */
     mul: (scale: Node<"float">) => Node<TMat>

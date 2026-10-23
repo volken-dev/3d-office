@@ -1,18 +1,17 @@
-import { storage } from "three/tsl"
-import * as THREE from "three/webgpu"
+import { Vec4Texture } from "../Vec4Texture"
 
 /**
  * CPU/GPU buffer that stores per-instance physics mode and animation state.
  *
- * Each instance maps to two vec4s (8 floats total) per instance.
+ * Each instance maps to two vec4 records (8 floats total), at record 2 * index and 2 * index + 1.
  *
- * Buffer 0 (vec4):
+ * Record 0 (vec4):
  *   .x = waypoint X  (used when mode == GOTO)
  *   .y = animation   (animation index to play)
  *   .z = waypoint Z  (used when mode == GOTO)
  *   .w = mode        (0 = IDLE, 1 = GOTO, 2 = SEATED)
  *
- * Buffer 1 (vec4):
+ * Record 1 (vec4):
  *   .x = startTime   (global time when animation started)
  *   .y = loopMode    (1.0 = loop, 0.0 = clamp)
  *   .z = alpha       (1.0 = opaque, <1.0 = transparent)
@@ -22,22 +21,18 @@ import * as THREE from "three/webgpu"
  * the facing override and the alpha.
  */
 export class AgentStateBuffer {
-  /** Raw Float32Array (8 floats per instance). */
+  /** Raw Float32Array (8 floats per instance), shared with `texture`. */
   public readonly array: Float32Array
 
-  /** GPU buffer attribute. */
-  public readonly attribute: THREE.StorageInstancedBufferAttribute
-
-  /** TSL storage node, two vec4 elements per instance. */
-  public readonly storageNode: THREE.StorageBufferNode<"vec4">
+  /** GPU copy, two vec4 records per instance. */
+  public readonly texture: Vec4Texture
 
   constructor(count: number) {
-    this.array = new Float32Array(count * 8)
+    this.texture = new Vec4Texture(count * 2)
+    this.array = this.texture.array
     for (let i = 0; i < count; i++) {
       this.array[i * 8 + 6] = 1.0
     }
-    this.attribute = new THREE.StorageInstancedBufferAttribute(this.array, 8)
-    this.storageNode = storage(this.attribute, "vec4", count * 2)
   }
 
   public getState(index: number): number {
@@ -46,7 +41,7 @@ export class AgentStateBuffer {
 
   public setState(index: number, state: number): void {
     this.array[index * 8 + 3] = state
-    this.attribute.needsUpdate = true
+    this.texture.markChanged()
   }
 
   public setAnimation(
@@ -58,12 +53,12 @@ export class AgentStateBuffer {
     this.array[index * 8 + 1] = animationIndex
     this.array[index * 8 + 4] = startTime
     this.array[index * 8 + 5] = loop ? 1.0 : 0.0
-    this.attribute.needsUpdate = true
+    this.texture.markChanged()
   }
 
   public setAlpha(index: number, alpha: number): void {
     this.array[index * 8 + 6] = alpha
-    this.attribute.needsUpdate = true
+    this.texture.markChanged()
   }
 
   public getAlpha(index: number): number {
@@ -81,13 +76,17 @@ export class AgentStateBuffer {
   public setWaypoint(index: number, x: number, z: number): void {
     this.array[index * 8 + 0] = x
     this.array[index * 8 + 2] = z
-    this.attribute.needsUpdate = true
+    this.texture.markChanged()
   }
 
   /** Used when mode is IDLE to force a specific facing direction. */
   public setFacing(index: number, x: number, z: number): void {
     this.array[index * 8 + 0] = x
     this.array[index * 8 + 2] = z
-    this.attribute.needsUpdate = true
+    this.texture.markChanged()
+  }
+
+  public dispose(): void {
+    this.texture.dispose()
   }
 }
