@@ -80,11 +80,11 @@ packages/
   else (one was removed for silently racing this one). Every request is counted against the budget
   through `recordModelCall` on the port, never as a side effect of logging.
 - **LLM tool calls are untrusted input.** Every tool declares its arguments once, as a zod
-  `z.strictObject` passed to `defineTool` (`agent/tools/toolArgs.ts`): the input schema sent to the
+  `z.strictObject` passed to `defineTool` (`agent/tools/tool-args.ts`): the input schema sent to the
   model is derived from it (cut down to the keywords strict tools accept), and the same schema
   parses every call, length caps included. `ToolRegistry.runToolCall` also checks the tool was
   offered to that agent in that phase. LLM output is untrusted when rendered too: Markdown goes
-  through `components/Markdown.tsx` only (no raw HTML, no remote images).
+  through `components/markdown.tsx` only (no raw HTML, no remote images).
 - **React strict mode stays on.** It is the regression test for leaked simulations (REL-02).
 - **Keys live only on the gateway.** `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` are server
   bindings; the web app calls `POST /api/llm/messages` through the typed `hc` client and never
@@ -131,6 +131,8 @@ Internalised from `.claude/RULES.md` — read it for the full set.
   If a line isn't obvious, refactor it — rename, extract, restructure — don't annotate it.
 - **Full, descriptive names.** No single-letter or abbreviated identifiers (trivial loop counters
   and `(a, b)` comparators excepted). `agentIndex`, never `idx`; `task`, never `t`.
+- **kebab-case file and folder names** in every package (`agent-brain.ts`, `chat-panel.tsx`);
+  identifiers inside keep their casing. Biome's `useFilenamingConvention` enforces it.
 - **No `console.log`** for application events; `console.warn`/`console.error` only on real error
   paths (Biome's `noConsole` enforces this). Never log provider keys or raw prompts; upstream
   error text goes to server logs with the request id, never to the client.
@@ -222,8 +224,8 @@ Never report success with a red gate; if a gate fails, show the exact `file:line
 ### When you add an artifact, register it
 
 - New agent tool → build it with `defineTool` and a `z.strictObject` args schema (the helpers in
-  `agent/tools/toolArgs.ts` carry the length caps), then add `register(<tool>)` to `TOOLS` in
-  `packages/agents/src/agent/ToolRegistry.ts` (order is the order the model sees them)
+  `agent/tools/tool-args.ts` carry the length caps), then add `register(<tool>)` to `TOOLS` in
+  `packages/agents/src/agent/tool-registry.ts` (order is the order the model sees them)
 - New API route group → `.route('/<name>', <name>)` in `createApp` (`apps/api/src/app.ts`), with
   its request and response schemas in `@the-delegation/shared`
 - New model → an entry in `packages/llm/src/registry.ts` with prices checked against the

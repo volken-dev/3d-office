@@ -20,7 +20,7 @@ These five govern everything below. When a specific rule is missing, decide by t
   LLM tool arguments, API route input, env. A malformed boundary is a hard, visible failure (or a
   safe fallback that says so), never a silent filter.
 - **P2 — LLM output is untrusted input.** Tool-call arguments are parsed and authorised per agent
-  and phase; rendered output goes through `components/Markdown.tsx`; board state passed into
+  and phase; rendered output goes through `components/markdown.tsx`; board state passed into
   prompts is tagged and truncated as data, never spliced in as instructions.
 - **P3 — Keep the layers apart.** `packages/agents` is framework-free and talks to the world through
   ports; `packages/llm` owns the providers and runs only behind the gateway (`apps/api`);
@@ -46,9 +46,10 @@ These five govern everything below. When a specific rule is missing, decide by t
    through subpath exports (`@the-delegation/llm/registry`, `@the-delegation/agents/team`). The
    single permitted barrel-like file is the shadcn `lib/utils.ts` exporting `cn()`.
 3. **Never create `utils.ts`, `helpers.ts`, or `misc.ts`.** Name a file for what it does.
-4. **Match the surrounding file-naming convention.** `packages/agents`, `simulation/` and `interface/` use
-   PascalCase for classes and components (`AgentBrain.ts`, `ChatPanel.tsx`) and camelCase for
-   modules (`coreStore.ts`, `proposeTask.ts`); `components/ui/` and `lib/` use kebab-case (shadcn).
+4. **File and folder names are kebab-case, everywhere** (`agent-brain.ts`, `chat-panel.tsx`,
+   `core-store.ts`, `visual-configurator/`), whatever the file exports; identifiers inside keep
+   their own casing (`class AgentBrain`). Biome's `useFilenamingConvention` enforces it. Next.js
+   reserved names (`page.tsx`, `layout.tsx`) already comply.
 5. **Full, descriptive names.** No single-letter or abbreviated identifiers. `agentIndex`, never
    `idx`; `taskId`, never `tId`; `(task) => ...`, never `(t) => ...`. Exceptions: a trivial
    numeric loop counter, and `(a, b)` in a sort comparator.
@@ -89,7 +90,7 @@ These five govern everything below. When a specific rule is missing, decide by t
 
 ## 4. Agents and the LLM
 
-16. **Tools are built with `defineTool`** (`packages/agents/src/agent/tools/toolArgs.ts`, shape in
+16. **Tools are built with `defineTool`** (`packages/agents/src/agent/tools/tool-args.ts`, shape in
     `types.ts`): a `z.strictObject` args schema built from `requiredText` and friends (length caps
     included), an `isOffered(agent, team, phase)` gate, and a `run` that returns a `ToolResult`.
     The args schema is the single source: the input schema sent to the model is derived from it,
@@ -118,7 +119,7 @@ These five govern everything below. When a specific rule is missing, decide by t
 ## 5. State and the scene
 
 23. **Zustand selectors, never whole-store subscriptions** in React (`useShallow` for objects).
-    Per-frame data (screen positions) never goes through a store (`integration/screenPositions.ts`).
+    Per-frame data (screen positions) never goes through a store (`integration/screen-positions.ts`).
 24. **No side effects inside a `set()` updater**, and no cross-store subscriptions at module load.
 25. **Persisted state is validated on rehydrate** and falls back to a safe default.
 26. **Everything the scene creates, it disposes**: GPU resources, listeners, timers, subscriptions,
@@ -145,7 +146,7 @@ These five govern everything below. When a specific rule is missing, decide by t
 34. **Provider keys exist only as gateway bindings.** Never log, render or return them, never put
     them in a `NEXT_PUBLIC_*` variable, and never send one anywhere but its provider. CI greps the
     build output for Google, Anthropic and OpenAI key prefixes; keep it that way.
-35. **Untrusted Markdown renders through `components/Markdown.tsx` only**: no raw HTML, no remote
+35. **Untrusted Markdown renders through `components/markdown.tsx` only**: no raw HTML, no remote
     images, http(s)/mailto links only, external links through `ExternalLink`.
 36. **Keep the CSP intact** (`scripts/csp.mjs`). A new inline script or remote origin is a CSP
     change and needs a reason.

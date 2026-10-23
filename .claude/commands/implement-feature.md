@@ -9,7 +9,7 @@ You are implementing a planned change: `$ARGUMENTS`. Planning is done: a signed-
 Never drift from these:
 - `packages/agents` is framework-free and talks through ports; never import a store, React or the scene from it, and never import a provider SDK outside `packages/llm`.
 - Every LLM call goes through the `AgentBrain` retry/budget policy; no new loops or retries.
-- LLM output is untrusted: tool args validated in `parseArgs`, Markdown through `components/Markdown.tsx`.
+- LLM output is untrusted: tool args validated in `parseArgs`, Markdown through `components/markdown.tsx`.
 - The 3D scene's visuals don't change unless the spec says exactly how.
 - No `any`, no forcing `as` casts, no inline `//` comments, full descriptive names (RULES.md).
 
@@ -30,7 +30,7 @@ Do not skip ahead, implement more than one item at a time, or make a decision th
 ## FOR EACH ITEM
 
 ### Step 1 — Read & orient
-Read every file the item lists, the matching spec section, the relevant RULES.md section, and the **canonical sibling** to mirror: a tool -> `packages/agents/src/agent/tools/completeTask.ts`; a provider -> `packages/llm/src/providers/anthropic.ts`; a port method -> `packages/agents/src/orchestration/ports.ts` + `integration/orchestration/zustandDeps.ts`; a store slice -> `integration/store/coreStore.ts`; a dialog -> `interface/DeleteTaskModal.tsx`; a route -> `apps/api/src/routes/llm.ts`.
+Read every file the item lists, the matching spec section, the relevant RULES.md section, and the **canonical sibling** to mirror: a tool -> `packages/agents/src/agent/tools/complete-task.ts`; a provider -> `packages/llm/src/providers/anthropic.ts`; a port method -> `packages/agents/src/orchestration/ports.ts` + `integration/orchestration/zustand-deps.ts`; a store slice -> `integration/store/core-store.ts`; a dialog -> `interface/delete-task-modal.tsx`; a route -> `apps/api/src/routes/llm.ts`.
 
 ### Step 2 — Surface ambiguities first
 List every decision this item needs that the spec, CLAUDE.md and RULES.md do NOT answer. Ask with `AskUserQuestion` (max 4 at once): the decision, the options, each option's implication, your lean and why. WAIT. If there are none, say so and proceed.

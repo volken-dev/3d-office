@@ -56,7 +56,10 @@ const STRING = /"[^"\n]*"|'[^'\n]*'|`[^`\n]*`/g
 const IMPORT_LINE = /^\s*(import\b|export\b.*\bfrom\s)|\brequire\(/
 
 const checks = [
-  { pattern: DASH, message: "em/en-dash in a user-facing string: use a comma, full stop or parentheses" },
+  {
+    pattern: DASH,
+    message: "em/en-dash in a user-facing string: use a comma, full stop or parentheses",
+  },
   {
     pattern: BULLET,
     skipLiteral: (literal) => MASK_ONLY.test(literal),
@@ -68,7 +71,10 @@ const checks = [
     skipLine: (line) => CLASS_LIST_LINE.test(line),
     message: "exclamation mark in a user-facing string: warmth comes from words",
   },
-  { pattern: AUDIT_ID, message: "internal audit id in a string: keep those out of user-facing copy" },
+  {
+    pattern: AUDIT_ID,
+    message: "internal audit id in a string: keep those out of user-facing copy",
+  },
 ]
 
 const findings = []

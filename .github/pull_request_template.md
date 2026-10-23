@@ -18,7 +18,7 @@ Closes #
 
 - [ ] `bun run typecheck`, `bun run lint`, `bun run build` all pass (`/health-check`)
 - [ ] Exercised for real and written up under **Verified**
-- [ ] New artifact registered (tool in `ToolRegistry.ts` / route in `app.ts`)
+- [ ] New artifact registered (tool in `tool-registry.ts` / route in `app.ts`)
 - [ ] No `any`, no forcing casts, no explanatory `//` comments, full descriptive names
 - [ ] UI composes `components/ui/*` primitives and theme tokens; no dashes, emoji or exclamation marks in copy
 - [ ] LLM calls stay inside the `AgentBrain` retry/budget policy

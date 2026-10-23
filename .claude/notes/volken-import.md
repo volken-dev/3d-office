@@ -60,7 +60,7 @@ Still open:
 
 ## Found while importing
 
-- `apps/web/src/interface/UIOverlayBubbles.tsx:64` shows "Project Ready!" (exclamation mark; the
+- `apps/web/src/interface/ui-overlay-bubbles.tsx:64` shows "Project Ready!" (exclamation mark; the
   copy hook flags it).
-- `apps/web/src/interface/ActionLogPanel.tsx:156` styles tab labels `uppercase tracking-widest`
+- `apps/web/src/interface/action-log-panel.tsx:156` styles tab labels `uppercase tracking-widest`
   (an ALL-CAPS micro-label under the anti-slop rule).
