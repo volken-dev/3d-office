@@ -17,7 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
 import { useCoreStore } from "../integration/store/coreStore"
 import { useActiveTeam } from "../integration/store/teamStore"
-import { useSceneManager } from "../simulation/SceneContext"
+import { useScene } from "../simulation/SceneContext"
 
 const REVIEW_TOAST_ID = "deliverable-review"
 
@@ -34,7 +34,7 @@ export function OutputReviewModal() {
   const resetProject = useCoreStore((state) => state.resetProject)
 
   const activeTeam = useActiveTeam()
-  const scene = useSceneManager()
+  const scene = useScene()
   const [draft, setDraft] = useState(pendingDeliverable)
   const [isConfirmingReset, setIsConfirmingReset] = useState(false)
 

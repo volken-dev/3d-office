@@ -1,6 +1,6 @@
 import type { Usage } from "@the-delegation/shared/llm-messages"
 
-/** Usage of an agent or project that has made no calls yet. */
+/** Usage of an agent that has made no calls yet, and the starting point for running totals. */
 export const EMPTY_USAGE: Usage = Object.freeze({
   inputTokens: 0,
   outputTokens: 0,

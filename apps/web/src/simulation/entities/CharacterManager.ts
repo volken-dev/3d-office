@@ -460,7 +460,7 @@ export class CharacterManager {
 
     const scratchColor = new THREE.Color()
 
-    const spawnPois = this.poiManager?.getFreePoisByPrefix("spawn") || []
+    const spawnPois = this.poiManager?.getFreePoisOfKind("spawn") ?? []
     let spawnIndex = 0
 
     const spawnPoiByCharacter: (PoiDef | null)[] = []
@@ -526,7 +526,7 @@ export class CharacterManager {
       }
 
       const poi = spawnPoiByCharacter[characterIndex]
-      if (poi && (poi.id.includes("spawn") || poi.id.includes("sit"))) {
+      if (poi) {
         this.setOrientation(characterIndex, poi.quaternion)
       }
       expressionBuffer.setSpeaking(characterIndex, false)

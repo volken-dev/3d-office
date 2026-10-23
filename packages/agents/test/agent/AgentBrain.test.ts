@@ -20,7 +20,7 @@ const team = TEST_TEAM
 const worker = team.leadAgent.subagents?.find((agent) => !agent.humanInTheLoop)
 const lead = team.leadAgent
 
-type Reply = MessagesResponse | LLMError | "hang"
+type Reply = MessagesResponse | Promise<MessagesResponse> | LLMError | "hang"
 
 function reply(content: ContentBlock[], stopReason: StopReason = "end_turn"): MessagesResponse {
   return {
@@ -46,14 +46,16 @@ class ScriptedLLM implements LLMClient {
         )
       })
     }
+    if (next instanceof Promise) return next
     return next instanceof LLMError ? Promise.reject(next) : Promise.resolve(next)
   }
 }
 
-function hostFor(agent: AgentNode): BrainHost {
+function hostFor(agent: AgentNode): BrainHost & { settledTurns: number } {
   let state: AgentWorkStatus = "idle"
   let taskId: string | null = null
   return {
+    settledTurns: 0,
     data: agent,
     get state() {
       return state
@@ -65,7 +67,9 @@ function hostFor(agent: AgentNode): BrainHost {
       taskId = next
     },
     getCurrentTaskId: () => taskId,
-    simulation: { processScheduledTasks: () => {} },
+    onTurnSettled() {
+      this.settledTurns++
+    },
   }
 }
 
@@ -98,7 +102,7 @@ function setup(agent: AgentNode | undefined, scriptFor: (taskId: string) => Repl
   host.setTask(task.id)
   const brain = new AgentBrain(host, dependencies)
   brains.push(brain)
-  return { project, task, llm, errors, brain, agent }
+  return { project, task, llm, errors, brain, agent, host }
 }
 
 function completeTaskCall(taskId: string, id = "toolu_1"): ContentBlock {
@@ -146,7 +150,7 @@ describe("AgentBrain model turns", () => {
     ])
     expect(project.getTask(task.id)?.status).toBe("done")
 
-    await brain.think("Anything else?", { isChat: false })
+    await brain.chat("Anything else?")
     const followUp = llm.requests.at(-1)
     expect(MessagesRequestSchema.safeParse(followUp).success).toBe(true)
     expect(followUp?.messages.some((message) => message.content[0]?.type === "reasoning")).toBe(
@@ -156,8 +160,8 @@ describe("AgentBrain model turns", () => {
 
   test("sends history whole and append-only: each request extends the previous one", async () => {
     const { llm, brain } = setup(worker)
-    await brain.think("First", { silent: true })
-    await brain.think("Second", { silent: true })
+    await brain.chat("First")
+    await brain.chat("Second")
     const [first, second] = llm.requests
     expect(second?.messages.slice(0, first?.messages.length)).toEqual(first?.messages ?? [])
     expect(second?.system).toBe(first?.system ?? "")
@@ -168,8 +172,8 @@ describe("AgentBrain model turns", () => {
     const contextTurns = () =>
       project.getHistory(agent.index).filter((message) => message.metadata?.context).length
 
-    await brain.think("First", { silent: true })
-    await brain.think("Second", { silent: true })
+    await brain.chat("First")
+    await brain.chat("Second")
     expect(contextTurns()).toBe(1)
 
     project.addTask({
@@ -179,15 +183,15 @@ describe("AgentBrain model turns", () => {
       status: "scheduled",
       requiresUserApproval: false,
     })
-    await brain.think("Third", { silent: true })
+    await brain.chat("Third")
     expect(contextTurns()).toBe(2)
   })
 
   test("keeps the system prompt stable across phases", async () => {
     const { project, llm, brain } = setup(lead)
-    await brain.think("Working", { silent: true })
+    await brain.chat("Working")
     project.update({ phase: "done" })
-    await brain.think("Done", { silent: true })
+    await brain.chat("Done")
     expect(llm.requests[1]?.system).toBe(llm.requests[0]?.system ?? "")
   })
 
@@ -210,12 +214,11 @@ describe("AgentBrain model turns", () => {
     const { project, llm, brain, agent } = setup(worker, () => [
       new LLMError("unavailable", "Gateway unreachable"),
     ])
-    project.appendHistory(agent.index, { role: "user", content: [{ type: "text", text: "Hi" }] })
-    await brain.think("Hi", { isChat: true })
+    await brain.chat("Hi")
     const notice = project.getHistory(agent.index).at(-1)
     expect(notice?.metadata).toEqual({ error: true, displayOnly: true })
 
-    await brain.think("Again", { silent: true })
+    await brain.chat("Again")
     const texts = llm.requests
       .at(-1)
       ?.messages.flatMap((message) => message.content)
@@ -223,9 +226,44 @@ describe("AgentBrain model turns", () => {
     expect(texts?.some((text) => text.includes("Gateway unreachable"))).toBe(false)
   })
 
+  test("a chat message sent mid-turn queues and is recorded after that turn's reply", async () => {
+    let release: (response: MessagesResponse) => void = () => {}
+    const pending = new Promise<MessagesResponse>((resolve) => {
+      release = resolve
+    })
+    const { project, task, llm, brain, agent, host } = setup(worker, () => [pending])
+
+    const taskTurn = brain.executeTask(task.id)
+    await settle()
+    const chatTurn = brain.chat("Status?")
+    await settle()
+    expect(llm.requests).toHaveLength(1)
+    expect(brain.isThinking).toBe(true)
+
+    release(reply([{ type: "text", text: "Working" }]))
+    await Promise.all([taskTurn, chatTurn])
+
+    const texts = project
+      .getHistory(agent.index)
+      .flatMap((message) => message.content)
+      .flatMap((block) => (block.type === "text" ? [block.text] : []))
+    expect(texts.indexOf("Status?")).toBeGreaterThan(texts.indexOf("Working"))
+    expect(llm.requests).toHaveLength(2)
+    expect(MessagesRequestSchema.safeParse(llm.requests[1]).success).toBe(true)
+    expect(brain.isThinking).toBe(false)
+    expect(host.settledTurns).toBe(2)
+  })
+
+  test("counts each request against the call budget", async () => {
+    const { project, brain } = setup(worker)
+    await brain.chat("One")
+    await brain.chat("Two")
+    expect(project.callsUsed).toBe(2)
+  })
+
   test("asks for the agent's own model", async () => {
     const { llm, brain, agent } = setup(worker)
-    await brain.think("Go", { silent: true })
+    await brain.chat("Go")
     expect(llm.requests[0]?.model).toBe(agent.model)
   })
 })
@@ -255,7 +293,7 @@ describe("AgentBrain autonomous work", () => {
     expect(project.pauses.map((pause) => pause.kind)).toEqual(["budget"])
 
     project.update({ runId: project.snapshot().runId + 1 })
-    expect(await turn).toEqual({ text: "", toolCalls: [] })
+    expect(await turn).toEqual({ status: "skipped" })
   })
 
   test("pauses after repeated unproductive attempts at one intent", async () => {
@@ -283,19 +321,19 @@ describe("AgentBrain autonomous work", () => {
 
     const result = await brain.executeTask(task.id)
 
-    expect(result.error?.kind).toBe("rate_limited")
+    expect(result).toMatchObject({ status: "failed", error: { kind: "rate_limited" } })
     expect(errors.map((error) => error.kind)).toEqual(["rate_limited"])
     expect(project.getIntentAttempts(task.id)?.count).toBe(1)
     expect(project.getTask(task.id)?.error).toBe("Rate limited")
     expect(project.pauses.map((pause) => pause.kind)).toEqual(["quota"])
   })
 
-  test("a gateway configuration error pauses autonomy for access", async () => {
+  test("a gateway configuration error pauses autonomy until it is configured", async () => {
     const { project, task, brain } = setup(worker, () => [
       new LLMError("not_configured", "No provider key"),
     ])
     await brain.executeTask(task.id)
-    expect(project.pauses.map((pause) => pause.kind)).toEqual(["auth"])
+    expect(project.pauses.map((pause) => pause.kind)).toEqual(["not_configured"])
   })
 
   test("a reset aborts the in-flight call and discards its result", async () => {
@@ -308,7 +346,7 @@ describe("AgentBrain autonomous work", () => {
 
     project.update({ runId: project.snapshot().runId + 1 })
 
-    expect(await turn).toEqual({ text: "", toolCalls: [] })
+    expect(await turn).toEqual({ status: "skipped" })
     expect(errors).toEqual([])
     expect(project.getHistory(agent.index)).toHaveLength(historyBeforeReset)
   })
