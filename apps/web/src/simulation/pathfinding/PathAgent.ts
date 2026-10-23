@@ -8,7 +8,7 @@ const SAME_POINT_DISTANCE_SQUARED = 0.0001
 /**
  * Manages path-following for a single agent on the CPU side.
  *
- * The GPU shader handles smooth interpolation toward the current waypoint;
+ * The movement step (behavior/characterMovement.ts) walks toward the current waypoint;
  * PathAgent decides *which* waypoint to set next as the agent progresses
  * along its path.
  */
@@ -23,7 +23,7 @@ export class PathAgent {
   ) {}
 
   /**
-   * Start following a new path. Immediately writes the first waypoint to the GPU buffer. When the
+   * Start following a new path. Immediately writes the first waypoint to the agent state buffer. When the
    * start position is not already on the first node it is prepended to the path, and following
    * begins at the first real node.
    */
