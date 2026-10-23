@@ -1,33 +1,18 @@
-import { fail, readString, type ToolSpec } from "./types"
+import { z } from "zod"
+import { defineTool, requiredText } from "./toolArgs"
+import { fail } from "./types"
 
-export const completeTask: ToolSpec<{ taskId: string; output: string }> = {
-  definition: {
-    name: "complete_task",
-    description:
-      "Finish task. Output must be raw content, no introductions or credit for the work.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        taskId: { type: "string" },
-        output: {
-          type: "string",
-          description: "Task result in Markdown (e.g. code blocks, text, or research).",
-        },
-      },
-      required: ["taskId", "output"],
-      additionalProperties: false,
-    },
-  },
+export const completeTask = defineTool({
+  name: "complete_task",
+  description: "Finish task. Output must be raw content, no introductions or credit for the work.",
+  args: z.strictObject({
+    taskId: requiredText(100),
+    output: requiredText(100_000).describe(
+      "Task result in Markdown (e.g. code blocks, text, or research).",
+    ),
+  }),
 
   isOffered: (_agent, _team, phase) => phase === "working",
-
-  parseArgs(raw) {
-    const taskId = readString(raw, "taskId", 100)
-    if (!taskId.ok) return taskId
-    const output = readString(raw, "output", 100_000)
-    if (!output.ok) return output
-    return { ok: true, value: { taskId: taskId.value, output: output.value } }
-  },
 
   run({ agent, project, setStatus, appendHistory }, { taskId, output }) {
     const task = project.getTask(taskId)
@@ -56,4 +41,4 @@ export const completeTask: ToolSpec<{ taskId: string; output: string }> = {
     project.logAction({ agentIndex: agent.index, action: "completed task", taskId })
     return { ok: true, summary: "Task completed." }
   },
-}
+})

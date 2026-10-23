@@ -12,7 +12,7 @@
     "lineWidth": 100
   },
   "files": {
-    "includes": ["**", "!**/public/vendor/**", "!**/.claude/workflows/**"]
+    "includes": ["**", "!**/.claude/workflows/**"]
   },
   "linter": {
     "enabled": true,

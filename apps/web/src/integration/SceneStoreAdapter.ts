@@ -27,12 +27,14 @@ export class SceneStoreAdapter {
   /** Resolves once the scene renders; rejects if WebGPU/WebGL2 or the models fail to load. */
   public readonly ready: Promise<void>
 
-  constructor(container: HTMLElement) {
+  /** `onDeviceLost` fires once the GPU device is gone and the scene must be rebuilt by its owner. */
+  constructor(container: HTMLElement, onDeviceLost: () => void) {
     this.team = getActiveAgentSet()
     this.scene = new SceneManager(container, this.team, {
       onAgentClick: (agentIndex) => this.selectAgent(agentIndex),
       onAgentHover: (agentIndex) => useUiStore.getState().setHoveredNpc(agentIndex),
       onPoiHover: (id, label, position) => useUiStore.getState().setHoveredPoi(id, label, position),
+      onDeviceLost,
     })
     this.ready = this.scene.ready
 

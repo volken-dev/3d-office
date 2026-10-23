@@ -1,56 +1,23 @@
+import { z } from "zod"
 import { MAX_TASKS_PER_PROJECT } from "../../orchestration/policy"
 import { getAgentRoster, getSubtreeIndices, isLeadAgent, isUserIndex } from "../../team"
-import { fail, readString, type ToolSpec } from "./types"
+import { defineTool, optionalFlag, optionalInteger, requiredText } from "./toolArgs"
+import { fail } from "./types"
 
-interface ProposeTaskArgs {
-  title: string
-  description: string
-  /** Undefined means "assign to myself". */
-  agentId?: number
-  requiresApproval: boolean
-}
-
-export const proposeTask: ToolSpec<ProposeTaskArgs> = {
-  definition: {
-    name: "propose_task",
-    description: "Assign task to agent.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        title: { type: "string" },
-        description: { type: "string" },
-        agentId: { type: "integer", description: "Agent index" },
-        requiresApproval: { type: "boolean" },
-      },
-      required: ["title", "description", "agentId"],
-      additionalProperties: false,
-    },
-  },
+export const proposeTask = defineTool({
+  name: "propose_task",
+  description: "Assign task to agent.",
+  args: z.strictObject({
+    title: requiredText(200),
+    description: requiredText(4_000),
+    agentId: optionalInteger().describe(
+      "Agent index. Leave it out to assign the task to yourself.",
+    ),
+    requiresApproval: optionalFlag(),
+  }),
 
   isOffered: (agent, team, phase) =>
     phase === "working" && (isLeadAgent(team, agent.index) || (agent.subagents?.length ?? 0) > 0),
-
-  parseArgs(raw) {
-    const title = readString(raw, "title", 200)
-    if (!title.ok) return title
-    const description = readString(raw, "description", 4_000)
-    if (!description.ok) return description
-
-    let agentId: number | undefined
-    if (raw.agentId !== undefined && raw.agentId !== null && raw.agentId !== "") {
-      agentId = Number(raw.agentId)
-      if (!Number.isInteger(agentId)) return fail('"agentId" must be an integer agent index.')
-    }
-    return {
-      ok: true,
-      value: {
-        title: title.value,
-        description: description.value,
-        agentId,
-        requiresApproval: raw.requiresApproval === true,
-      },
-    }
-  },
 
   run({ agent, team, project }, args) {
     const { phase, tasks } = project.snapshot()
@@ -82,7 +49,7 @@ export const proposeTask: ToolSpec<ProposeTaskArgs> = {
       description: args.description,
       assignedAgentId: assignee,
       status: "scheduled",
-      requiresUserApproval: args.requiresApproval,
+      requiresUserApproval: args.requiresApproval ?? false,
     })
     project.logAction({
       agentIndex: agent.index,
@@ -91,4 +58,4 @@ export const proposeTask: ToolSpec<ProposeTaskArgs> = {
     })
     return { ok: true, summary: `Task "${args.title}" added to the board as ${task.id}.` }
   },
-}
+})

@@ -28,6 +28,7 @@ import { InputManager } from "./input/InputManager"
 import { createSceneLoader } from "./loaders"
 import { NavMeshManager } from "./pathfinding/NavMeshManager"
 import { PoiManager } from "./world/PoiManager"
+import { BOARDROOM_POI_ID, deskPoiId, spawnPoiId } from "./world/poiIds"
 import { WorldManager } from "./world/WorldManager"
 
 /** Clamp so a long pause (hidden tab, design mode) doesn't teleport characters through walls. */
@@ -43,6 +44,8 @@ export interface SceneEvents {
     label: string | null,
     position: { x: number; y: number } | null,
   ): void
+  /** The GPU device is gone: this scene can no longer render and should be rebuilt. */
+  onDeviceLost(): void
 }
 
 /**
@@ -90,7 +93,9 @@ export class SceneManager {
     this.team = team
     this.events = events
 
-    this.engine = new Engine(container)
+    this.engine = new Engine(container, () => {
+      if (!this.isDisposed) this.events.onDeviceLost()
+    })
     this.stage = new Stage(this.engine.renderer.domElement)
     this.characterManager = new CharacterManager(this.stage.scene, this.team)
     this.navMesh = new NavMeshManager()
@@ -113,6 +118,7 @@ export class SceneManager {
    * Renderer init and every model download/decode overlap; only the setup after them is ordered.
    * The world is set up before the characters because character spawns need its POIs. Only the
    * character models this team uses are loaded, plus the default model every missing one falls back to.
+   * Shaders are compiled before the first frame, so `ready` resolves on a scene that renders smoothly.
    */
   private async init() {
     const loader = createSceneLoader()
@@ -120,7 +126,7 @@ export class SceneManager {
       this.engine.init(),
       loader.load(OFFICE_MODEL_URL),
       loadCharacterModels(loader, this.characterModelsFor(this.team)),
-    ]).finally(() => loader.dispose())
+    ])
     if (this.isDisposed) return
 
     this.worldManager.setup(officeGltf, this.team.color)
@@ -151,6 +157,9 @@ export class SceneManager {
         onPoiClick: (id) => this.driverManager?.getPlayerDriver()?.onPoiClick(id),
       },
     )
+
+    await this.engine.compile(this.stage.scene, this.stage.camera)
+    if (this.isDisposed) return
 
     this.engine.renderer.setAnimationLoop(this.animate)
     const stillMissing = this.characterModelsFor(this.team).some(
@@ -266,7 +275,6 @@ export class SceneManager {
         console.error("[SceneManager] Character models failed to load:", error)
         if (!this.isDisposed && this.team === team) this.rebuildForTeam(team)
       })
-      .finally(() => loader.dispose())
   }
 
   /**
@@ -355,14 +363,14 @@ export class SceneManager {
   }
 
   /**
-   * Sends the agent to its own desk (`sit_work-<index>`), or, if the office has none for it, to a
+   * Sends the agent to its own desk (`deskPoiId`), or, if the office has none for it, to a
    * desk picked by its position on the team (`deskSlot`).
    */
   private setNpcWorking(index: number, deskSlot: number): void {
     if (!this.controller) return
-    let poi = this.poiManager.getPoi(`sit_work-${index}`)
+    let poi = this.poiManager.getPoi(deskPoiId(index))
     if (!poi) {
-      const desks = this.poiManager.getPoisByPrefix("sit_work")
+      const desks = this.poiManager.getPoisOfKind("desk")
       if (desks.length > 0) poi = desks[deskSlot % desks.length]
     }
     if (poi) this.controller.walkToPoi(index, poi.id)
@@ -370,13 +378,13 @@ export class SceneManager {
 
   private moveNpcToBoardroom(index: number): void {
     if (!this.controller) return
-    const poi = this.poiManager.getPoi("area-boardroom") || this.poiManager.getPoi("boardroom")
+    const poi = this.poiManager.getPoi(BOARDROOM_POI_ID)
     if (poi) this.controller.walkToPoi(index, poi.id)
   }
 
   private moveNpcToSpawn(index: number): void {
     if (!this.controller) return
-    const poi = this.poiManager.getPoi(`spawn-${index}`)
+    const poi = this.poiManager.getPoi(spawnPoiId(index))
     if (poi)
       this.controller.moveTo(index, poi.position, "idle", undefined, undefined, poi.quaternion)
   }

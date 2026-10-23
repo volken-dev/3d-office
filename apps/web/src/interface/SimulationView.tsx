@@ -16,6 +16,9 @@ import InspectorPanel from "./InspectorPanel"
 import UIOverlay from "./UIOverlay"
 
 const TeamFlowModal = lazy(() => import("./TeamFlowModal"))
+/** Development only: the literal check lets the production build drop the overlay's chunk. */
+const PerformanceOverlay =
+  process.env.NODE_ENV === "development" ? lazy(() => import("./PerformanceOverlay")) : null
 
 type SceneStatus = "loading" | "ready" | "error"
 
@@ -43,18 +46,26 @@ function useSceneStatus(scene: SceneStoreAdapter | null): SceneStatus {
 
 interface SimulationViewProps {
   canvasRef: React.RefObject<HTMLDivElement | null>
+  /** The GPU device kept being lost and the scene is no longer rebuilt. */
+  isSceneLost: boolean
   isFocusMode: boolean
   onFocusModeChange: (value: boolean) => void
 }
 
 /** The canvas column: team bar, the 3D view with its overlays and load states, and the task review dialog. */
-function SimulationView({ canvasRef, isFocusMode, onFocusModeChange }: SimulationViewProps) {
+function SimulationView({
+  canvasRef,
+  isSceneLost,
+  isFocusMode,
+  onFocusModeChange,
+}: SimulationViewProps) {
   const selectedNpcIndex = useUiStore((state) => state.selectedNpcIndex)
   const activeAuditTaskId = useUiStore((state) => state.activeAuditTaskId)
   const setActiveAuditTaskId = useUiStore((state) => state.setActiveAuditTaskId)
   const activeTeam = useActiveTeam()
   const [isFlowModalOpen, setIsFlowModalOpen] = useState(false)
-  const sceneStatus = useSceneStatus(useScene())
+  const loadStatus = useSceneStatus(useScene())
+  const sceneStatus: SceneStatus = isSceneLost ? "error" : loadStatus
   const focusLabel = isFocusMode ? "Exit focus (Esc)" : "Focus 3D view"
 
   return (
@@ -95,6 +106,11 @@ function SimulationView({ canvasRef, isFocusMode, onFocusModeChange }: Simulatio
 
       <div ref={canvasRef} className="relative min-h-0 flex-1 overflow-hidden bg-black/5">
         <UIOverlay />
+        {PerformanceOverlay && (
+          <Suspense fallback={null}>
+            <PerformanceOverlay />
+          </Suspense>
+        )}
         {sceneStatus === "loading" && (
           <div
             role="status"
@@ -111,9 +127,9 @@ function SimulationView({ canvasRef, isFocusMode, onFocusModeChange }: Simulatio
               <MonitorX />
               <AlertTitle>The 3D office could not load</AlertTitle>
               <AlertDescription>
-                It needs WebGPU or WebGL2 (a recent Chrome, Edge, Safari or Firefox) and a working
-                connection to download the models. The panels and agents still work; reload to try
-                again.
+                It needs WebGPU or WebGL2 (a recent Chrome, Edge, Safari or Firefox), a working
+                graphics driver and a connection to download the models. The panels and agents still
+                work; reload to try again.
               </AlertDescription>
             </Alert>
           </div>
