@@ -216,7 +216,7 @@ Issues: #17 (test runner), #25 (LLM package), #26 (agent loop), #27 (sign-in and
 8. `domain:` agent loop on the block model: tool results, append-only history, stable prefix,
    provider-neutral errors (#26).
 9. `api:` `POST /api/llm/messages` on the router, secrets, delete Gemini (#15).
-10. `api:` sign-in and per-user daily spend cap (#27).
+10. `api:` sign-in and per-user daily spend cap (#27). Dropped on 2026-10-23: the gateway stays a local service, and #27 was closed as not planned.
 11. `state:` history and team persist migrations; wipe the stored BYOK key (#26, #2).
 12. `ui:` gateway-backed `LLMClient`, remove BYOK UI, gateway error states, registry-driven model
     picker and pricing (#2, #15).
