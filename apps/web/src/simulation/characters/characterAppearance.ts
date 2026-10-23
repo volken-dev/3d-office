@@ -1,4 +1,5 @@
 import { type AgenticSystem, getAllAgents, isLeadAgent } from "@the-delegation/agents/team"
+import { getAllCharacters } from "../../data/agents"
 import {
   type AccessoryId,
   DEFAULT_CHARACTER_MODEL_ID,
@@ -32,8 +33,9 @@ export function appearanceFor(team: AgenticSystem, characterIndex: number): Char
 }
 
 /** Every model the team's characters use, so only those are loaded and instanced. */
-export function modelIdsUsedBy(team: AgenticSystem, characterCount: number): string[] {
+export function modelIdsUsedBy(team: AgenticSystem): string[] {
   const ids = new Set<string>()
-  for (let index = 0; index < characterCount; index++) ids.add(appearanceFor(team, index).modelId)
+  for (const character of getAllCharacters(team))
+    ids.add(appearanceFor(team, character.index).modelId)
   return [...ids]
 }

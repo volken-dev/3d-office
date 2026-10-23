@@ -97,7 +97,6 @@ export interface ICharacterDriver {
   setSpeaking(index: number, isSpeaking: boolean): void
   getAgentState(index: number): AgentBehavior
   getAnimationDuration(index: number, name: AnimationName): number
-  getCPUPositions(): Float32Array | null
 }
 
 /**
@@ -106,7 +105,7 @@ export interface ICharacterDriver {
  */
 export interface IAgentDriver {
   readonly agentIndex: number
-  update(positions: Float32Array, delta: number): void
+  update(deltaSeconds: number): void
   dispose(): void
 }
 

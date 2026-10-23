@@ -13,14 +13,7 @@ import { CharacterController } from "./CharacterController"
 import { modelIdsUsedBy } from "./characters/characterAppearance"
 import { DEFAULT_CHARACTER_MODEL_ID } from "./characters/characterModels"
 import { loadCharacterModels } from "./characters/loadCharacterModels"
-import {
-  ALPHA_LERP_RATE,
-  BUBBLE_Y_OFFSET,
-  CHAT_STANDOFF,
-  OFFICE_MODEL_URL,
-  OVERLAP_ALPHA,
-  OVERLAP_DIST_SQ,
-} from "./constants"
+import { BUBBLE_Y_OFFSET, CHAT_STANDOFF, OFFICE_MODEL_URL } from "./constants"
 import { AgentSimulation } from "./core/AgentSimulation"
 import { Engine } from "./core/Engine"
 import { Stage } from "./core/Stage"
@@ -134,8 +127,8 @@ export class SceneManager {
       this.stage.camera,
       this.worldManager.getNavMeshes(),
       {
-        getPositions: () => this.controller?.getCPUPositions() ?? null,
-        getCount: () => this.controller?.getCount() ?? 0,
+        getAgentIndices: () => this.controller?.getAgentIndices() ?? [],
+        getPosition: (agentIndex, out) => this.controller?.getCPUPosition(agentIndex, out) ?? false,
         getPois: () => this.poiManager.values(),
         isPointValid: (point) => this.navMesh.isPointOnNavMesh(point),
         onSelect: (agentIndex) => {
@@ -254,7 +247,7 @@ export class SceneManager {
 
   /** The character models a team needs: the ones its characters use, plus the default fallback. */
   private characterModelsFor(team: AgenticSystem): string[] {
-    const used = modelIdsUsedBy(team, getAllAgents(team).length + 1)
+    const used = modelIdsUsedBy(team)
     return used.includes(DEFAULT_CHARACTER_MODEL_ID) ? used : [DEFAULT_CHARACTER_MODEL_ID, ...used]
   }
 
@@ -287,7 +280,8 @@ export class SceneManager {
 
   /**
    * New simulation, characters and drivers for the team, everyone back at spawn. While still
-   * loading, init() builds everything from this.team instead.
+   * loading, init() builds everything from this.team instead. Screen positions are cleared so a
+   * removed agent's name bubble does not stay pinned where it last stood.
    */
   private rebuildForTeam(team: AgenticSystem) {
     this.simulation?.dispose()
@@ -296,6 +290,15 @@ export class SceneManager {
 
     if (!this.controller) return
     this.controller.setTeam(team)
+    clearScreenPositions()
+    const roster = this.controller.getAgentIndices()
+    if (this.selectedIndex !== null && !roster.includes(this.selectedIndex)) {
+      this.selectedIndex = null
+    }
+    const pickedIndex = this.inputManager?.selectedIndex ?? null
+    if (this.inputManager && pickedIndex !== null && !roster.includes(pickedIndex)) {
+      this.inputManager.selectedIndex = null
+    }
     this.registerDrivers()
     this.controller.warpAllToSpawn(
       team.user.index,
@@ -348,11 +351,13 @@ export class SceneManager {
   private startChatVisuals(npcIndex: number): void {
     const controller = this.controller
     if (!controller) return
-    const positions = controller.getCPUPositions()
-    if (!positions) return
     const user = this.team.user.index
-    const npc = new THREE.Vector3(positions[npcIndex * 4], 0, positions[npcIndex * 4 + 2])
-    const player = new THREE.Vector3(positions[user * 4], 0, positions[user * 4 + 2])
+    const npc = new THREE.Vector3()
+    const player = new THREE.Vector3()
+    if (!controller.getCPUPosition(npcIndex, npc) || !controller.getCPUPosition(user, player))
+      return
+    npc.y = 0
+    player.y = 0
     const direction = new THREE.Vector3().subVectors(player, npc).normalize()
     if (direction.length() < 0.01) direction.set(1, 0, 0)
     const target = npc.clone().addScaledVector(direction, CHAT_STANDOFF)
@@ -361,14 +366,15 @@ export class SceneManager {
     this.driverManager?.getNpcDriver(npcIndex)?.setChatting(true)
     controller.cancelMovement(npcIndex)
     controller.play(npcIndex, "listen")
-    controller.getAgentStateBuffer()?.setWaypoint(npcIndex, direction.x, direction.z)
+    controller.setFacing(npcIndex, direction.x, direction.z)
     this.driverManager?.getPlayerDriver()?.walkTo(target, "listen", () => {
-      const arrivedPositions = controller.getCPUPositions()
-      if (!arrivedPositions) return
-      const facingX = arrivedPositions[npcIndex * 4] - arrivedPositions[user * 4]
-      const facingZ = arrivedPositions[npcIndex * 4 + 2] - arrivedPositions[user * 4 + 2]
-      controller.getAgentStateBuffer()?.setWaypoint(user, facingX, facingZ)
-      controller.getAgentStateBuffer()?.setWaypoint(npcIndex, -facingX, -facingZ)
+      if (!controller.getCPUPosition(npcIndex, npc) || !controller.getCPUPosition(user, player)) {
+        return
+      }
+      const facingX = npc.x - player.x
+      const facingZ = npc.z - player.z
+      controller.setFacing(user, facingX, facingZ)
+      controller.setFacing(npcIndex, -facingX, -facingZ)
     })
   }
 
@@ -438,12 +444,11 @@ export class SceneManager {
     const controller = this.controller
     this.engine.trackFrame(deltaSeconds)
     this.stage.update()
-    const positions = controller?.getCPUPositions()
-    if (controller && positions) {
+    if (controller) {
       controller.update(deltaSeconds)
-      controller.updatePaths(positions)
-      this.driverManager?.update(positions, deltaSeconds)
-      this.updateTransparency(positions, deltaSeconds)
+      controller.updatePaths()
+      this.driverManager?.update(deltaSeconds)
+      controller.updateOverlapFading(deltaSeconds)
     }
 
     const player = this.team.user.index
@@ -453,7 +458,7 @@ export class SceneManager {
     if (controller) {
       const camera = this.stage.camera
       const bubblePosition = this.scratchPosition
-      for (let agentIndex = 0; agentIndex < controller.getCount(); agentIndex++) {
+      for (const agentIndex of controller.getAgentIndices()) {
         if (!controller.getCPUPosition(agentIndex, bubblePosition)) continue
         bubblePosition.y += BUBBLE_Y_OFFSET
         bubblePosition.project(camera)
@@ -470,39 +475,6 @@ export class SceneManager {
       controller?.getAgentState(player) === AgentBehavior.GOTO,
     )
     this.engine.render(this.stage.scene, this.stage.camera)
-  }
-
-  /** Fades characters that overlap so neither hides the other. */
-  private updateTransparency(positions: Float32Array, deltaSeconds: number) {
-    if (!this.controller) return
-    const count = this.controller.getCount()
-    const buffer = this.controller.getAgentStateBuffer()
-    if (!buffer) return
-    for (let agentIndex = 0; agentIndex < count; agentIndex++) {
-      let overlap = false
-      for (let otherIndex = 0; otherIndex < count; otherIndex++) {
-        if (agentIndex === otherIndex) continue
-        if (
-          (positions[agentIndex * 4] - positions[otherIndex * 4]) ** 2 +
-            (positions[agentIndex * 4 + 2] - positions[otherIndex * 4 + 2]) ** 2 <
-          OVERLAP_DIST_SQ
-        ) {
-          overlap = true
-          break
-        }
-      }
-      const currentAlpha = buffer.getAlpha(agentIndex)
-      const targetAlpha = overlap ? OVERLAP_ALPHA : 1.0
-      if (Math.abs(currentAlpha - targetAlpha) > 0.01)
-        buffer.setAlpha(
-          agentIndex,
-          THREE.MathUtils.lerp(
-            currentAlpha,
-            targetAlpha,
-            Math.min(deltaSeconds * ALPHA_LERP_RATE, 1.0),
-          ),
-        )
-    }
   }
 
   public resetScene() {

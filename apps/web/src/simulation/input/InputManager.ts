@@ -44,8 +44,10 @@ function raySphereHitDistance(
 }
 
 export interface InputCallbacks {
-  getPositions(): Float32Array | null
-  getCount(): number
+  /** Agent indices of every pickable character. */
+  getAgentIndices(): readonly number[]
+  /** Writes a character's position into `out`; false when it has none. */
+  getPosition(agentIndex: number, out: THREE.Vector3): boolean
   getPois(): Iterable<PoiDef>
   isPointValid(point: THREE.Vector3): boolean
   onSelect(index: number | null): void
@@ -64,6 +66,7 @@ export class InputManager {
   private raycaster = new THREE.Raycaster()
   private pointer = new THREE.Vector2()
   private readonly projected = new THREE.Vector3()
+  private readonly characterPosition = new THREE.Vector3()
   private readonly planeHit = new THREE.Vector3()
   private readonly hits: THREE.Intersection[] = []
   private dragStartX = 0
@@ -150,16 +153,15 @@ export class InputManager {
 
     if (effectiveHoverIndex !== null) {
       this.canvas.style.cursor = "pointer"
-      const positions = this.callbacks.getPositions()
-      if (positions) {
-        const offset = effectiveHoverIndex * 4
+      const position = this.characterPosition
+      if (this.callbacks.getPosition(effectiveHoverIndex, position)) {
         onPoiHover(null, null, null)
         onHover(
           effectiveHoverIndex,
           this.toScreen(
-            positions[offset],
-            positions[offset + 1] + CHARACTER_Y_OFFSET + CHARACTER_LABEL_LIFT,
-            positions[offset + 2],
+            position.x,
+            position.y + CHARACTER_Y_OFFSET + CHARACTER_LABEL_LIFT,
+            position.z,
             canvasBounds,
           ),
         )
@@ -187,20 +189,18 @@ export class InputManager {
 
   private getAgentAtPointer(): number | null {
     this.raycaster.setFromCamera(this.pointer, this.camera)
-    const positions = this.callbacks.getPositions()
-    const count = this.callbacks.getCount()
-    if (!positions || count === 0) return null
-
     const ray = this.raycaster.ray
+    const position = this.characterPosition
     let closestDistance = Infinity
     let closestIndex: number | null = null
 
-    for (let agentIndex = 0; agentIndex < count; agentIndex++) {
+    for (const agentIndex of this.callbacks.getAgentIndices()) {
+      if (!this.callbacks.getPosition(agentIndex, position)) continue
       const hitDistance = raySphereHitDistance(
         ray,
-        positions[agentIndex * 4],
-        positions[agentIndex * 4 + 1] + CHARACTER_Y_OFFSET,
-        positions[agentIndex * 4 + 2],
+        position.x,
+        position.y + CHARACTER_Y_OFFSET,
+        position.z,
         PICK_RADIUS,
       )
       if (hitDistance === null) continue
