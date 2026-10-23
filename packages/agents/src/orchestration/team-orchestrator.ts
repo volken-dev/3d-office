@@ -1,9 +1,8 @@
-import { type AgenticSystem, getAllAgents } from "@the-delegation/agents/team"
-import { useCoreStore } from "../../integration/store/core-store"
-import { useUiStore } from "../../integration/store/ui-store"
+import { type AgenticSystem, getAllAgents } from "../team"
 import { AgentHost } from "./agent-host"
+import type { TeamOrchestratorDeps } from "./ports"
 
-/** Safety net for work that no store change re-triggers. */
+/** Safety net for work that no project change re-triggers. */
 const HEARTBEAT_MS = 5000
 const SPARK_DEBOUNCE_MS = 1000
 /** Tasks start after a staggered delay so agents don't all call the API at once. */
@@ -15,14 +14,13 @@ function delay(milliseconds: number): Promise<unknown> {
 }
 
 /**
- * Drives the team autonomously from store state: the lead proposes tasks (spark), agents run
+ * Drives the team autonomously from project state: the lead proposes tasks (spark), agents run
  * scheduled tasks, and the lead delivers once every task is done.
  *
  * Retry policy (backoff, attempt cap, call budget, pausing for the user) lives in AgentBrain, which
- * stays busy while it waits, so re-triggering here never doubles up calls. Nothing starts while the
- * API-key dialog is open.
+ * stays busy while it waits, so re-triggering here never doubles up calls.
  */
-export class AgentSimulation {
+export class TeamOrchestrator {
   private readonly agents = new Map<number, AgentHost>()
   private currentSystem: AgenticSystem
   private unsubscribers: (() => void)[] = []
@@ -32,18 +30,22 @@ export class AgentSimulation {
   /** Task ids with a live execution, so a task is never started twice. */
   private readonly running = new Set<string>()
 
-  constructor(system: AgenticSystem) {
+  constructor(
+    system: AgenticSystem,
+    private readonly dependencies: TeamOrchestratorDeps,
+  ) {
     this.currentSystem = system
     for (const agentData of getAllAgents(system)) {
-      this.agents.set(agentData.index, new AgentHost(agentData, this))
+      this.agents.set(agentData.index, new AgentHost(agentData, this, dependencies))
     }
     this.startStateMonitoring()
   }
 
   /** The lead skips sparking while the user chats with it, so a chat ending re-sparks an empty board. */
   private startStateMonitoring() {
+    const { project, chat } = this.dependencies
     this.heartbeat = setInterval(() => {
-      const { phase, tasks } = useCoreStore.getState()
+      const { phase, tasks } = project.snapshot()
       if (phase !== "working") return
       if (tasks.length === 0) {
         void this.triggerAutonomousStrategy()
@@ -54,48 +56,37 @@ export class AgentSimulation {
     }, HEARTBEAT_MS)
 
     this.unsubscribers.push(
-      useCoreStore.subscribe((state, previousState) => {
-        if (state.tasks === previousState.tasks && state.phase === previousState.phase) return
+      project.subscribe((next, previous) => {
+        if (next.tasks === previous.tasks && next.phase === previous.phase) return
 
-        if (
-          state.phase === "working" &&
-          previousState.phase === "idle" &&
-          state.tasks.length === 0
-        ) {
+        if (next.phase === "working" && previous.phase === "idle" && next.tasks.length === 0) {
           void this.triggerAutonomousStrategy()
         }
-        if (state.phase === "working") this.processScheduledTasks()
+        if (next.phase === "working") this.processScheduledTasks()
         void this.checkProjectCompletion()
       }),
-    )
-
-    this.unsubscribers.push(
-      useUiStore.subscribe((state, previousState) => {
-        if (previousState.isChatting && !state.isChatting) {
-          const core = useCoreStore.getState()
-          if (core.phase === "working" && core.tasks.length === 0)
-            void this.triggerAutonomousStrategy()
-        }
+      chat.onChatClosed(() => {
+        const { phase, tasks } = project.snapshot()
+        if (phase === "working" && tasks.length === 0) void this.triggerAutonomousStrategy()
       }),
     )
   }
 
   /**
-   * Starts every scheduled (or abandoned in-progress) task whose agent is free. The UI status is
+   * Starts every scheduled (or abandoned in-progress) task whose agent is free. The agent's state is
    * read per task because starting one marks its agent busy for the rest of the loop.
    */
   public processScheduledTasks() {
     if (this.disposed) return
-    const state = useCoreStore.getState()
-    if (state.phase !== "working") return
+    const { phase, tasks } = this.dependencies.project.snapshot()
+    if (phase !== "working") return
 
-    for (const task of state.tasks) {
+    for (const task of tasks) {
       if (task.status !== "scheduled" && task.status !== "in_progress") continue
       if (this.running.has(task.id)) continue
 
       const agent = this.getAgent(task.assignedAgentId)
-      const uiStatus = useUiStore.getState().agentStatuses[task.assignedAgentId]
-      if (agent && (agent.state === "idle" || uiStatus === "idle") && !agent.isThinking) {
+      if (agent && agent.state === "idle" && !agent.isThinking) {
         void this.startTaskExecution(agent, task.id)
       }
     }
@@ -104,31 +95,30 @@ export class AgentSimulation {
   private async triggerAutonomousStrategy() {
     if (this.disposed) return
     const lead = this.getAgent(this.currentSystem.leadAgent.index)
-    const ui = useUiStore.getState()
 
-    if (!lead || lead.isThinking || useCoreStore.getState().tasks.length > 0) return
-    if (ui.isChatting && ui.selectedNpcIndex === lead.data.index) return
+    if (!lead || lead.isThinking || this.dependencies.project.snapshot().tasks.length > 0) return
+    if (this.dependencies.chat.chatPartner() === lead.data.index) return
     if (Date.now() - this.lastSparkAt < SPARK_DEBOUNCE_MS) return
     this.lastSparkAt = Date.now()
 
     try {
       await lead.spark()
     } catch (error) {
-      console.error("[AgentSimulation] Planning turn failed:", error)
+      console.error("[TeamOrchestrator] Planning turn failed:", error)
     }
   }
 
   private async startTaskExecution(agent: AgentHost, taskId: string) {
     this.running.add(taskId)
     agent.setTask(taskId)
-    useCoreStore.getState().updateTaskStatus(taskId, "in_progress")
+    this.dependencies.project.startTask(taskId)
 
     try {
       await delay(TASK_START_DELAY_MS + Math.random() * TASK_START_JITTER_MS)
       if (this.disposed || agent.isThinking) return
       await agent.executeTask(taskId)
     } catch (error) {
-      console.error(`[AgentSimulation] Agent ${agent.data.index} failed task ${taskId}:`, error)
+      console.error(`[TeamOrchestrator] Agent ${agent.data.index} failed task ${taskId}:`, error)
     } finally {
       this.running.delete(taskId)
       if (!this.disposed) this.finishTaskExecution(agent)
@@ -148,7 +138,7 @@ export class AgentSimulation {
 
   private async checkProjectCompletion() {
     if (this.disposed) return
-    const { phase, tasks } = useCoreStore.getState()
+    const { phase, tasks } = this.dependencies.project.snapshot()
     if (phase !== "working" || tasks.length === 0 || !tasks.every((task) => task.status === "done"))
       return
 
@@ -158,7 +148,7 @@ export class AgentSimulation {
     try {
       await lead.concludeProject()
     } catch (error) {
-      console.error("[AgentSimulation] Delivery turn failed:", error)
+      console.error("[TeamOrchestrator] Delivery turn failed:", error)
     }
   }
 
@@ -168,10 +158,6 @@ export class AgentSimulation {
 
   public getAgent(index: number): AgentHost | undefined {
     return this.agents.get(index)
-  }
-
-  public getAllAgents(): AgentHost[] {
-    return Array.from(this.agents.values())
   }
 
   /** Applies edits to the current team's agents (model, prompt, human-in-the-loop) without restarting. */

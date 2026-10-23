@@ -1,5 +1,5 @@
 import type { ProjectPhase, Task, TaskStatus } from "@the-delegation/agents/project/types"
-import { type AgenticSystem, getAllAgents } from "@the-delegation/agents/team"
+import { type AgenticSystem, getAllAgents, hasSameRoster } from "@the-delegation/agents/team"
 
 /** What the scene renders while the editor is open (paused) or not. */
 export type SceneViewMode = "simulation" | "design"
@@ -72,12 +72,6 @@ export function agentWorkFor(project: ProjectSceneState): AgentWork {
 }
 
 /** Agent indices in roster order, to tell a roster change from an edit of the same agents. */
-function rosterKey(team: AgenticSystem): string {
-  return getAllAgents(team)
-    .map((agent) => agent.index)
-    .join(",")
-}
-
 /**
  * Where one agent should go after its tasks changed: on hold to the boardroom, in progress to a
  * desk, just done back to spawn. Null when none of its tasks changed status or nothing applies.
@@ -176,8 +170,7 @@ export function chatIntents(previous: ChatSceneState, next: ChatSceneState): Sce
 /** Intents for a team change: a rebuild when the team or its roster differs, else an update. */
 export function teamIntents(previous: AgenticSystem, next: AgenticSystem): SceneIntent[] {
   if (previous === next) return []
-  const isNewRoster = next.id !== previous.id || rosterKey(next) !== rosterKey(previous)
-  return [{ type: isNewRoster ? "replaceTeam" : "updateTeam", team: next }]
+  return [{ type: hasSameRoster(previous, next) ? "updateTeam" : "replaceTeam", team: next }]
 }
 
 /** The state a freshly connected scene needs before any change arrives. */
