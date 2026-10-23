@@ -1,5 +1,5 @@
 /**
- * Builds the GLBs the scene loads (public/models) from the exported sources (assets-src/models).
+ * Builds the GLBs the scene loads (assets/models) from the exported sources (assets-src/models).
  * Run with `bun run assets` after adding or re-exporting a model. Every run starts from the sources, so
  * it is repeatable and idempotent: the same sources always produce the same bytes.
  *
@@ -19,9 +19,9 @@ import { dedup, prune, quantize, reorder, resample, weld } from "@gltf-transform
 import draco3d from "draco3dgltf"
 import { MeshoptDecoder, MeshoptEncoder } from "meshoptimizer"
 
-const WEB_ROOT = path.resolve(import.meta.dirname, "..")
-const SOURCE_DIR = path.join(WEB_ROOT, "assets-src", "models")
-const OUTPUT_DIR = path.join(WEB_ROOT, "public", "models")
+const PACKAGE_ROOT = path.resolve(import.meta.dirname, "..")
+const SOURCE_DIR = path.join(PACKAGE_ROOT, "assets-src", "models")
+const OUTPUT_DIR = path.join(PACKAGE_ROOT, "assets", "models")
 const DRACO_EXTENSION = "KHR_draco_mesh_compression"
 
 const QUANTIZED_ATTRIBUTES = /^(NORMAL|JOINTS_\d+|WEIGHTS_\d+)$/

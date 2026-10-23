@@ -11,7 +11,7 @@ import {
 } from "../../src/characters/character-models"
 import { AnimationName } from "../../src/scene-types"
 
-const PUBLIC_DIR = path.resolve(import.meta.dir, "../../../../apps/web/public")
+const ASSETS_DIR = path.resolve(import.meta.dir, "../../assets")
 
 interface GltfJson {
   meshes?: { name?: string; primitives: { material?: number }[] }[]
@@ -22,7 +22,7 @@ interface GltfJson {
 
 /** Reads the JSON chunk of a binary glTF: 12-byte header, then a chunk length, type and payload. */
 function readGlbJson(url: string): GltfJson {
-  const file = readFileSync(path.join(PUBLIC_DIR, url.replace(/^\/+/, "")))
+  const file = readFileSync(path.join(ASSETS_DIR, url.replace(/^\/+/, "")))
   const jsonLength = file.readUInt32LE(12)
   return JSON.parse(file.subarray(20, 20 + jsonLength).toString("utf8"))
 }

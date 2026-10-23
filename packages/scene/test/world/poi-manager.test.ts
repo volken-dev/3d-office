@@ -9,7 +9,7 @@ import { BOARDROOM_POI_ID, deskPoiId, spawnPoiId } from "../../src/world/poi-ids
 import { PoiManager } from "../../src/world/poi-manager"
 import { isNavMeshName } from "../../src/world/world-manager"
 
-const OFFICE_GLB = path.resolve(import.meta.dir, "../../../../apps/web/public/models/office.glb")
+const OFFICE_GLB = path.resolve(import.meta.dir, "../../assets/models/office.glb")
 
 /** There is no image decoder in bun, so textures load as blanks; the contract is in the nodes. */
 const blankTextures: GLTFLoaderPlugin = {
@@ -93,7 +93,7 @@ describe("PoiManager.loadFromGlb", () => {
 })
 
 /**
- * The contract between public/models/office.glb and the code: every POI the scene looks up and the
+ * The contract between assets/models/office.glb and the code: every POI the scene looks up and the
  * navmesh exist, and agents can reach each POI. Rename or drop one in the asset and this fails.
  */
 describe("office.glb contract", () => {
