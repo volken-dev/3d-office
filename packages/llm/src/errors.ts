@@ -38,6 +38,21 @@ export class ProviderError extends Error {
   public readonly status: number | undefined
 }
 
+/**
+ * Wraps whatever a provider SDK threw as a `ProviderError`, using that provider's classifier and
+ * the HTTP status when the SDK reports one. A `ProviderError` passes through unchanged.
+ */
+export function toProviderError(
+  provider: LlmProvider,
+  error: unknown,
+  classify: (error: unknown) => ProviderErrorKind,
+  status: number | undefined,
+): ProviderError {
+  if (error instanceof ProviderError) return error
+  const detail = error instanceof Error ? error.message : String(error)
+  return new ProviderError(classify(error), provider, detail, { cause: error, status })
+}
+
 /** Whether the router may retry this failure once on the backup provider. */
 export function shouldFailOver(error: unknown): boolean {
   return error instanceof ProviderError && FAILOVER_KINDS.has(error.kind)

@@ -1,9 +1,4 @@
-import {
-  AgentBrain,
-  type BrainHost,
-  type ThinkOptions,
-} from "@the-delegation/agents/agent/AgentBrain"
-import type { AgentMessage } from "@the-delegation/agents/llm/types"
+import { AgentBrain, type BrainHost } from "@the-delegation/agents/agent/AgentBrain"
 import { canChatWith } from "@the-delegation/agents/orchestration/policy"
 import type { AgentWorkStatus } from "@the-delegation/agents/project/types"
 import { type AgentNode, isLeadAgent } from "@the-delegation/agents/team"
@@ -36,8 +31,8 @@ export class AgentHost implements BrainHost {
     })
   }
 
-  public think(prompt: string, options: ThinkOptions = {}) {
-    return this.brain.think(prompt, options)
+  public chat(text: string) {
+    return this.brain.chat(text)
   }
 
   public spark() {
@@ -67,8 +62,8 @@ export class AgentHost implements BrainHost {
     if (!this.disposed) useUiStore.getState().setAgentStatus(this.data.index, state)
   }
 
-  public appendHistory(message: AgentMessage) {
-    this.brain.appendHistory(message)
+  public onTurnSettled() {
+    this.simulation.processScheduledTasks()
   }
 
   public get isThinking(): boolean {
