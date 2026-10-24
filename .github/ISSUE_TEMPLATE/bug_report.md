@@ -21,10 +21,9 @@ labels: ["Type: Bug"]
 
 ## Environment
 
-- **Package** (web / api / shared):
+- **Package** (web / api / scene / shared):
 - **Branch / commit**:
 - **Browser and GPU backend** (WebGPU / WebGL2), if relevant:
-- **Model** (if an agent misbehaved):
 
 ## Logs, screenshots, or links
 

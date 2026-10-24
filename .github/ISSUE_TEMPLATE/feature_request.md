@@ -8,7 +8,7 @@ assignees: ["isaac-dev0"]
 
 ## User story
 
-As a <user / agent>, I want <capability> so that <outcome>.
+As a <player / developer>, I want <capability> so that <outcome>.
 
 ## Layers
 

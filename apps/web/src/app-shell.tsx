@@ -1,68 +1,57 @@
-import { useEffect, useRef, useState } from "react"
-import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
-import { removeLegacyApiKey } from "./integration/llm/legacy-api-key"
-import { TeamRuntime } from "./integration/orchestration/team-runtime"
-import { SceneContext } from "./integration/scene-context"
-import { SceneStoreAdapter } from "./integration/scene-store-adapter"
-import { useCoreStore } from "./integration/store/core-store"
-import { useUiStore } from "./integration/store/ui-store"
-import { ActionLogPanel } from "./interface/action-log-panel"
-import { ReviewRequestToasts } from "./interface/components/review-request-toasts"
-import { DESKTOP_QUERY, useMediaQuery } from "./interface/components/use-media-query"
-import { DesignModeDialog } from "./interface/design-mode-dialog"
-import { FinalOutputModal } from "./interface/final-output-modal"
-import Header, { type HeaderPanelControls } from "./interface/header"
-import InspectorPanel from "./interface/inspector-panel"
-import { KanbanDock } from "./interface/kanban-dock"
-import { OutputReviewModal } from "./interface/output-review-modal"
-import SimulationView from "./interface/simulation-view"
+import type { SceneManager } from "@the-delegation/scene/scene-manager"
+import { lazy, Suspense, useEffect, useRef, useState } from "react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { createOfficeScene } from "./integration/office-scene"
 
-type DrawerPanel = "logs" | "inspector" | null
+/** Development only: the literal check lets the production build drop the overlay's chunk. */
+const PerformanceOverlay =
+  process.env.NODE_ENV === "development"
+    ? lazy(() => import("./interface/performance-overlay"))
+    : null
 
 /** A lost GPU device is recovered by rebuilding the scene, at most this often within the window. */
 const MAX_DEVICE_LOSS_RECOVERIES = 3
 const DEVICE_LOSS_WINDOW_MS = 60_000
 
+type SceneStatus = "loading" | "ready" | "error"
+
+/** Tracks the scene's ready promise so a missing WebGPU/WebGL2 or a failed model download is visible instead of a blank canvas. */
+function useSceneStatus(scene: SceneManager | null): SceneStatus {
+  const [settled, setSettled] = useState<{ scene: SceneManager; ok: boolean } | null>(null)
+  useEffect(() => {
+    if (!scene) return
+    let active = true
+    scene.ready.then(
+      () => {
+        if (active) setSettled({ scene, ok: true })
+      },
+      () => {
+        if (active) setSettled({ scene, ok: false })
+      },
+    )
+    return () => {
+      active = false
+    }
+  }, [scene])
+  if (!scene || settled?.scene !== scene) return "loading"
+  return settled.ok ? "ready" : "error"
+}
+
 /**
- * The app shell. Panel visibility is layout state only, so it lives here rather than in a store.
- * Below lg the side panels live in drawers so the canvas keeps the width. The scene stays mounted
- * in design mode (hidden and paused) so it does not reload on return. Radix dialogs mark the
- * Escape that closes them as handled, so only an unhandled Escape leaves focus mode. A lost GPU
- * device rebuilds the scene through the same effect that creates it, so StrictMode's double mount
- * covers recovery too; past the recovery budget the scene reports itself unavailable. The ref is
- * cleared before disposing, so a dispose that throws on a dead context cannot block the rebuild.
- * The agents run in a `TeamRuntime` created by an earlier effect, so rebuilding the scene never
- * interrupts them.
+ * The 3D office, full window. A lost GPU device rebuilds the scene through the same effect that
+ * creates it, so StrictMode's double mount covers recovery too; past the recovery budget the scene
+ * reports itself unavailable. The ref is cleared before disposing, so a dispose that throws on a
+ * dead context cannot block the rebuild.
  */
 export default function App() {
   const canvasRef = useRef<HTMLDivElement>(null)
-  const runtimeRef = useRef<TeamRuntime | null>(null)
-  const sceneRef = useRef<SceneStoreAdapter | null>(null)
-  const [scene, setScene] = useState<SceneStoreAdapter | null>(null)
+  const sceneRef = useRef<SceneManager | null>(null)
+  const [scene, setScene] = useState<SceneManager | null>(null)
   const [sceneGeneration, setSceneGeneration] = useState(0)
   const [isSceneLost, setSceneLost] = useState(false)
   const deviceLossTimesRef = useRef<number[]>([])
-  const viewMode = useCoreStore((state) => state.viewMode)
-  const [isLogOpen, setLogOpen] = useState(true)
-  const [isKanbanOpen, setKanbanOpen] = useState(true)
-  const [isFocusMode, setFocusMode] = useState(false)
-  const isDesktop = useMediaQuery(DESKTOP_QUERY)
-  const [drawer, setDrawer] = useState<DrawerPanel>(null)
-  const isDesign = viewMode === "design"
-
-  useEffect(() => {
-    removeLegacyApiKey()
-    void useUiStore.getState().checkGateway()
-  }, [])
-
-  useEffect(() => {
-    const runtime = new TeamRuntime()
-    runtimeRef.current = runtime
-    return () => {
-      runtimeRef.current = null
-      runtime.dispose()
-    }
-  }, [])
+  const loadStatus = useSceneStatus(scene)
+  const sceneStatus: SceneStatus = isSceneLost ? "error" : loadStatus
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new sceneGeneration rebuilds the scene after a lost GPU device
   useEffect(() => {
@@ -76,112 +65,48 @@ export default function App() {
       if (recentLosses.length > MAX_DEVICE_LOSS_RECOVERIES) setSceneLost(true)
       else setSceneGeneration((generation) => generation + 1)
     }
-    const runtime = runtimeRef.current
-    if (canvasRef.current && runtime && !sceneRef.current) {
-      const connectedScene = new SceneStoreAdapter(canvasRef.current, runtime, onDeviceLost)
-      sceneRef.current = connectedScene
-      setScene(connectedScene)
+    if (canvasRef.current && !sceneRef.current) {
+      const createdScene = createOfficeScene(canvasRef.current, onDeviceLost)
+      sceneRef.current = createdScene
+      setScene(createdScene)
     }
     return () => {
-      const connectedScene = sceneRef.current
-      if (!connectedScene) return
+      const createdScene = sceneRef.current
+      if (!createdScene) return
       sceneRef.current = null
       setScene(null)
-      connectedScene.dispose()
+      createdScene.dispose()
     }
   }, [sceneGeneration])
 
-  useEffect(() => {
-    if (!isFocusMode) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      const isUnhandledEscape = event.key === "Escape" && !event.defaultPrevented
-      if (isUnhandledEscape) setFocusMode(false)
-    }
-    window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
-  }, [isFocusMode])
-
-  useEffect(() => {
-    if (isDesktop) return
-    return useUiStore.subscribe((state, previousState) => {
-      if (
-        state.selectedNpcIndex !== null &&
-        state.selectedNpcIndex !== previousState.selectedNpcIndex
-      )
-        setDrawer("inspector")
-    })
-  }, [isDesktop])
-
-  const panels: HeaderPanelControls = isDesktop
-    ? {
-        logsOpen: isLogOpen,
-        onToggleLogs: () => setLogOpen(!isLogOpen),
-        tasksOpen: isKanbanOpen,
-        onToggleTasks: () => setKanbanOpen(!isKanbanOpen),
-      }
-    : {
-        logsOpen: drawer === "logs",
-        onToggleLogs: () => setDrawer(drawer === "logs" ? null : "logs"),
-        tasksOpen: isKanbanOpen,
-        onToggleTasks: () => setKanbanOpen(!isKanbanOpen),
-        onOpenInspector: () => setDrawer("inspector"),
-      }
-
-  const showChrome = !isFocusMode && !isDesign
-
   return (
-    <SceneContext.Provider value={scene}>
-      <div className="flex h-dvh w-screen flex-col overflow-hidden bg-background">
-        {!isFocusMode && <Header panels={panels} />}
-
-        <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
-          {showChrome && isDesktop && isLogOpen && <ActionLogPanel />}
-
-          <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-zinc-50">
-            <div
-              className="flex min-h-0 min-w-0 flex-1 flex-col"
-              style={{ visibility: isDesign ? "hidden" : "visible" }}
-            >
-              <SimulationView
-                canvasRef={canvasRef}
-                isSceneLost={isSceneLost}
-                isFocusMode={isFocusMode}
-                onFocusModeChange={setFocusMode}
-              />
-              {isKanbanOpen && !isFocusMode && <KanbanDock />}
-            </div>
-          </main>
-
-          {showChrome && isDesktop && <InspectorPanel />}
+    <main ref={canvasRef} className="relative h-dvh w-screen overflow-hidden bg-background">
+      {PerformanceOverlay && (
+        <Suspense fallback={null}>
+          <PerformanceOverlay />
+        </Suspense>
+      )}
+      {sceneStatus === "loading" && (
+        <div
+          role="status"
+          className="pointer-events-none absolute inset-0 flex items-center justify-center"
+        >
+          <span className="animate-pulse text-xs font-bold text-muted-foreground">
+            Loading office…
+          </span>
         </div>
-
-        {!isDesktop && (
-          <Sheet
-            open={showChrome && drawer !== null}
-            onOpenChange={(open) => !open && setDrawer(null)}
-          >
-            <SheetContent
-              side={drawer === "logs" ? "left" : "right"}
-              className="w-80 gap-0 p-0 pt-12 sm:max-w-80"
-              aria-describedby={undefined}
-            >
-              <SheetTitle className="sr-only">
-                {drawer === "logs" ? "Logs" : "Project and agent details"}
-              </SheetTitle>
-              {drawer === "logs" ? (
-                <ActionLogPanel className="w-full border-r-0" />
-              ) : (
-                <InspectorPanel className="w-full border-l-0" />
-              )}
-            </SheetContent>
-          </Sheet>
-        )}
-
-        <DesignModeDialog open={isDesign} />
-        <FinalOutputModal />
-        <OutputReviewModal />
-        <ReviewRequestToasts />
-      </div>
-    </SceneContext.Provider>
+      )}
+      {sceneStatus === "error" && (
+        <div className="absolute inset-0 flex items-center justify-center p-6">
+          <Alert variant="destructive" className="max-w-md rounded-xl">
+            <AlertTitle>The 3D office could not load</AlertTitle>
+            <AlertDescription>
+              It needs WebGPU or WebGL2 (a recent Chrome, Edge, Safari or Firefox), a working
+              graphics driver and a connection to download the models. Reload to try again.
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
+    </main>
   )
 }

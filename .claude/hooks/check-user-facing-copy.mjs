@@ -4,9 +4,9 @@ import fs from "node:fs"
  * PostToolUse hook: after an Edit/Write to a UI source file, flag em/en-dashes,
  * bullet glyphs, emoji, exclamation marks and internal audit ids (REL-07,
  * ARCH-03) that appear INSIDE string literals: the mechanical half of the
- * user-facing copy rules in .claude/RULES.md section 9. Scoped to
- * apps/web/src/interface and apps/web/src/components, where string literals
- * are predominantly user-facing; prompt text in src/core and src/data is not
+ * user-facing copy rules in .claude/RULES.md section 8. Scoped to
+ * apps/web/src/interface, components, app and app-shell.tsx, where string literals
+ * are predominantly user-facing; data in src/data and src/integration is not
  * UI copy. Import lines are skipped, as are masked-value placeholders and
  * Tailwind important modifiers (`h-auto!`) on className/cn/cva lines. JSX
  * text is not a string literal, so /ui-review still owns that half. Exits 2 with a note so the edit lands and
@@ -35,7 +35,8 @@ if (!filePath) process.exit(0)
 const normalisedPath = String(filePath).replace(/\\/g, "/")
 if (/\.test\.tsx?$/.test(normalisedPath)) process.exit(0)
 
-const isUserFacing = /\/apps\/web\/src\/(interface|components)\/.*\.(tsx|ts)$/.test(normalisedPath)
+const isUserFacing =
+  /\/apps\/web\/src\/((interface|components|app)\/.*\.(tsx|ts)|app-shell\.tsx)$/.test(normalisedPath)
 if (!isUserFacing) process.exit(0)
 
 let content

@@ -5,8 +5,7 @@ import "./globals.css"
 /** Public origin of the deployed site; when unset, social previews use relative URLs. */
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL
 const TITLE = "The Delegation"
-const DESCRIPTION =
-  "A no-code 3D playground to explore, design, and interact with Agentic AI systems"
+const DESCRIPTION = "A 3D office in the browser"
 const OG_IMAGE = {
   url: "/og.jpg",
   type: "image/jpeg",
@@ -44,8 +43,8 @@ export const viewport: Viewport = {
 }
 
 /**
- * Server component: must not import from src/core, src/integration, src/interface or src/simulation
- * (they touch window/localStorage/WebGPU). Everything interactive lives behind ClientApp's ssr:false boundary.
+ * Server component: must not import from src/integration, src/interface or the scene package
+ * (they touch window and WebGPU). Everything interactive lives behind ClientApp's ssr:false boundary.
  */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

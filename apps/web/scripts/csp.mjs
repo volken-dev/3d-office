@@ -15,7 +15,7 @@ const OUT_DIR = path.resolve(process.argv[2] ?? "out")
 /**
  * Why the non-'self' sources are needed:
  * - script-src 'wasm-unsafe-eval': the Meshopt mesh decoder compiles WebAssembly (on the main thread, no workers).
- * - style-src 'unsafe-inline': inline style attributes (React, React Flow) and injected <style> tags (sonner).
+ * - style-src 'unsafe-inline': inline style attributes and the <style> tags Next and React inject.
  * - img-src blob:: GLTFLoader decodes embedded textures through blob: URLs, fetched with fetch() by ImageBitmapLoader.
  */
 const basePolicy = {
@@ -23,7 +23,7 @@ const basePolicy = {
   "script-src": ["'self'", "'wasm-unsafe-eval'"],
   "style-src": ["'self'", "'unsafe-inline'"],
   "img-src": ["'self'", "data:", "blob:"],
-  "connect-src": ["'self'", "data:", "blob:", "https://generativelanguage.googleapis.com"],
+  "connect-src": ["'self'", "data:", "blob:"],
   "worker-src": ["'self'"],
   "font-src": ["'self'"],
   "object-src": ["'none'"],

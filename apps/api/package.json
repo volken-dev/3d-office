@@ -20,11 +20,8 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@hono/zod-validator": "^0.9.1",
-    "@the-delegation/llm": "workspace:*",
     "@the-delegation/shared": "workspace:*",
-    "hono": "^4.13.13",
-    "zod": "^4.6.7"
+    "hono": "^4.13.13"
   },
   "devDependencies": {
     "@types/bun": "^1.3.11",
