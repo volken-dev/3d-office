@@ -7,8 +7,10 @@
 >
 > **The product this becomes** is described in `.claude/PROJECT.md` (the Agentic Command Center
 > product doc). This repo is its "Agent office" slice, a post-MVP vertical there; read that
-> section before shaping the scene's direction, and note where the repo already differs on purpose
-> (the framework-free scene below, not React Three Fiber).
+> section before shaping the scene's direction. Where the doc and the current implementation
+> differ (camera, walking robots, status colour on the body, a fixed cast of five), **the current
+> implementation wins**. React Three Fiber and Drei are allowed where they are the better tool;
+> the scene is not kept framework-free for its own sake (see the `packages/scene` decision below).
 >
 > Imported from Volken's `.claude/` on 2026-10-22 and adapted; what was left behind is in
 > `.claude/notes/volken-import.md`. These docs are meant to be curated over time: when a rule
@@ -82,7 +84,10 @@ packages/
 - **`packages/scene` stays framework-free.** It imports only itself, its `assets/`, three, zod
   and `@the-delegation/office-sim` (`test/scene-boundary.test.ts` enforces it). It reads no store
   and knows no React: the host hands it a `SceneCast` and `SceneEvents` and applies `SceneIntent`s.
-  Host wiring lives in `apps/web/src/integration/`.
+  Host wiring lives in `apps/web/src/integration/`. This is the current shape, not a hard rule:
+  moving the scene to React Three Fiber and Drei is allowed when they are the better tool, as a
+  deliberate change of its own (with its issue, updating the boundary test), never as a side
+  effect, and keeping the scene's look.
 - **`packages/office-sim` is framework-free too**: zod only, no three.js, no DOM. It decides where
   robots go and which clips they play, and talks to rendering through its `Actor` port
   (`setPose`, `play`, `duration`), so it can run in a worker or behind Hono later. Movement
