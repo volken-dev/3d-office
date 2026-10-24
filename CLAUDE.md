@@ -1,27 +1,30 @@
-# CLAUDE.md — The Delegation (3d-office)
+# CLAUDE.md — 3d-office
 
 > Read this first, every session. For the full rule list read `.claude/RULES.md` (this file
 > internalises the non-negotiables, it does not replace them). **Open work lives in GitHub issues**
-> (`gh issue list`); `AUDIT.md` is the record of the baseline audit and what this refactor fixed —
+> (`gh issue list`); `AUDIT.md` is the record of the baseline audit and what the refactors fixed —
 > read both before proposing work, because the plan is the thing that drifts.
 >
-> Imported from Volken's `.claude/` on 2026-10-22 and adapted. What was left behind, and the
-> decisions still to make, are in `.claude/notes/volken-import.md`. These docs are meant to be
-> curated over time: when a rule turns out wrong or missing, say so and propose the edit.
+> Imported from Volken's `.claude/` on 2026-10-22 and adapted; what was left behind is in
+> `.claude/notes/volken-import.md`. These docs are meant to be curated over time: when a rule
+> turns out wrong or missing, say so and propose the edit.
 
 ## What this product is
 
-The Delegation is a 3D office in the browser (Three.js WebGPU + TSL) where LLM agents collaborate
-on software-development work: the user sets a brief, a lead agent proposes tasks, team agents pick
-them up, and the lead delivers a final output for the user to review. Agents run on Claude
-(`claude-opus-5-5` for leads, `claude-sonnet-5-5` for team agents by default), with OpenAI as an
-automatic backup during Anthropic outages. Every model call goes through the Hono gateway in
-`apps/api`, which holds the provider keys; the browser holds none. The web app is a static export
-served from the root of whatever host serves it; there is no deploy pipeline.
+A 3D office in the browser (Three.js WebGPU + TSL, with a WebGL2 fallback). You are a character
+in it: click the floor to walk, click a seat to sit. A fixed cast of NPCs wanders, sits and idles
+on its own; clicking one makes the camera follow it, and clicking empty space follows you again.
+The web app is a static export served from the root of whatever host serves it; there is no
+deploy pipeline. A minimal Hono API sits beside it, with a health route only.
 
-**Current goal: stability and sound architecture before any new feature.** Close the reliability,
-security and architecture issues (and `AUDIT.md`'s open items) before building anything new. If a
-task drifts into new features, stop and confirm first.
+Until 2026-10-24 this repo was "The Delegation", where LLM agents collaborated on software work in
+the office. That product (agents, LLM gateway and providers, panels, team editor) was removed in
+#81; git history has it. **The scene's agent-facing intents (work at a desk, gather in the
+boardroom, chat turns, team replacement, design-mode pause) are kept on purpose for reuse** —
+nothing drives them today, and that is not dead code to delete.
+
+**Current goal: a stable, sound 3D office before any new feature.** If a task drifts into new
+features, stop and confirm first.
 
 ---
 
@@ -34,70 +37,39 @@ apps/
 ├── web/        Next.js 16 App Router, output: 'export'
 │   ├── src/
 │   │   ├── app/          layout, page, client-app (the ssr:false boundary)
-│   │   ├── integration/  adapters from packages/agents to React/Zustand and the gateway: store/
-│   │   │                 (coreStore, uiStore, teamStore), orchestration/ (zustandDeps,
-│   │   │                 TeamRuntime, which runs the agents apart from the scene), llm/
-│   │   │                 (gatewayClient, gatewayStatus, legacyApiKey), hooks/, and the scene
-│   │   │                 adapters: sceneCast (look rules), sceneIntents, sceneStoreAdapter,
-│   │   │                 sceneContext, screenPositions, frameStats
-│   │   ├── interface/    React panels and modals
-│   │   ├── components/   ui/ (shadcn primitives) + shared components (Markdown, ExternalLink)
-│   │   ├── data/         team templates and the user-including character roster (agents.ts)
-│   │   ├── lib/          asset, storage, clipboard, format, usage, api-client, utils (cn only)
+│   │   ├── app-shell.tsx the full-window canvas: scene lifecycle, load and error states,
+│   │   │                 GPU device-loss recovery
+│   │   ├── data/         office-cast (who is in the office and how they look)
+│   │   ├── integration/  office-scene (builds the SceneManager, click-to-follow), frame-stats
+│   │   ├── interface/    performance-overlay (development only, backquote key)
+│   │   ├── components/   ui/ (shadcn primitives; only alert today)
+│   │   ├── lib/          utils (cn only)
 │   │   └── theme/        brand.ts
 │   └── scripts/  copy-scene-assets (models into public/models before dev and build), csp
-├── api/        Hono app, runtime-agnostic: the LLM gateway
-│   └── src/    app.ts (createApp), env.ts, errors.ts, routes/ (health, llm), middleware/,
-│               llm/routerForEnv
+├── api/        Hono app, runtime-agnostic: app.ts (createApp), env.ts, errors.ts, routes/health
 packages/
-├── agents/     @the-delegation/agents: framework-free orchestration. agent/ (AgentBrain,
-│               modelTurn, boardReaction, PromptBuilder, ToolRegistry, history, tools/ with
-│               toolArgs), orchestration/ (ports, policy, autonomy, TeamOrchestrator,
-│               AgentHost), project/types, llm/
-│               (AgentMessage, LLMClient, LLMError), team.ts
-├── llm/        @the-delegation/llm: registry (models, prices, backups), adapter, errors,
-│               providers/ (anthropic, openai), router (fallback + circuit breaker)
 ├── scene/      @the-delegation/scene: the 3D scene, framework-free. SceneManager (driven by
 │               scene intents and a SceneCast), Engine, characters, behaviour, drivers, input,
 │               pathfinding, world/POIs. assets/models (the GLBs the app serves), assets-src
 │               (exported sources), scripts/ (`bun run assets`)
-└── shared/     @the-delegation/shared: zod contracts (api.ts, llm-messages.ts)
+└── shared/     @the-delegation/shared: zod contracts (api.ts: health response, error envelope)
 ```
 
 ### Decisions made on purpose — do not "fix" these
 
-- **Static export, client-only scene.** Everything touching `three/webgpu`, `window` or storage
-  sits behind the `next/dynamic(..., { ssr: false })` boundary in `app/client-app.tsx`. Storage
-  access goes through `lib/storage.ts`; assets resolve through `lib/asset.ts`.
-- **`packages/agents` stays framework-free.** Agent logic depends on ports
-  (`orchestration/ports.ts`), not on Zustand, React or the scene, so it can move behind the
-  gateway later. The Zustand adapter lives in `apps/web/src/integration/`. New domain code goes in
-  `packages/agents` behind a port; never import a store or React from it.
-- **Claude's tool-use contract holds everywhere.** History is append-only and sent whole; every
-  tool call is answered by a `tool_result` (failures with `isError`) in one user turn; assistant
-  turns are stored exactly as returned, opaque reasoning included; the system prompt and tool list
-  are byte-stable and volatile project state travels in a context turn. `MessagesRequestSchema`
-  rejects anything else, and the agents tests assert every request the loop builds passes it.
-- **Providers live in `packages/llm`.** The Anthropic adapter is first-class; OpenAI is only the
-  outage backup the router fails over to (429, overload, 5xx), never on refusals or bad requests.
-  Models, prices and backups come from the registry; there is no Gemini.
-- **One retry policy: the loop in `AgentBrain`, the decisions in `orchestration/autonomy.ts`.**
-  Exponential backoff, a cap on unproductive attempts, a per-project call and task budget, and an
-  immediate pause on quota errors or a gateway with no key. `autonomy.ts` is pure (it decides);
-  `AgentBrain` is the only thing that waits and retries. Do not add a second retry loop anywhere
-  else (one was removed for silently racing this one). Every request is counted against the budget
-  through `recordModelCall` on the port, never as a side effect of logging.
-- **LLM tool calls are untrusted input.** Every tool declares its arguments once, as a zod
-  `z.strictObject` passed to `defineTool` (`agent/tools/tool-args.ts`): the input schema sent to the
-  model is derived from it (cut down to the keywords strict tools accept), and the same schema
-  parses every call, length caps included. `ToolRegistry.runToolCall` also checks the tool was
-  offered to that agent in that phase. LLM output is untrusted when rendered too: Markdown goes
-  through `components/markdown.tsx` only (no raw HTML, no remote images).
-- **React strict mode stays on.** It is the regression test for leaked simulations (REL-02).
-- **Keys live only on the gateway.** `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` are server
-  bindings; the web app calls `POST /api/llm/messages` through the typed `hc` client and never
-  sees a key. The gateway is a local service: there is no sign-in and none is planned for now, so
-  it binds to `127.0.0.1` by default (`HOST` overrides it) and must not be exposed publicly.
+- **Static export, client-only scene.** Everything touching `three/webgpu` or `window` sits
+  behind the `next/dynamic(..., { ssr: false })` boundary in `app/client-app.tsx`.
+- **`packages/scene` stays framework-free.** It imports only itself, three, recast-navigation and
+  zod (`test/scene-boundary.test.ts` enforces it). It reads no store and knows no React: the host
+  hands it a `SceneCast` and `SceneEvents` and applies `SceneIntent`s. Host wiring lives in
+  `apps/web/src/integration/`.
+- **The scene's unused intents stay.** See above; they will be driven again later.
+- **Cast indices are POI slots.** A cast member's `index` picks its `spawn-<slot>` and
+  `desk-<slot>` in the office GLB, so `OFFICE_CAST` indices must match the slots the office has.
+- **React strict mode stays on.** It is the regression test for leaked scenes (REL-02): the dev
+  double-mount must leave exactly one canvas.
+- **The API is a local service.** No sign-in and none planned; it binds to `127.0.0.1` by default
+  (`HOST` overrides it) and must not be exposed publicly. The web app does not call it today.
 - **The 3D scene's look does not change** as a side effect of refactors.
 
 ---
@@ -114,20 +86,15 @@ bun run format      # biome format --write per package
 bun run build       # static export to apps/web/out (+ CSP postbuild), api bundle
 ```
 
-Model calls need a Claude key on the gateway: copy `apps/api/.env.example` to `apps/api/.env` and
-set `ANTHROPIC_API_KEY` (and optionally `OPENAI_API_KEY` for the backup); point the web app at the
-gateway with `NEXT_PUBLIC_API_URL` in `apps/web/.env.local` (see its `.env.example`). The header's
-gateway indicator shows whether it is online, unreachable or missing its key.
-
-`bun run dev:lan` in `apps/web` opts in to binding on the network. The models live in
-`packages/scene/assets/models` and are copied into `apps/web/public/models` (gitignored) before
-every dev and build; after re-exporting a model, run `bun run assets` in `packages/scene` and
-restart dev. `.env*` files are gitignored
-except `.env.example`.
+`bun run dev:lan` in `apps/web` opts in to binding on the network. Press the backquote key in a
+dev build for render stats. The models live in `packages/scene/assets/models` and are copied into
+`apps/web/public/models` (gitignored) before every dev and build; after re-exporting a model, run
+`bun run assets` in `packages/scene` and restart dev. `.env*` files are gitignored except
+`.env.example`.
 
 CI (`.github/workflows/ci.yml`) runs on pull requests and pushes to `main`: installs with
 `--frozen-lockfile`, audits, typechecks, lints, tests, builds and greps the build output for API
-keys (Google, Anthropic and OpenAI prefixes). Nothing deploys.
+keys. Nothing deploys.
 
 ---
 
@@ -141,22 +108,19 @@ Internalised from `.claude/RULES.md` — read it for the full set.
   `TODO(#NN)` linking an open issue, and tool directives (`biome-ignore`, `@ts-expect-error`).
   If a line isn't obvious, refactor it — rename, extract, restructure — don't annotate it.
 - **Full, descriptive names.** No single-letter or abbreviated identifiers (trivial loop counters
-  and `(a, b)` comparators excepted). `agentIndex`, never `idx`; `task`, never `t`.
-- **kebab-case file and folder names** in every package (`agent-brain.ts`, `chat-panel.tsx`);
-  identifiers inside keep their casing. Biome's `useFilenamingConvention` enforces it.
+  and `(a, b)` comparators excepted). `agentIndex`, never `idx`.
+- **kebab-case file and folder names** in every package (`office-scene.ts`,
+  `performance-overlay.tsx`); identifiers inside keep their casing. Biome's
+  `useFilenamingConvention` enforces it.
 - **No `console.log`** for application events; `console.warn`/`console.error` only on real error
-  paths (Biome's `noConsole` enforces this). Never log provider keys or raw prompts; upstream
-  error text goes to server logs with the request id, never to the client.
-- **Validate at every boundary with zod** — persisted storage on rehydrate, LLM tool arguments,
-  API route input, env.
+  paths (Biome's `noConsole` enforces this).
+- **Validate at every boundary with zod** — API route input, env, model extras from the GLB.
 - **No barrels and no junk-drawer files.** No new `index.ts` re-export files; no `utils.ts` /
   `helpers.ts` / `misc.ts` (the shadcn `lib/utils.ts` exporting `cn()` is the one exception).
   One responsibility per file; name it for what it does.
-- **UI:** compose shadcn `components/ui/*` primitives — never hand-roll interactive HTML
-  (`<button>`, `<input>`, `<select>`). Visual variation is a `cva` `variant`/`size` on the
-  primitive, not an appearance `className` at the call site. Theme tokens from `globals.css`
-  only — no raw hex, no hard-coded `zinc-*`. Destructive actions confirm through `ConfirmDialog`;
-  async results are toasts (sonner).
+- **UI:** compose shadcn `components/ui/*` primitives — never hand-roll interactive HTML. Visual
+  variation is a `cva` `variant`/`size` on the primitive, not an appearance `className` at the
+  call site. Theme tokens from `globals.css` only — no raw hex, no hard-coded `zinc-*`.
 - **User-facing copy:** no em/en-dashes or bullet glyphs in strings, no emoji, no exclamation
   marks. The copy hook (`.claude/hooks/check-user-facing-copy.mjs`) catches string literals.
 - **Biome** (not ESLint/Prettier) lints and formats: double quotes, no semicolons, trailing
@@ -172,15 +136,14 @@ Internalised from `.claude/RULES.md` — read it for the full set.
 Carried over from Volken; these are how Isaac wants work done.
 
 - **Check what exists before suggesting.** Before proposing a feature, change or approach, read the
-  relevant code, open issues and `AUDIT.md` to confirm it isn't already built, already decided, or explicitly
-  open. Never propose from memory alone.
+  relevant code, open issues and `AUDIT.md` to confirm it isn't already built, already decided, or
+  explicitly open. Never propose from memory alone.
 - **Fix small breakages now.** Red CI or a small, well-understood blocker found mid-task gets fixed
   straight away. Protected files (`bun.lock`, `.env*`) still need Isaac's OK; anything larger
   comes to him.
 - **Fix what you find; leave nothing broken silently.** A bug found during unrelated work is fixed
   when safe and in reach, or filed as a `Type: Bug` / `Type: Tech Debt` issue when it is risky or
-  large. Never walk past a
-  known defect without saying so.
+  large. Never walk past a known defect without saying so.
 - **No closing keywords by accident.** GitHub matches `fix`, `close`, `resolve` before `#N`
   loosely. Refer to issues you aren't closing with "Refs #N", and after a merge that names issues,
   check none closed unexpectedly.
@@ -199,23 +162,24 @@ Carried over from Volken; these are how Isaac wants work done.
 ## Things Claude must never do
 
 - **Don't build new features** while the stability goal stands, without confirming first.
-- **Don't model speculatively.** No state, type, port or store field that shipping code doesn't
-  read. Remove dead state rather than keeping it "for later".
+- **Don't model speculatively.** No state, type or field that shipping code doesn't read. Remove
+  dead code rather than keeping it "for later" — the scene's agent-facing intents are the one
+  agreed exception.
 - **Don't modify without explicit instruction:** `.claude/` governance docs (this file, RULES.md),
-  `AUDIT.md`'s findings tables (flipping a Status is fine), theme tokens
-  in `globals.css` / `theme/brand.ts`, `.env*`, `bun.lock`.
+  `AUDIT.md`'s findings tables (flipping a Status is fine), theme tokens in `globals.css` /
+  `theme/brand.ts`, `.env*`, `bun.lock`.
 - **Don't add a dependency without asking**, with a one-line justification (`/audit-deps`).
-- **Don't run without confirmation:** adding a deploy pipeline,
-  `git push --force`, destructive git commands (`reset --hard`, `clean`, `checkout -- <file>`).
-- **Don't change the 3D scene's visuals** or the retry/budget policy as a side effect of other work.
+- **Don't run without confirmation:** adding a deploy pipeline, `git push --force`, destructive
+  git commands (`reset --hard`, `clean`, `checkout -- <file>`).
+- **Don't change the 3D scene's visuals** as a side effect of other work.
 
 ---
 
 ## Claude Code workflow shortcuts
 
 Slash commands live in `.claude/commands/`. Plan and build: `/plan-feature` `/implement-feature`
-`/new-hono-route` `/new-agent-tool`. Operate: `/health-check` `/ship` `/registration-parity`
-`/audit-deps` `/issue-from-todo` `/test-gaps` `/ui-review`.
+`/new-hono-route`. Operate: `/health-check` `/ship` `/registration-parity` `/audit-deps`
+`/issue-from-todo` `/test-gaps` `/ui-review`.
 
 ### Definition of done (before claiming a task complete)
 
@@ -225,21 +189,18 @@ A task is DONE only when all of these pass — use `/health-check` for the first
 3. `bun run test` — green
 4. `bun run build` — green (the static export and CSP postbuild)
 5. `git status` clean of unintended files; not committing on `main`
-6. **Verified by running it**: the change was exercised the way a person meets it (the app in a
-   browser via `bun run dev`, or the API over HTTP), and the PR's **Verified** section says what was
-   run and what was seen. Typecheck alone doesn't count. When something can't be exercised locally,
-   say which part and why.
+6. **Verified by running it**: the change was exercised the way a person meets it (the office in a
+   browser via `bun run dev`, or the API over HTTP), and the PR's **Verified** section says what
+   was run and what was seen. Typecheck alone doesn't count. When something can't be exercised
+   locally, say which part and why.
 
 Never report success with a red gate; if a gate fails, show the exact `file:line`, not a summary.
 
 ### When you add an artifact, register it
 
-- New agent tool → build it with `defineTool` and a `z.strictObject` args schema (the helpers in
-  `agent/tools/tool-args.ts` carry the length caps), then add `register(<tool>)` to `TOOLS` in
-  `packages/agents/src/agent/tool-registry.ts` (order is the order the model sees them)
 - New API route group → `.route('/<name>', <name>)` in `createApp` (`apps/api/src/app.ts`), with
   its request and response schemas in `@the-delegation/shared`
-- New model → an entry in `packages/llm/src/registry.ts` with prices checked against the
-  provider's pricing page, and a backup for Anthropic models
+- New character model → an entry in `packages/scene/src/characters/character-models.ts`, its GLB
+  in `assets-src/models`, then `bun run assets` in `packages/scene`
 
 Run `/registration-parity` if unsure.

@@ -116,7 +116,7 @@ describe("office.glb contract", () => {
     expect(navMeshCount).toBe(1)
   })
 
-  /** The agent indices the team templates use; apps/web checks the templates stay within them. */
+  /** The NPC indices the office cast uses; apps/web checks the cast stays within them. */
   const agentIndices = [1, 2, 3, 4, 5]
 
   const requiredPoiIds = [

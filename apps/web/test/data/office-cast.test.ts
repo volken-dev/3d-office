@@ -18,6 +18,13 @@ describe("OFFICE_CAST", () => {
     expect(new Set(indices).size).toBe(indices.length)
   })
 
+  test("NPCs use slots 1 to 5, the spawns and desks the office test checks for", () => {
+    for (const member of nonPlayerMembers(OFFICE_CAST)) {
+      expect(member.index).toBeGreaterThanOrEqual(1)
+      expect(member.index).toBeLessThanOrEqual(5)
+    }
+  })
+
   test("every character uses a registered model", () => {
     for (const member of OFFICE_CAST.members)
       expect(findCharacterModel(member.modelId)).toBeDefined()

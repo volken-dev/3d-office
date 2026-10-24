@@ -11,17 +11,18 @@ Closes #
 
 - [ ] Web (`apps/web`)
 - [ ] API (`apps/api`)
+- [ ] Scene (`packages/scene`)
 - [ ] Shared (`packages/shared`)
 - [ ] Repo / `.claude` only
 
 ## Checklist
 
-- [ ] `bun run typecheck`, `bun run lint`, `bun run build` all pass (`/health-check`)
+- [ ] `bun run typecheck`, `bun run lint`, `bun run test`, `bun run build` all pass (`/health-check`)
 - [ ] Exercised for real and written up under **Verified**
-- [ ] New artifact registered (tool in `tool-registry.ts` / route in `app.ts`)
+- [ ] New artifact registered (route in `app.ts`, character model in `character-models.ts`)
 - [ ] No `any`, no forcing casts, no explanatory `//` comments, full descriptive names
 - [ ] UI composes `components/ui/*` primitives and theme tokens; no dashes, emoji or exclamation marks in copy
-- [ ] LLM calls stay inside the `AgentBrain` retry/budget policy
+- [ ] The 3D scene looks the same, unless this PR says how and why it changed
 - [ ] `AUDIT.md` updated if this closes an AUDIT item
 
 ## Notes / screenshots

@@ -12,7 +12,7 @@
 | `BRANDING.md` | folded into RULES.md sections 8–9 | Only the brand-neutral parts: restraint, anti-slop list, voice, button and error copy, banned marketing words, "when in doubt". Volken's colours, fonts, Flint and terminology are not ours. |
 | `hooks/check-user-facing-copy.mjs` + `settings.json` | same paths | Scoped to `apps/web/src/interface` and `components`. Dropped provider-name and T-number checks; added emoji, exclamation marks and AUDIT ids. Skips Tailwind `!` modifiers and masked-value placeholders. |
 | `/health-check` `/ship` `/audit-deps` `/issue-from-todo` `/test-gaps` `/ui-review` `/registration-parity` `/plan-feature` `/implement-feature` `/new-hono-route` | same names | Gates are typecheck/lint/build (no tests yet); items are tracked in `AUDIT.md` and specs since GitHub issues are disabled; layers are this app's. |
-| (new, analogue of the `/new-*` scaffolds) | `/new-agent-tool` | Scaffold for the one artifact this app adds most: an LLM tool. |
+| (new, analogue of the `/new-*` scaffolds) | `/new-agent-tool` | Scaffold for an LLM tool. Removed with the agent product in #81. |
 
 ## Left behind, and why
 

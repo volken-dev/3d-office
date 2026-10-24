@@ -2,19 +2,13 @@
   <img src="apps/web/public/images/the-delegation.svg" width="256" alt="The Delegation Logo">
 </p>
 
-> [!IMPORTANT]
-> Agents run on **Claude**, through the model gateway in `apps/api`. To run them locally you need an **[Anthropic API key](https://platform.claude.com/settings/keys)** set on the gateway (see [Backend](#backend)); an OpenAI key is optional and only used as a backup during Anthropic outages.
-<div align="center">
-  <img src="apps/web/public/images/the-delegation-UI.jpg" width="100%" alt="The Delegation Hero">
-</div>
+## What is this?
 
-<br/>
+# A 3D office in the browser
 
-## What is The Delegation?
+A small office rendered with Three.js WebGPU (falling back to WebGL2). You are one of the characters: click the floor to walk, click a seat to sit, drag to orbit and scroll to zoom. A cast of NPCs wanders, sits and idles on its own; click one and the camera follows it, click empty space and it follows you again.
 
-# A no-code 3D playground to explore, design, and interact with Agentic AI systems
-
-This project is designed for **software teams and developers** looking to explore multi-agent collaboration on engineering work (specs, design docs, debugging, code review) in a living 3D office without writing a single line of code.
+This repo began as The Delegation, a 3D playground where LLM agents collaborated on software work in the office. That product was removed on 2026-10-24 (#81); git history has it.
 
 ## Getting Started
 
@@ -33,12 +27,10 @@ This is a [Turborepo](https://turborepo.com) monorepo using Bun workspaces:
 
 | Path | What it is |
 |---|---|
-| `apps/web` | Next.js app (static export) |
-| `apps/api` | Hono LLM gateway: holds the provider keys and serves every model call |
-| `packages/agents` | Framework-free agent orchestration: the agent loop, tools, prompts and policy |
-| `packages/llm` | Model registry, Anthropic and OpenAI adapters, and the fallback router |
+| `apps/web` | Next.js app (static export): the office in a full-window canvas |
+| `apps/api` | Minimal Hono API: a health route |
 | `packages/scene` | The 3D office: renderer, characters, navigation and points of interest, plus the models and their asset pipeline |
-| `packages/shared` | API contract types and schemas shared by web and api |
+| `packages/shared` | API contract schemas (health response, error envelope) |
 
 Common tasks run from the repo root through Turborepo: `bun dev`, `bun run build`, `bun run lint`, `bun run typecheck`, `bun run test`. Target one package with `bunx turbo run <task> --filter=web`.
 
@@ -62,87 +54,49 @@ The script ([`packages/scene/scripts/optimize-models.ts`](packages/scene/scripts
 
 A point of interest is an empty in the office with a `poi` custom property (exported as glTF node `extras`, which three reads into `userData`). `PoiManager` validates them at load against `OfficePoiExtrasSchema` in [`packages/scene/src/world/office-poi-extras.ts`](packages/scene/src/world/office-poi-extras.ts) and throws, naming the node, if one is malformed. The node's name is free.
 
-| `poi` | Other property | What agents do there | POI id |
+| `poi` | Other property | What characters do there | POI id |
 |---|---|---|---|
-| `spawn` | `slot`: the index of the agent that starts here and returns here when its work is done | stand (`idle`) | `spawn-<slot>` |
-| `desk` | `slot`: the index of the agent that works here | sit and work (`sit_work`) | `desk-<slot>` |
+| `spawn` | `slot`: the index of the character that starts here and returns here after work | stand (`idle`) | `spawn-<slot>` |
+| `desk` | `slot`: the index of the character that works here | sit and work (`sit_work`) | `desk-<slot>` |
 | `seat` | `slot`: any number unique among seats | sit (`sit_idle`); the player can pick it | `seat-<slot>` |
-| `area` | `area`: a lowercase name (`a-z`, `0-9`, `_`); `boardroom` is where agents with an on-hold task meet | gather facing the centre (`idle`) | `area-<area>` |
+| `area` | `area`: a lowercase name (`a-z`, `0-9`, `_`); `boardroom` is the meeting area | gather facing the centre (`idle`) | `area-<area>` |
 
-Slots are integers. The scene builds every POI id through [`packages/scene/src/world/poi-ids.ts`](packages/scene/src/world/poi-ids.ts), so lookups cannot drift from the parser. `packages/scene/test/world/poi-manager.test.ts` loads `assets/models/office.glb` and fails if the navmesh, the boardroom, or a spawn or desk for agents 1 to 5 is missing or off the navmesh (`apps/web/test/data/agents.test.ts` keeps the built-in teams within those indices); `character-models.test.ts` does the same for every `AnimationName` clip in each character GLB.
+Slots are integers. The scene builds every POI id through [`packages/scene/src/world/poi-ids.ts`](packages/scene/src/world/poi-ids.ts), so lookups cannot drift from the parser. `packages/scene/test/world/poi-manager.test.ts` loads `assets/models/office.glb` and fails if the navmesh, the boardroom, or a spawn or desk for characters 1 to 5 is missing or off the navmesh (`apps/web/test/data/office-cast.test.ts` keeps the office cast within those indices); `character-models.test.ts` does the same for every `AnimationName` clip in each character GLB.
 
 The current office was exported with the POIs encoded in their names only, so `bun scripts/add-poi-extras.ts` (in `packages/scene`) stamped the properties onto the source from those names. It edits only the GLB's JSON, leaves nodes that already have a `poi` property alone, and is safe to rerun after a re-export from a Blender file without the custom properties; once the Blender file has them, it is not needed.
 
 ## Backend
 
-`apps/api` is the [Hono](https://hono.dev) LLM gateway. The web app sends every model call here; the gateway holds the provider keys, so the browser never sees one. Agents run on Claude, and the gateway fails over to OpenAI when Anthropic is rate limited, overloaded or down.
+`apps/api` is a minimal [Hono](https://hono.dev) app. The web app does not call it today.
 
 ```bash
-cp apps/api/.env.example apps/api/.env      # set ANTHROPIC_API_KEY (OPENAI_API_KEY optional) and ALLOWED_ORIGINS
-cp apps/web/.env.example apps/web/.env.local  # set NEXT_PUBLIC_API_URL=http://localhost:8787
-bun dev                                     # web on :3000, gateway on :8787
+cd apps/api && bun run dev      # or `bun dev` at the root for web and api together; api on :8787
+curl http://127.0.0.1:8787/api/health
 ```
 
 | Route | What it does |
 |---|---|
-| `GET /api/health` | Liveness check; reports whether a Claude key and an OpenAI backup key are configured (never the keys) |
-| `POST /api/llm/messages` | Validates the provider-neutral request against `@the-delegation/shared`, serves it through the router (Claude first, OpenAI on outages) and returns the normalised reply, with which provider served it |
+| `GET /api/health` | Liveness check: `{ "status": "ok", "time": "<ISO time>" }` |
 
 - `src/app.ts` is runtime-agnostic (Bun, Workers or Node) and exports `createApp` and `AppType`; `src/index.ts` is the Bun entry.
-- Provider adapters, the model registry (models, prices, backups) and the fallback router live in `packages/llm`; the wire contract lives in `packages/shared`.
-- The web app reaches the gateway through the typed client in `apps/web/src/lib/api-client.ts` (`hc<AppType>`). It imports only types from `apps/api`, so no server code reaches the bundle.
-- CORS allows only the origins in `ALLOWED_ORIGINS`. The per-IP rate limiter is in-memory and meant for development only, and there is no sign-in yet: do not expose the gateway publicly until sign-in and per-user spend caps land.
+- Responses are typed with the schemas in `packages/shared`; every error uses one envelope with a request id.
+- It binds to `127.0.0.1` by default (`HOST` and `PORT` override it). There is no sign-in: do not expose it publicly.
 
 ## Features
 
-### Agentic AI System (v0.2.0)
+- **WebGPU rendering with TSL**, falling back to WebGL2, with adaptive resolution and recovery when the GPU device is lost.
+- **Pathfinding:** characters walk a NavMesh through a Detour crowd ([recast-navigation-js](https://github.com/isaac-mason/recast-navigation-js)), so they steer around each other.
+- **Points of interest:** desks, seats, spawns and shared areas read from the office model, claimed by the characters that use them.
+- **Character state machine:** walking, sitting, working, talking and idling, with facial expressions and an instanced animation system.
+- **Render stats** in development builds (backquote key): frame, CPU and GPU time, draw calls, triangles and pixel ratio.
 
-- **Team Editor (React Flow):** Create your own [multi-agent design patterns](https://developers.googleblog.com/developers-guide-to-multi-agent-patterns-in-adk/) using an interactive node-based interface.
-- **5 Software-Development Teams:** Templates to get you started: Feature Squad, Architecture Council, Bug Hunters, Code Review Board and a solo Staff Engineer.
-- **Markdown Deliverables:** Each team delivers a Markdown document (spec, design doc, incident write-up, review) that you can review, edit and copy.
-- **Per-Agent LLM:** Each agent picks its model. Leads default to Claude Opus 5.5 and team agents to Claude Sonnet 5.5; GPT-6 models are available too, and Claude agents fail over to OpenAI during outages.
-- **Cost & Token Tracking:** Real-time estimation of usage costs and token consumption for transparency.
-- **PR-style Workflows:** Learn about Pull Request and Review workflows where agents with `human-in-the-loop` properties require your approval to proceed.
-- **Guardrails:** Controlled generation with the `Auto-approve output` option, ensuring quality before final asset production.
-- **Technical Logs:** Improved visibility into raw LLM traces, tool calls, and structured agent responses.
+## Tech Stack
 
-### Embodied Simulation
-
-- **Hybrid GPU/CPU Architecture:** A high-performance **3D simulation** built with **Three.js WebGPU** where autonomous LLM-powered characters collaborate in a shared physical workspace.
-- **Intelligent Pathfinding:** NPCs utilize a NavMesh to navigate the office, finding and claiming specific "Points of Interest" (desks, seats, computers) based on their current task. Navigation is powered by [recast-navigation-js](https://github.com/isaac-mason/recast-navigation-js): characters walk through a Detour crowd, so they steer around each other.
-- **Dynamic State Machine:** Characters transition naturally between walking, sitting, working, and talking, with sync'ed 3D speech bubbles and expressions.
-
-### Interactive UI
-
-- **Team Flow Visualizer:** Real-time node-based view of your agent hierarchy and task flows.
-- **Simulated PR Reviews:** Interactive modals for reviewing agent proposals, providing feedback, and merging tasks.
-- **Real-time 3D Overlay:** Status indicators and interaction menus projected from 3D space into a polished UI.
-- **Agent Inspector:** Select any agent to view their "thoughts", mission, and history.
-- **Kanban & Action Logs:** Complete transparency into the agency's progress and tool-level interactions.
-
-## Tech Stack Deep Dive
-
-- **Engine:** [Three.js](https://threejs.org/) (WebGPU & TSL) for advanced rendering and compute.
+- **Engine:** [Three.js](https://threejs.org/) (WebGPU & TSL).
 - **App:** [Next.js](https://nextjs.org/) (static export), [shadcn/ui](https://ui.shadcn.com/) and [Tailwind CSS](https://tailwindcss.com/).
-- **UI:** [React](https://react.dev/) & [React Flow](https://reactflow.dev/) for node-based team visualization.
-- **AI:** [Claude](https://platform.claude.com/docs) is the primary LLM provider, with the [OpenAI API](https://developers.openai.com/api/docs) as an outage backup, both behind a [Hono](https://hono.dev) gateway.
-- **State:** [Zustand](https://github.com/pmndrs/zustand) for a unified, reactive store across the 3D world and React UI.
-- **Tooling:** [Bun](https://bun.com) workspaces and [Turborepo](https://turborepo.com).
-- **3D Assets:** Custom models and animations rigged in [Blender](https://blender.org), using an instanced animation system.
-
-## Roadmap
-
-- **World Building**
-    - [ ] **Office/3D Space Editor:** Drag-and-drop workspace layout and POI customization.
-    - [ ] **Dynamic Environment:** Real-time prop generation and environment modification by agents.
-- **Advanced Interactions**
-    - [ ] **Advanced Embodied AI:** Deeper integration between agent reasoning and physical 3D world actions.
-    - [ ] **Enhanced Animations:** Richer character expressions and more fluid, context-aware animations.
-    - [ ] **Human-Agent Spatial Interaction:** Direct collaboration and richer multi-party interactions in the 3D office.
-    - [ ] **Inter-Agent Knowledge Sharing:** Long-term memory for agent teams across projects.
-- **Refinement**
-    - [ ] **Architecture Decoupling:** Further separation of core logic from the simulation environment.
-    - [ ] **UX/UI Overhaul:** Unified CSS styling based on "The Delegation" brand identity.
+- **API:** [Hono](https://hono.dev) with [zod](https://zod.dev) contracts.
+- **Tooling:** [Bun](https://bun.com) workspaces, [Turborepo](https://turborepo.com) and [Biome](https://biomejs.dev).
+- **3D Assets:** Custom models and animations rigged in [Blender](https://blender.org), optimised with [glTF Transform](https://gltf-transform.dev).
 
 ## Developer Note
 
