@@ -4,8 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./api": "./src/api.ts",
-    "./llm-messages": "./src/llm-messages.ts"
+    "./api": "./src/api.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p test",
