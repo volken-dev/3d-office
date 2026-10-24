@@ -14,20 +14,13 @@
     "assets": "bun scripts/sync-assets.ts"
   },
   "dependencies": {
-    "@recast-navigation/core": "0.43.1",
-    "@recast-navigation/three": "0.43.1",
     "@the-delegation/office-sim": "workspace:*",
     "three": "^0.183.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@gltf-transform/core": "^4.5.1",
-    "@gltf-transform/extensions": "^4.5.1",
-    "@gltf-transform/functions": "^4.5.1",
     "@types/bun": "^1.4.3",
     "@types/three": "0.183.1",
-    "draco3dgltf": "^1.5.9",
-    "meshoptimizer": "^1.3.0",
     "typescript": "~5.9.3"
   }
 }

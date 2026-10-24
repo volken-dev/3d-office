@@ -1,12 +1,10 @@
 import { beforeAll, describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import path from "node:path"
-import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js"
-import { type GLTF, GLTFLoader, type GLTFLoaderPlugin } from "three/addons/loaders/GLTFLoader.js"
+import type { GLTF } from "three/addons/loaders/GLTFLoader.js"
 import * as THREE from "three/webgpu"
 import { z } from "zod"
-
-const ASSETS_DIR = path.resolve(import.meta.dir, "../../assets")
+import { ASSETS_DIR, loadModel } from "../support/load-model"
 
 /** The parts of the contract's `files` section these checks compare the shipped models with. */
 const ContractFilesSchema = z.object({
@@ -34,21 +32,6 @@ const ContractFilesSchema = z.object({
 const contract = ContractFilesSchema.parse(
   JSON.parse(readFileSync(path.join(ASSETS_DIR, "asset-contract.json"), "utf8")),
 )
-
-/** There is no image decoder in bun, so textures load as blanks; the contract is in the nodes. */
-const blankTextures: GLTFLoaderPlugin = {
-  name: "test_blank_textures",
-  loadTexture: () => Promise.resolve(new THREE.Texture()),
-}
-
-async function loadModel(fileName: string): Promise<GLTF> {
-  const file = readFileSync(path.join(ASSETS_DIR, "models", fileName))
-  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).register(() => blankTextures)
-  return loader.parseAsync(
-    file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength),
-    "",
-  )
-}
 
 /** GLTFLoader strips characters animation paths reserve from node names, so `leg.L` loads as `legL`. */
 function loadedNodeName(name: string): string {
