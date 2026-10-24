@@ -9,9 +9,10 @@ You are a senior product engineer and architect planning a change to the 3D offi
 Your job is NOT to build it. Do not write feature code. Do not make implementation decisions without asking. Work through the phases in order and WAIT for answers at the end of each phase. Ask questions in small batches with the structured question tool (max 4 per batch); skip any question the description already answers.
 
 Ground every question and option in the real stack:
-- **The app is a static Next.js export of one full-window canvas.** `packages/scene` renders the office and is framework-free (only three, recast-navigation and zod); `apps/web/src/integration/` builds the scene and its cast; `interface/` holds the little React there is.
+- **The app is a static Next.js export of one full-window canvas.** `packages/scene` renders the office and robots and is framework-free (only three, zod and `@the-delegation/office-sim`); `packages/office-sim` decides how robots move (zod only, a port of agent-office's `viewer/agent-sim.js`); `apps/web/src/integration/` builds the scene, its cast, the live demo and the clock; `interface/` holds the little React there is (the agent pills, the dev overlay).
 - **`apps/api` is a minimal local Hono service** (health only, no sign-in, not called by the web app) and there is no persistence: anything that needs a server, an account or saved state is a step change, say so.
-- **The scene's agent-facing intents** (desk, boardroom, chat, team replacement, design-mode pause) exist but nothing drives them; reuse them before adding new ones.
+- **The scene's intents are contract-shaped** (`setCast`, `setAgentState`, `setTimeOfDay`, `setViewMode`) and the live demo is a stand-in for a future agent product; reuse them before adding new ones.
+- **The models and asset contract come from agent-office** (`bun run assets` syncs them). A change to a model, a POI, a clip or an agent state is made there first; say so.
 - **The scene's visuals don't change** unless the plan says exactly how, and every new GPU resource is disposed.
 - **Stabilise before features.** If the ask is a new feature while reliability or security issues are open, say so and propose the smallest slice, or the open item it depends on.
 
@@ -23,15 +24,16 @@ First read: `CLAUDE.md`, `.claude/RULES.md`, `AUDIT.md`, open issues for overlap
 
 Then ask, in batches:
 
-**1A Core intent** — the problem in one sentence; who meets it (the player in the office, someone reading the page, a caller of the API); what "working correctly" looks like.
+**1A Core intent** — the problem in one sentence; who meets it (someone watching the office, someone reading the page, a caller of the API); what "working correctly" looks like.
 
-**1B Scope & layers** — which layers it touches (multi-select): UI (`interface/`, `components/`, `app-shell.tsx`) · 3D scene (`packages/scene`) · cast and wiring (`data/office-cast.ts`, `integration/`) · assets (`packages/scene/assets-src`, `bun run assets`) · API (`apps/api`, `packages/shared`). Additive, or does it change existing behaviour?
+**1B Scope & layers** — which layers it touches (multi-select): UI (`interface/`, `components/`, `app-shell.tsx`) · 3D scene (`packages/scene`) · movement (`packages/office-sim`) · cast and wiring (`data/`, `integration/`) · assets (agent-office, `bun run assets`) · API (`apps/api`, `packages/shared`). Additive, or does it change existing behaviour?
 
 For each **ticked** layer only, ask the targeted set:
 
 - **UI** — what the user sees and can do; dialog vs sheet vs panel; primary/secondary actions; empty, loading and error states; keyboard path; small-screen behaviour.
-- **Cast and wiring** — who is in the office and how they look; which scene intents the host sends and when; any new state (is it read by shipping code?), and where it lives (no store exists today).
-- **Assets** — new or changed models, POIs in the office GLB (`OfficePoiExtrasSchema`), animation clip names, and the effect on download size.
+- **Cast and wiring** — which slots are in the office; which scene intents the host sends and when; any new state (is it read by shipping code?), and where it lives (the only store is the small external one in `integration/office-agents.ts`).
+- **Movement** — does it change how robots walk, reserve POIs or play clips? Does agent-office's `agent-sim.js` already do it (port it), or would office-sim diverge from the reference?
+- **Assets** — new or changed models, POI nodes (`poi-<kind>-<id>`), clips, agent states or scene extras, whether the asset contract's version changes (a new major is refused until the code follows), and the effect on download size.
 - **3D scene** — any visual change at all (default: none); WebGPU and WebGL2 behaviour; disposal of anything new; per-frame cost.
 - **API** — routes, shared contract, body caps, CORS (none today), what happens when it is unreachable.
 - **Non-functional** — frame time on weak GPUs, load time and bundle size (PERF-03), security (CSP, exposure of the API).
@@ -42,7 +44,7 @@ WAIT for all Phase 1 answers before continuing.
 
 ## PHASE 2 — Approaches
 
-Present 2-3 distinct approaches. For each: Summary · How it works · Pros · Cons · Best if · Rough effort (S < 0.5 day, M 1-3 days, L > 3 days). Favour existing patterns (an existing scene intent, a driver behaviour, a POI kind, a primitive variant) over new infrastructure; call out anything touching the scene's visuals, the `packages/scene` boundary or the API's exposure as needing extra care.
+Present 2-3 distinct approaches. For each: Summary · How it works · Pros · Cons · Best if · Rough effort (S < 0.5 day, M 1-3 days, L > 3 days). Favour existing patterns (an existing scene intent, an office-sim behaviour from the reference, a contract POI kind, a primitive variant) over new infrastructure; call out anything touching the scene's visuals, the `packages/scene` boundary or the API's exposure as needing extra care.
 
 End with: "Which approach would you like, or should I propose a hybrid?" WAIT for the answer.
 
@@ -64,7 +66,7 @@ Write the spec to `.claude/specs/<slug>.md` (absolute dates; no em-dashes in any
 ## Layers touched
 ## User journey            (happy path, then key edge cases)
 ## Cast and wiring changes (cast, intents sent, any new state)
-## Asset changes          (models, POIs, clips, size)
+## Asset changes          (models, contract, POIs, clips, size)
 ## UI / UX notes           (dialogs, empty/loading/error states, keyboard, copy)
 ## Scene changes           (none, or exactly what and how it is disposed)
 ## API changes             (routes, shared contract)
@@ -80,6 +82,6 @@ Show me the spec and WAIT for sign-off. A spec lives only until the work ships: 
 
 ## PHASE 4 — Work items
 
-Decompose into discrete items, each one focused-session-sized and ordered so dependencies come first. Prefixes: `scene:` `assets:` `web:` `ui:` `api:` `shared:` `test:` `config:`. Each item: what to build, acceptance criteria, the canonical file to mirror (and `/new-hono-route` where it fits), files likely affected, depends on.
+Decompose into discrete items, each one focused-session-sized and ordered so dependencies come first. Prefixes: `scene:` `office-sim:` `assets:` `web:` `ui:` `api:` `shared:` `test:` `config:`. Each item: what to build, acceptance criteria, the canonical file to mirror (and `/new-hono-route` where it fits), files likely affected, depends on.
 
 **Draft them first**: print the full proposed issue set (title, body, order) and WAIT for my go-ahead. Before creating, `gh issue list --search "<keywords>"` to flag likely duplicates. On approval, create each with `gh issue create` using `.github/ISSUE_TEMPLATE/task.md`, tagged at creation (`Type:` label, `Priority: Low` if deferrable, `--assignee isaac-dev0`), body naming the spec and `Depends on: #N`, then retitle each `[#N] <title>`. Record the issue numbers in the spec under `## Work items`. Then note the handoff: `/implement-feature <slug>`.

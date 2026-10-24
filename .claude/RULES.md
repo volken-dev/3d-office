@@ -16,12 +16,13 @@
 
 These three govern everything below. When a specific rule is missing, decide by these.
 
-- **P1 — Validate at every boundary; fail loud on bad input.** API route input, env, the extras
-  read from the office GLB. A malformed boundary is a hard, visible failure (or a safe fallback
+- **P1 — Validate at every boundary; fail loud on bad input.** API route input, env, the scene
+  extras read from the office GLB and the asset contract. A malformed boundary is a hard, visible failure (or a safe fallback
   that says so), never a silent filter.
-- **P2 — Keep the layers apart.** `packages/scene` renders and imports only itself, three,
-  recast-navigation and zod (a boundary test enforces it); it reads no store and knows no React.
-  `apps/web/src/integration/` wires it to the app. `apps/api` is runtime-agnostic and shares its
+- **P2 — Keep the layers apart.** `packages/office-sim` decides how robots move and imports only
+  zod (no three.js, no DOM). `packages/scene` renders and imports only itself, its assets, three,
+  zod and `@the-delegation/office-sim` (a boundary test enforces it); it reads no store and knows
+  no React. `apps/web/src/integration/` wires it to the app and decides what states robots are in. `apps/api` is runtime-agnostic and shares its
   contracts through `packages/shared`.
 - **P3 — Fix what you find; leave nothing broken silently.** If you discover a bug during any
   task — even one you did not cause — fix it when it is safe and in reach, or file a `Type: Bug` /
@@ -32,7 +33,8 @@ These three govern everything below. When a specific rule is missing, decide by 
 ## 1. File, structure, and naming
 
 1. **One responsibility per file.** One route group per file in `apps/api/src/routes/`, one
-   component per file in `interface/`, one concern per module in `packages/scene`.
+   component per file in `interface/`, one concern per module in `packages/scene` and
+   `packages/office-sim`.
 2. **No barrel files.** Never add an `index.ts` that re-exports a directory. Packages expose modules
    through subpath exports (`@the-delegation/scene/scene-manager`,
    `@the-delegation/shared/api`). The single permitted barrel-like file is the shadcn
@@ -84,18 +86,24 @@ These three govern everything below. When a specific rule is missing, decide by 
 ## 4. The scene
 
 16. **The scene is driven, not wired.** The host builds a `SceneCast`, passes `SceneEvents`, and
-    calls `apply(intent)`. Never import a store, React or app code into `packages/scene`, and
-    never make it decide what app state means.
+    calls `apply(intent)` with the contract-shaped intents (`setCast`, `setAgentState`,
+    `setTimeOfDay`, `setViewMode`). Never import a store, React or app code into `packages/scene`,
+    and never make it decide what an agent state means or when it is night. Rendering lives in the
+    scene (`office/`, `robots/`, `camera/`, `core/`); movement lives in `packages/office-sim`,
+    reached through its `Actor` port, and follows agent-office's `viewer/agent-sim.js`.
 17. **Per-frame data never goes through React state or a store.** Write it to a sink the render
-    loop owns (`ScreenPositionSink`, `publishFrameStats`, throttled) and let consumers read it
-    without re-rendering.
+    loop owns (`publishFrameStats`, throttled) and let consumers read it without re-rendering.
+    Status changes reach the UI as events (`onAgentStatus`), not per frame.
 18. **Everything the scene creates, it disposes**: GPU resources, listeners, timers, subscriptions,
     the canvas, the animation loop. A disposed object never starts new work.
 19. **Fire-and-forget async is wrapped** so a rejection is routed to an error state, never left
     unhandled.
-20. **Do not change the 3D scene's visuals** as a side effect of other work.
-21. **Cast indices are POI slots.** Do not add code that assumes indices are contiguous or start
-    at a particular number beyond what the office GLB's slots provide.
+20. **Do not change the 3D scene's visuals** as a side effect of other work. The models and the
+    asset contract are synced from agent-office (`bun run assets`) and never hand-edited; a
+    contract of another major version is refused until the code is updated for it.
+21. **Cast indices are agent slots, 1 to `agents.max`.** Slot N is pod N, docking bay N and status
+    texel N. Do not assume the cast is contiguous or always full; read the limit from the office's
+    `agents` extras, not a constant.
 
 ## 5. API (`apps/api`)
 
@@ -155,7 +163,7 @@ These three govern everything below. When a specific rule is missing, decide by 
 
 42. **Branches:** `feat/…`, `fix/…`, `refactor/…`, `perf/…`, `chore/…`, `docs/…`.
 43. **Commits:** Conventional Commits, imperative, lowercase, no trailing period. Optional scope
-    `web`, `api`, `scene`, `shared` or `repo` (`repo` for root tooling and `.claude/`). One
+    `web`, `api`, `scene`, `office-sim`, `shared` or `repo` (`repo` for root tooling and `.claude/`). One
     logical change per commit.
 44. **PRs target `main`** using the PR template: `Closes #N` for each issue closed (`Refs #N` for
     partial work), a **Verified** section (what was run and what was seen), and any `AUDIT.md` ids
@@ -204,10 +212,10 @@ These are absolute. No exception without an explicit, in-session user instructio
 5. **Never add a barrel `index.ts`**, and never create `utils.ts` / `helpers.ts` / `misc.ts`.
 6. **Never hand-roll interactive HTML** or override a shadcn primitive at the call site.
 7. **Never use em-dashes, bullet glyphs, emoji or exclamation marks in user-facing copy.**
-8. **Never import the app, React or a store from `packages/scene`.**
+8. **Never import the app, React or a store from `packages/scene`**, and never three.js or the
+   DOM from `packages/office-sim`.
 9. **Never model speculatively** — no state field, type or option that shipping code doesn't
-   read. The scene's agent-facing intents, kept for reuse (see `CLAUDE.md`), are the one agreed
-   exception.
+   read.
 10. **Never add a dependency without confirmation**, and never add a banned one: ESLint, Prettier,
     a date library (use `Intl`), lodash/underscore, axios (use `fetch` or the typed `hc` client).
 11. **Never modify without explicit instruction:** `CLAUDE.md`, this file, theme tokens,

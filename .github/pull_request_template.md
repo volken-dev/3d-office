@@ -19,7 +19,7 @@ Closes #
 
 - [ ] `bun run typecheck`, `bun run lint`, `bun run test`, `bun run build` all pass (`/health-check`)
 - [ ] Exercised for real and written up under **Verified**
-- [ ] New artifact registered (route in `app.ts`, character model in `character-models.ts`)
+- [ ] New artifact registered (route in `app.ts`; models synced with `bun run assets` and covered by the contract)
 - [ ] No `any`, no forcing casts, no explanatory `//` comments, full descriptive names
 - [ ] UI composes `components/ui/*` primitives and theme tokens; no dashes, emoji or exclamation marks in copy
 - [ ] The 3D scene looks the same, unless this PR says how and why it changed

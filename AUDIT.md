@@ -72,9 +72,13 @@ Spec: `.claude/specs/llm-providers-claude-first.md`, deleted in #81 (in git hist
 
 On 2026-10-24 the app was cut down to the 3D office: `packages/agents`, `packages/llm`, the LLM gateway route, every panel, dialog and store, and the team editor were deleted. `apps/web` renders only the office with the player and a fixed cast that wanders on its own; `apps/api` keeps `GET /api/health`; `packages/shared` holds only its contract and the error envelope. `packages/scene` was not changed, and its agent-facing intents are kept for reuse. Findings that only concerned the removed code are marked **Obsolete (#81)** below; Fixed items stay as a record even where their code is gone. The CSP's `connect-src` is `'self'` again (#39).
 
+### Agent office assets (#85 to #89)
+
+On 2026-10-24 the old office, human and robot models, the recast navmesh and crowd, the instanced character renderer and the POI extras were replaced by the agent-office models and asset contract, moved by the new `packages/office-sim`; the scene's agent-facing intents gave way to contract-shaped ones (`setCast`, `setAgentState`, `setTimeOfDay`, `setViewMode`). File paths in the tables below predate this. The recast wasm leaves the bundle (PERF-03, still partly open for the CI budget).
+
 ### Still open
 
-Everything still open is a GitHub issue: [volken-dev/3d-office issues](https://github.com/volken-dev/3d-office/issues). PERF-03 (bundle budget) #4, setup-bun pin #19, commit hooks #20, and the scene issues (#49 to #58, the model viewer #62 and #72 to #80).
+Everything still open is a GitHub issue: [volken-dev/3d-office issues](https://github.com/volken-dev/3d-office/issues). PERF-03 (bundle budget) #4, setup-bun pin #19, commit hooks #20, the engine issues (#49, #51 to #54) and the agent office follow-ups (#90 to #92). The model viewer plan (#62, #72 to #80) was closed as superseded by the agent office (#85 to #89).
 
 ---
 
