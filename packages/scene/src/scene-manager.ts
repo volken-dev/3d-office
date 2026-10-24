@@ -1,38 +1,41 @@
+import { OfficeAgent } from "@the-delegation/office-sim/agent"
+import { isAgentState, statusColorOf } from "@the-delegation/office-sim/agent-states"
+import type { OfficeExtras } from "@the-delegation/office-sim/office-extras"
+import type { OfficeWorld } from "@the-delegation/office-sim/office-world"
+import type { GLTF } from "three/addons/loaders/GLTFLoader.js"
 import * as THREE from "three/webgpu"
-import { CharacterController } from "./character-controller"
-import { DEFAULT_CHARACTER_MODEL_ID } from "./characters/character-models"
-import { loadCharacterModels } from "./characters/load-character-models"
-import { BUBBLE_Y_OFFSET, CHAT_STANDOFF, OFFICE_MODEL_PATH } from "./constants"
+import { OfficeCamera } from "./camera/office-camera"
 import { Engine } from "./core/engine"
 import type { FrameStats } from "./core/frame-profiler"
-import { Stage } from "./core/stage"
-import { DriverManager } from "./drivers/driver-manager"
-import { CharacterManager } from "./entities/character-manager"
-import { InputManager } from "./input/input-manager"
 import { createSceneLoader } from "./loaders"
-import { NavMeshManager } from "./pathfinding/nav-mesh-manager"
-import { loadNavigationRuntime } from "./pathfinding/navigation-runtime"
-import { modelIdsUsedBy, nonPlayerMembers, type SceneCast, userIndexOf } from "./scene-cast"
-import type { AgentWork, SceneIntent } from "./scene-intent"
-import { AgentBehavior } from "./scene-types"
-import type { ScreenPositionSink } from "./screen-position-sink"
-import { BOARDROOM_POI_ID, deskPoiId, spawnPoiId } from "./world/poi-ids"
-import { PoiManager } from "./world/poi-manager"
-import { WorldManager } from "./world/world-manager"
+import { OfficeAmbient } from "./office/office-ambient"
+import { OfficeLighting } from "./office/office-lighting"
+import { prepareOfficeModel } from "./office/office-model"
+import { loadOfficeWorld } from "./office/office-world-loader"
+import { StatusLights } from "./office/status-lights"
+import { applyOfficeTimeOfDay, TIME_OF_DAY_LOOKS } from "./office/time-of-day"
+import { type PickTarget, RobotPicking } from "./robots/robot-picking"
+import { RobotRig } from "./robots/robot-rig"
+import type { SceneCast } from "./scene-cast"
+import { disposeObjectTree } from "./scene-disposal"
+import type { SceneIntent, TimeOfDay } from "./scene-intent"
 
-/** Clamp so a long pause (hidden tab, design mode) doesn't teleport characters through walls. */
+/** Clamp so a long pause (hidden tab, design mode) doesn't teleport robots across the office. */
 const MAX_FRAME_DELTA = 0.1
 
-/** What the scene reports back as the user points at and clicks things in the office. */
+/** Paths of the models under the scene's asset base URL. */
+const OFFICE_MODEL_PATH = "models/office.glb"
+const ROBOT_MODEL_PATH = "models/robot.glb"
+
+/** The office has five spawn points by the door; slot N spawns at spawn ((N - 1) mod 5) + 1. */
+const SPAWN_POINT_COUNT = 5
+
+/** What the scene reports back: clicks, accepted agent states, a lost GPU device, frame stats. */
 export interface SceneEvents {
-  /** A character or empty space (null) was clicked. */
+  /** A robot (its slot) or empty floor (null) was clicked. */
   onAgentClick(agentIndex: number | null): void
-  onAgentHover(agentIndex: number | null): void
-  onPoiHover(
-    id: string | null,
-    label: string | null,
-    position: { x: number; y: number } | null,
-  ): void
+  /** A `setAgentState` was accepted: the robot is heading for the state, shown in `statusColor` (#rrggbb). */
+  onAgentStatus(agentIndex: number, state: string, statusColor: string): void
   /** The GPU device is gone: this scene can no longer render and should be rebuilt. */
   onDeviceLost(): void
   /** Development only: a summary of recent frames, a few times a second. Omit to skip measuring. */
@@ -43,59 +46,61 @@ export interface SceneEvents {
 export interface SceneOptions {
   /** Where the scene's models are served from, e.g. "/" for the site root. */
   assetBaseUrl: string
-  screenPositions: ScreenPositionSink
+}
+
+/** One robot in the office: what it looks like and how it moves. */
+interface Robot {
+  readonly agentIndex: number
+  readonly rig: RobotRig
+  readonly agent: OfficeAgent
+}
+
+/** Everything that exists once the models have loaded. */
+interface LoadedOffice {
+  readonly root: THREE.Object3D
+  readonly extras: OfficeExtras
+  readonly world: OfficeWorld
+  readonly ambient: OfficeAmbient
+  readonly statusLights: StatusLights
+  readonly robotTemplate: GLTF
 }
 
 /**
- * Owns the 3D office for a cast and executes scene intents (movement,
- * chat, team changes) as character movement and animation. It reads no store: an integration
- * adapter derives the intents from store changes and receives the user's input through
- * `SceneEvents`.
+ * The agent office in 3D: renders `office.glb` and one `robot.glb` per cast slot, and moves the
+ * robots with office-sim agents as `setAgentState` intents arrive. It reads no store and decides
+ * nothing about what a state means; the host drives it with intents and hears back through
+ * `SceneEvents`. Intents that arrive before the models load are kept (the latest state per slot,
+ * the latest cast and time of day) and applied once they have.
  */
 export class SceneManager {
-  private engine: Engine
-  private stage: Stage
-  private characterManager: CharacterManager
-  private controller: CharacterController | null = null
-  private navMesh: NavMeshManager
-  private poiManager: PoiManager
-  private worldManager: WorldManager
-  private driverManager: DriverManager | null = null
-  private inputManager: InputManager | null = null
+  private readonly engine: Engine
+  private readonly scene = new THREE.Scene()
+  private readonly background = new THREE.Color()
+  private readonly officeCamera: OfficeCamera
+  private readonly lighting: OfficeLighting
+  private readonly resizeObserver: ResizeObserver
+  private picking: RobotPicking | null = null
+  private loadedGltfs: GLTF[] = []
+  private office: LoadedOffice | null = null
+  private readonly robots = new Map<number, Robot>()
+  private readonly pendingStates = new Map<number, string>()
 
   private cast: SceneCast
-  /** The user's character index in the current cast, kept so the render loop never searches for it. */
-  private playerIndex: number
-  private selectedIndex: number | null = null
-  private readonly events: SceneEvents
-  private agentWork: AgentWork = { busyAgentIndices: [], isProjectDone: false }
-  private isChatMode = false
+  private timeOfDay: TimeOfDay = "day"
+  private followedIndex: number | null = null
   private isRenderingPaused = false
-  private isLayoutResizing = false
-
   private isDisposed = false
-  private container: HTMLElement
-  private resizeObserver: ResizeObserver
-  private viewportWidth: number
-  private viewportHeight: number
-  private readonly scratchPosition = new THREE.Vector3()
 
   /** Resolves once the scene renders; rejects if WebGPU/WebGL2 or the models fail to load. */
   public readonly ready: Promise<void>
 
   constructor(
-    container: HTMLElement,
+    private readonly container: HTMLElement,
     cast: SceneCast,
-    events: SceneEvents,
+    private readonly events: SceneEvents,
     private readonly options: SceneOptions,
   ) {
-    this.container = container
-    this.viewportWidth = container.clientWidth
-    this.viewportHeight = container.clientHeight
     this.cast = cast
-    this.playerIndex = userIndexOf(cast)
-    this.events = events
-
     this.engine = new Engine(
       container,
       () => {
@@ -103,139 +108,81 @@ export class SceneManager {
       },
       events.onFrameStats,
     )
-    this.stage = new Stage(this.engine.renderer.domElement)
-    this.characterManager = new CharacterManager(this.stage.scene, this.cast)
-    this.navMesh = new NavMeshManager()
-    this.poiManager = new PoiManager()
-    this.characterManager.setPoiManager(this.poiManager)
-    this.worldManager = new WorldManager(this.stage.scene, this.navMesh, this.poiManager)
-
+    this.scene.background = this.background
+    this.officeCamera = new OfficeCamera(this.engine.renderer.domElement)
+    this.lighting = new OfficeLighting(this.scene)
+    this.applyTimeOfDay()
     this.resizeObserver = new ResizeObserver(() => this.onResize())
     this.resizeObserver.observe(container)
+    this.onResize()
 
     this.ready = this.init()
-    this.ready.catch((error) => {
+    this.ready.catch((error: unknown) => {
       if (!this.isDisposed) console.error("[SceneManager] Scene failed to load:", error)
     })
   }
 
   /**
-   * Renderer init, the navigation runtime and every model download/decode overlap; only the setup
-   * after them is ordered.
-   * The world is set up before the characters because character spawns need its POIs. Only the
-   * character models this cast uses are loaded, plus the default model every missing one falls back to.
-   * Shaders are compiled before the first frame, so `ready` resolves on a scene that renders smoothly.
+   * Renderer start and both model downloads overlap; the office's world is built before the
+   * robots, which spawn at its POIs. Shaders compile before the first frame, so `ready` resolves
+   * on a scene that renders smoothly.
    */
-  private async init() {
+  private async init(): Promise<void> {
     const loader = createSceneLoader(this.options.assetBaseUrl)
-    const [, , officeGltf, characterModels] = await Promise.all([
+    const [, officeGltf, robotGltf] = await Promise.all([
       this.engine.init(),
-      loadNavigationRuntime(),
       loader.load(OFFICE_MODEL_PATH),
-      loadCharacterModels(loader, this.characterModelsFor(this.cast)),
+      loader.load(ROBOT_MODEL_PATH),
     ])
-    if (this.isDisposed) return
+    this.loadedGltfs = [officeGltf, robotGltf]
+    if (this.isDisposed) {
+      this.disposeLoadedModels()
+      return
+    }
 
-    this.worldManager.setup(officeGltf, this.cast.themeColor)
-    this.characterManager.setup(characterModels)
-
-    this.controller = new CharacterController(
-      this.characterManager,
-      this.navMesh,
-      this.poiManager,
-      this.playerIndex,
-    )
-    this.driverManager = new DriverManager(this.controller)
-    this.registerDrivers()
-
-    this.inputManager = new InputManager(
+    const root = officeGltf.scene
+    const { extras, world } = loadOfficeWorld(root)
+    prepareOfficeModel(root)
+    this.office = {
+      root,
+      extras,
+      world,
+      ambient: new OfficeAmbient(root, officeGltf.animations),
+      statusLights: new StatusLights(root, extras.statusColors),
+      robotTemplate: robotGltf,
+    }
+    this.scene.add(root)
+    this.officeCamera.setBounds(new THREE.Box3().setFromObject(root))
+    this.applyTimeOfDay()
+    this.syncRobots()
+    for (const [agentIndex, state] of this.pendingStates) this.setAgentState(agentIndex, state)
+    this.pendingStates.clear()
+    this.picking = new RobotPicking(
       this.engine.renderer.domElement,
-      this.stage.camera,
-      this.worldManager.getNavMeshes(),
-      {
-        getAgentIndices: () => this.controller?.getAgentIndices() ?? [],
-        getPosition: (agentIndex, out) => this.controller?.getCPUPosition(agentIndex, out) ?? false,
-        getPois: () => this.poiManager.values(),
-        isPointValid: (point) => this.navMesh.isPointOnNavMesh(point),
-        onSelect: (agentIndex) => this.events.onAgentClick(agentIndex),
-        onFloorClick: (x, z) => this.driverManager?.getPlayerDriver()?.onFloorClick(x, z),
-        onHover: (agentIndex) => this.events.onAgentHover(agentIndex),
-        onPoiHover: (id, label, position) => this.events.onPoiHover(id, label, position),
-        onPoiClick: (id) => this.driverManager?.getPlayerDriver()?.onPoiClick(id),
-      },
+      this.officeCamera.camera,
+      () => this.pickTargets(),
+      (agentIndex) => this.events.onAgentClick(agentIndex),
     )
 
-    await this.engine.compile(this.stage.scene, this.stage.camera)
+    await this.compileForEveryTimeOfDay()
     if (this.isDisposed) return
-
     this.engine.renderer.setAnimationLoop(this.animate)
-    const stillMissing = this.characterModelsFor(this.cast).some(
-      (modelId) => !this.characterManager.hasModel(modelId),
-    )
-    if (stillMissing) this.applyTeamChange()
   }
 
-  private registerDrivers() {
-    if (!this.driverManager) return
-    this.driverManager.dispose()
-    this.driverManager.registerPlayer(this.playerIndex)
-    for (const member of nonPlayerMembers(this.cast)) {
-      this.driverManager.registerNpc(member.index, member.role === "lead")
-    }
-    this.syncDriverState()
-  }
-
-  /** Pushes task and phase state to the NPC drivers so they don't scan the store every frame. */
-  private syncDriverState() {
-    if (!this.driverManager) return
-    const busy = new Set(this.agentWork.busyAgentIndices)
-    for (const driver of this.driverManager.npcDrivers()) {
-      driver.setBusy(busy.has(driver.agentIndex))
-      driver.setProjectDone(this.agentWork.isProjectDone)
-    }
-  }
-
-  /** Executes one intent. Movement and chat intents are ignored until the characters exist. */
+  /** Executes one intent; see `SceneIntent`. */
   public apply(intent: SceneIntent): void {
+    if (this.isDisposed) return
     switch (intent.type) {
-      case "syncAgentWork":
-        this.agentWork = intent.work
-        this.syncDriverState()
+      case "setCast":
+        this.cast = intent.cast
+        this.syncRobots()
         return
-      case "goToDesk":
-        this.setNpcWorking(intent.agentIndex, intent.deskSlot)
+      case "setAgentState":
+        this.setAgentState(intent.agentIndex, intent.state)
         return
-      case "goToBoardroom":
-        this.moveNpcToBoardroom(intent.agentIndex)
-        return
-      case "returnToSpawn":
-        this.moveNpcToSpawn(intent.agentIndex)
-        return
-      case "setChatMode":
-        this.isChatMode = intent.isChatting
-        return
-      case "startChat":
-        this.startChatVisuals(intent.agentIndex)
-        return
-      case "updateChatTurn":
-        this.updateChatTurn(intent.agentIndex, intent.isAgentSpeaking, intent.isUserSpeaking)
-        return
-      case "stopChat":
-        this.stopChatVisuals(intent.agentIndex)
-        return
-      case "replaceTeam":
-        this.setCurrentCast(intent.cast)
-        this.applyTeamChange()
-        return
-      case "updateTeam":
-        this.setCurrentCast(intent.cast)
-        return
-      case "layoutResizeStarted":
-        this.isLayoutResizing = true
-        return
-      case "layoutResizeSettled":
-        this.isLayoutResizing = false
-        this.onResize()
+      case "setTimeOfDay":
+        this.timeOfDay = intent.timeOfDay
+        this.applyTimeOfDay()
         return
       case "setViewMode":
         this.isRenderingPaused = intent.viewMode === "design"
@@ -243,243 +190,171 @@ export class SceneManager {
     }
   }
 
-  /** Sets the character the camera follows; null follows the user. */
+  /** Eases the camera onto a robot and keeps it there as the robot moves; null returns to the overview. */
   public followAgent(agentIndex: number | null): void {
-    this.selectedIndex = agentIndex
+    if (this.isDisposed) return
+    this.followedIndex = agentIndex
+    if (agentIndex === null) this.officeCamera.showOverview()
+    else this.officeCamera.startFollowing()
   }
 
-  private setCurrentCast(cast: SceneCast) {
-    this.cast = cast
-    this.playerIndex = userIndexOf(cast)
-  }
-
-  /** The character models a cast needs: the ones its characters use, plus the default fallback. */
-  private characterModelsFor(cast: SceneCast): string[] {
-    const used = modelIdsUsedBy(cast)
-    return used.includes(DEFAULT_CHARACTER_MODEL_ID) ? used : [DEFAULT_CHARACTER_MODEL_ID, ...used]
+  private setAgentState(agentIndex: number, state: string): void {
+    const office = this.office
+    if (!office) {
+      this.pendingStates.set(agentIndex, state)
+      return
+    }
+    if (!isAgentState(office.extras, state)) {
+      console.warn(`[SceneManager] "${state}" is not an agent state of this office; ignored`)
+      return
+    }
+    const robot = this.robots.get(agentIndex)
+    if (!robot) {
+      console.warn(`[SceneManager] slot ${agentIndex} has no robot in the cast; state ignored`)
+      return
+    }
+    const statusColor = statusColorOf(office.extras, state)
+    robot.agent.setState(state)
+    robot.rig.setStatusColor(statusColor)
+    office.statusLights.setSlotColor(agentIndex, statusColor)
+    this.events.onAgentStatus(agentIndex, state, statusColor)
   }
 
   /**
-   * A different team, or agents added/removed. Character models the new team uses that are not
-   * loaded yet are fetched first; if the team changes again meanwhile, the stale load is ignored.
+   * Makes the robots match the cast: robots for slots that left are removed (their POIs freed and
+   * their lights turned off), and each new slot gets a robot idling at its spawn point with no
+   * state until the host gives it one. Slots the office has no pod and light for are ignored.
    */
-  private applyTeamChange() {
-    const cast = this.cast
-    const missing = this.characterModelsFor(cast).filter(
-      (modelId) => !this.characterManager.hasModel(modelId),
-    )
-    if (!this.controller || missing.length === 0) {
-      this.rebuildForCast(cast)
-      return
+  private syncRobots(): void {
+    const office = this.office
+    if (!office) return
+    const slots = new Set(this.cast.agentIndices.filter((slot) => this.isValidSlot(office, slot)))
+    for (const [agentIndex, robot] of this.robots) {
+      if (slots.has(agentIndex)) continue
+      robot.agent.release()
+      robot.rig.dispose()
+      office.statusLights.setSlotColor(agentIndex, null)
+      this.robots.delete(agentIndex)
+      if (this.followedIndex === agentIndex) this.followAgent(null)
     }
-    const loader = createSceneLoader(this.options.assetBaseUrl)
-    loadCharacterModels(loader, missing)
-      .then((models) => {
-        if (this.isDisposed || this.cast !== cast) return
-        this.characterManager.addModels(models)
-        this.rebuildForCast(cast)
-      })
-      .catch((error: unknown) => {
-        console.error("[SceneManager] Character models failed to load:", error)
-        if (!this.isDisposed && this.cast === cast) this.rebuildForCast(cast)
-      })
+    for (const agentIndex of slots) {
+      if (!this.robots.has(agentIndex)) this.addRobot(office, agentIndex)
+    }
   }
 
-  /**
-   * New characters and drivers for the team, everyone back at spawn. While still
-   * loading, init() builds everything from this.cast instead. Screen positions are cleared so a
-   * removed agent's name bubble does not stay pinned where it last stood.
-   */
-  private rebuildForCast(cast: SceneCast) {
-    this.worldManager.updateThemeColor(cast.themeColor)
-
-    if (!this.controller) return
-    this.controller.setCast(cast)
-    this.options.screenPositions.clear()
-    const roster = this.controller.getAgentIndices()
-    if (this.selectedIndex !== null && !roster.includes(this.selectedIndex)) {
-      this.selectedIndex = null
-    }
-    const pickedIndex = this.inputManager?.selectedIndex ?? null
-    if (this.inputManager && pickedIndex !== null && !roster.includes(pickedIndex)) {
-      this.inputManager.selectedIndex = null
-    }
-    this.registerDrivers()
-    this.controller.warpAllToSpawn(
-      userIndexOf(cast),
-      nonPlayerMembers(cast).map((member) => member.index),
-    )
+  private isValidSlot(office: LoadedOffice, slot: number): boolean {
+    const maxSlot = Math.min(office.extras.agents.max, office.statusLights.slotCount)
+    if (Number.isInteger(slot) && slot >= 1 && slot <= maxSlot) return true
+    console.warn(`[SceneManager] slot ${slot} is outside the office's slots 1 to ${maxSlot}`)
+    return false
   }
 
-  /** Plays talk or listen on both sides of an open chat, unless one of them is still walking. */
-  private updateChatTurn(npcIndex: number, isAgentSpeaking: boolean, isUserSpeaking: boolean) {
-    const controller = this.controller
-    if (!controller) return
-    const user = this.playerIndex
-    if (controller.getState(npcIndex) !== "walk")
-      controller.play(npcIndex, isAgentSpeaking ? "talk" : "listen")
-    controller.setSpeaking(npcIndex, isAgentSpeaking)
-    if (controller.getState(user) !== "walk")
-      controller.play(user, isUserSpeaking ? "talk" : "listen")
-    controller.setSpeaking(user, isUserSpeaking)
-  }
-
-  /** Returns both sides of a closed chat to idle and lets the NPC wander again. */
-  private stopChatVisuals(npcIndex: number | null) {
-    const controller = this.controller
-    if (!controller) return
-    if (npcIndex !== null) {
-      this.driverManager?.getNpcDriver(npcIndex)?.setChatting(false)
-      controller.setSpeaking(npcIndex, false)
-      controller.play(npcIndex, "idle")
-      controller.poiManager.releaseAll(npcIndex)
-    }
-    const user = this.playerIndex
-    controller.setSpeaking(user, false)
-    controller.play(user, "idle")
-    this.selectedIndex = null
-  }
-
-  /** Walks the player over to the NPC and turns the two to face each other. */
-  private startChatVisuals(npcIndex: number): void {
-    const controller = this.controller
-    if (!controller) return
-    const user = this.playerIndex
-    const npc = new THREE.Vector3()
-    const player = new THREE.Vector3()
-    if (!controller.getCPUPosition(npcIndex, npc) || !controller.getCPUPosition(user, player))
-      return
-    npc.y = 0
-    player.y = 0
-    const direction = new THREE.Vector3().subVectors(player, npc).normalize()
-    if (direction.length() < 0.01) direction.set(1, 0, 0)
-    const target = npc.clone().addScaledVector(direction, CHAT_STANDOFF)
-
-    this.selectedIndex = npcIndex
-    this.driverManager?.getNpcDriver(npcIndex)?.setChatting(true)
-    controller.cancelMovement(npcIndex)
-    controller.play(npcIndex, "listen")
-    controller.setFacing(npcIndex, direction.x, direction.z)
-    this.driverManager?.getPlayerDriver()?.walkTo(target, "listen", () => {
-      if (!controller.getCPUPosition(npcIndex, npc) || !controller.getCPUPosition(user, player)) {
-        return
-      }
-      const facingX = npc.x - player.x
-      const facingZ = npc.z - player.z
-      controller.setFacing(user, facingX, facingZ)
-      controller.setFacing(npcIndex, -facingX, -facingZ)
+  private addRobot(office: LoadedOffice, agentIndex: number): void {
+    const rig = new RobotRig({
+      scene: office.robotTemplate.scene,
+      animations: office.robotTemplate.animations,
     })
+    const agent = new OfficeAgent({
+      id: agentIndex,
+      desk: agentIndex,
+      actor: rig.actor,
+      world: office.world,
+    })
+    const spawn = office.world.poiNamed(
+      `poi-idle-spawn-${((agentIndex - 1) % SPAWN_POINT_COUNT) + 1}`,
+    )
+    agent.spawnAt(spawn.x, spawn.z, spawn.yaw)
+    agent.update(0)
+    this.scene.add(rig.root)
+    this.robots.set(agentIndex, { agentIndex, rig, agent })
+  }
+
+  private *pickTargets(): Iterable<PickTarget> {
+    for (const robot of this.robots.values()) {
+      yield { agentIndex: robot.agentIndex, position: robot.rig.root.position }
+    }
   }
 
   /**
-   * Sends the agent to its own desk (`deskPoiId`), or, if the office has none for it, to a
-   * desk picked by its position on the team (`deskSlot`).
+   * Compiles every shader for the other time of day, then for the current one, before the first
+   * frame. The night lights change the set of lights every material is built for, so switching
+   * later would otherwise stall on a recompile.
    */
-  private setNpcWorking(index: number, deskSlot: number): void {
-    if (!this.controller) return
-    let poi = this.poiManager.getPoi(deskPoiId(index))
-    if (!poi) {
-      const desks = this.poiManager.getPoisOfKind("desk")
-      if (desks.length > 0) poi = desks[deskSlot % desks.length]
-    }
-    if (poi) this.controller.walkToPoi(index, poi.id)
+  private async compileForEveryTimeOfDay(): Promise<void> {
+    const otherTimeOfDay: TimeOfDay = this.timeOfDay === "day" ? "night" : "day"
+    this.applyTimeOfDay(otherTimeOfDay)
+    await this.engine.compile(this.scene, this.officeCamera.camera)
+    if (this.isDisposed) return
+    this.applyTimeOfDay()
+    await this.engine.compile(this.scene, this.officeCamera.camera)
   }
 
-  private moveNpcToBoardroom(index: number): void {
-    if (!this.controller) return
-    const poi = this.poiManager.getPoi(BOARDROOM_POI_ID)
-    if (poi) this.controller.walkToPoi(index, poi.id)
+  /** Applies a time of day (the current one by default) to the lights, background, exposure and office. */
+  private applyTimeOfDay(timeOfDay: TimeOfDay = this.timeOfDay): void {
+    const look = TIME_OF_DAY_LOOKS[timeOfDay]
+    this.lighting.applyLook(look)
+    this.background.set(look.background)
+    this.engine.setExposure(look.exposure)
+    if (this.office) applyOfficeTimeOfDay(this.office.root, timeOfDay)
   }
 
-  private moveNpcToSpawn(index: number): void {
-    if (!this.controller) return
-    const poi = this.poiManager.getPoi(spawnPoiId(index))
-    if (poi)
-      this.controller.moveTo(index, poi.position, "idle", undefined, undefined, poi.quaternion)
-  }
-
-  private onResize() {
+  private onResize(): void {
     const width = this.container.clientWidth
     const height = this.container.clientHeight
     if (width === 0 || height === 0) return
-    this.viewportWidth = width
-    this.viewportHeight = height
-    this.stage.onResize(width, height)
-    if (!this.isLayoutResizing) this.engine.onResize(width, height)
+    this.officeCamera.resize(width, height)
+    this.engine.onResize(width, height)
   }
 
   /**
-   * One frame. Skipped in design mode, where the canvas is hidden behind the editor. The crowd
-   * moves the characters on the CPU, then drivers and overlap fading react to this frame's
-   * positions before the render.
+   * One frame, skipped in design mode. Agents move and pose their robots first, then the mixers
+   * animate them, so the camera follows where the robot is this frame.
    */
   private animate = () => {
     this.engine.timer.update()
     const deltaSeconds = Math.min(this.engine.timer.getDelta(), MAX_FRAME_DELTA)
-    if (this.isRenderingPaused) return
+    if (this.isRenderingPaused || this.isDisposed) return
 
-    const controller = this.controller
     this.engine.trackFrame(deltaSeconds)
-    this.stage.update()
-    if (controller) {
-      controller.update(deltaSeconds)
-      this.driverManager?.update(deltaSeconds)
-      controller.updateOverlapFading(deltaSeconds)
+    for (const robot of this.robots.values()) {
+      robot.agent.update(deltaSeconds)
+      robot.rig.update(deltaSeconds)
     }
-
-    const player = this.playerIndex
+    this.office?.ambient.update(deltaSeconds)
+    this.office?.statusLights.update(deltaSeconds)
     const followed =
-      controller?.getCPUPosition(this.selectedIndex ?? player, this.scratchPosition) ?? false
-    this.stage.setFollowTarget(followed ? this.scratchPosition : null)
-    if (controller) {
-      const camera = this.stage.camera
-      const bubblePosition = this.scratchPosition
-      for (const agentIndex of controller.getAgentIndices()) {
-        if (!controller.getCPUPosition(agentIndex, bubblePosition)) continue
-        bubblePosition.y += BUBBLE_Y_OFFSET
-        bubblePosition.project(camera)
-        this.options.screenPositions.set(
-          agentIndex,
-          (bubblePosition.x * 0.5 + 0.5) * this.viewportWidth,
-          (bubblePosition.y * -0.5 + 0.5) * this.viewportHeight,
-        )
-      }
-      this.options.screenPositions.notify()
-    }
-    this.stage.setChatMode(
-      this.isChatMode,
-      controller?.getAgentState(player) === AgentBehavior.GOTO,
-    )
-    this.engine.render(this.stage.scene, this.stage.camera)
+      this.followedIndex === null ? null : this.robots.get(this.followedIndex)?.rig.root.position
+    this.officeCamera.update(deltaSeconds, followed ?? null)
+    this.engine.render(this.scene, this.officeCamera.camera)
   }
 
-  /** Puts everyone back at spawn and releases the camera. Close any chat first. */
-  public resetScene() {
-    if (!this.controller) return
-    const agents = nonPlayerMembers(this.cast)
-    for (const agent of agents) this.controller.setSpeaking(agent.index, false)
-    this.controller.warpAllToSpawn(
-      this.playerIndex,
-      agents.map((agent) => agent.index),
-    )
-    this.stage.setFollowTarget(null)
-    this.stage.setChatMode(false, false)
+  private disposeLoadedModels(): void {
+    for (const gltf of this.loadedGltfs) disposeObjectTree(gltf.scene)
+    this.loadedGltfs = []
   }
 
-  /** Stops the render loop and releases every listener and GPU resource. Idempotent. */
-  public dispose() {
+  /** Stops the render loop and releases every listener, mixer and GPU resource. Idempotent. */
+  public dispose(): void {
     if (this.isDisposed) return
     this.isDisposed = true
-    this.inputManager?.dispose()
-    this.inputManager = null
+    this.engine.renderer.setAnimationLoop(null)
     this.resizeObserver.disconnect()
-    this.driverManager?.dispose()
-    this.controller?.dispose()
-    this.navMesh.dispose()
-    this.stage.dispose()
-    this.characterManager.dispose()
-    this.worldManager.dispose()
+    this.picking?.dispose()
+    this.picking = null
+    this.officeCamera.dispose()
+    for (const robot of this.robots.values()) {
+      robot.agent.release()
+      robot.rig.dispose()
+    }
+    this.robots.clear()
+    this.pendingStates.clear()
+    if (this.office) {
+      this.office.ambient.dispose()
+      this.office.statusLights.dispose()
+      this.office = null
+    }
+    this.disposeLoadedModels()
+    this.lighting.dispose()
     this.engine.dispose()
-    this.options.screenPositions.clear()
   }
 }

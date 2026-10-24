@@ -1,7 +1,10 @@
 import type { SceneManager } from "@the-delegation/scene/scene-manager"
 import { lazy, Suspense, useEffect, useRef, useState } from "react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { createOfficeScene } from "./integration/office-scene"
+import { OFFICE_CAST } from "./data/office-cast"
+import { createOfficeSession, type OfficeSession } from "./integration/office-scene"
+import { useEscapeToOverview } from "./integration/use-escape-to-overview"
+import { AgentPills } from "./interface/agent-pills"
 
 /** Development only: the literal check lets the production build drop the overlay's chunk. */
 const PerformanceOverlay =
@@ -38,20 +41,23 @@ function useSceneStatus(scene: SceneManager | null): SceneStatus {
 }
 
 /**
- * The 3D office, full window. A lost GPU device rebuilds the scene through the same effect that
+ * The 3D office, full window, with the agent pills over it once the scene is ready (Tab between
+ * them to follow a robot, Esc to return to the overview). A lost GPU device rebuilds the scene through the same effect that
  * creates it, so StrictMode's double mount covers recovery too; past the recovery budget the scene
  * reports itself unavailable. The ref is cleared before disposing, so a dispose that throws on a
  * dead context cannot block the rebuild.
  */
 export default function App() {
   const canvasRef = useRef<HTMLDivElement>(null)
-  const sceneRef = useRef<SceneManager | null>(null)
+  const sessionRef = useRef<OfficeSession | null>(null)
   const [scene, setScene] = useState<SceneManager | null>(null)
   const [sceneGeneration, setSceneGeneration] = useState(0)
   const [isSceneLost, setSceneLost] = useState(false)
   const deviceLossTimesRef = useRef<number[]>([])
   const loadStatus = useSceneStatus(scene)
   const sceneStatus: SceneStatus = isSceneLost ? "error" : loadStatus
+  const focusAgent = (agentIndex: number | null) => sessionRef.current?.focusAgent(agentIndex)
+  useEscapeToOverview(() => focusAgent(null))
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new sceneGeneration rebuilds the scene after a lost GPU device
   useEffect(() => {
@@ -65,17 +71,17 @@ export default function App() {
       if (recentLosses.length > MAX_DEVICE_LOSS_RECOVERIES) setSceneLost(true)
       else setSceneGeneration((generation) => generation + 1)
     }
-    if (canvasRef.current && !sceneRef.current) {
-      const createdScene = createOfficeScene(canvasRef.current, onDeviceLost)
-      sceneRef.current = createdScene
-      setScene(createdScene)
+    if (canvasRef.current && !sessionRef.current) {
+      const session = createOfficeSession(canvasRef.current, onDeviceLost)
+      sessionRef.current = session
+      setScene(session.scene)
     }
     return () => {
-      const createdScene = sceneRef.current
-      if (!createdScene) return
-      sceneRef.current = null
+      const session = sessionRef.current
+      if (!session) return
+      sessionRef.current = null
       setScene(null)
-      createdScene.dispose()
+      session.dispose()
     }
   }, [sceneGeneration])
 
@@ -85,6 +91,9 @@ export default function App() {
         <Suspense fallback={null}>
           <PerformanceOverlay />
         </Suspense>
+      )}
+      {sceneStatus === "ready" && (
+        <AgentPills agentIndices={OFFICE_CAST.agentIndices} onSelect={focusAgent} />
       )}
       {sceneStatus === "loading" && (
         <div

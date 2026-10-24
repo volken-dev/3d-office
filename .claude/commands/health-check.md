@@ -1,6 +1,6 @@
 ---
 description: Run the done-gate — typecheck, lint, test, build, clean tree + branch check — and report pass/fail per gate. Never declare done while red.
-argument-hint: "[--fix] [web|api|scene|shared]"
+argument-hint: "[--fix] [web|api|scene|office-sim|shared]"
 allowed-tools: Bash, Read
 ---
 

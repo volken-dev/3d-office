@@ -1,5 +1,5 @@
 ---
-description: Check every API route group is mounted with its contract in @the-delegation/shared, and every character model is registered and built. Read-only; lists gaps.
+description: Check every API route group is mounted with its contract in @the-delegation/shared, and the shipped models match the asset contract. Read-only; lists gaps.
 allowed-tools: Read, Grep, Bash
 ---
 
@@ -7,6 +7,6 @@ Audit registration parity and report any gaps as a checklist. Modify nothing.
 
 1. **API routes** — every route group exported from `apps/api/src/routes/*.ts` must be mounted with `.route(...)` in `apps/api/src/app.ts`. List any exported-but-not-mounted.
 2. **Contracts** — every API route that validates input or returns JSON uses a schema from `@the-delegation/shared`; no route hand-builds an error body instead of going through `errors.ts`.
-3. **Character models** — every entry in `CHARACTER_MODELS` (`packages/scene/src/characters/character-models.ts`) has its source GLB in `packages/scene/assets-src/models/` and its optimised copy in `packages/scene/assets/models/`, and every `modelId` in `apps/web/src/data/office-cast.ts` names a registered model.
+3. **Models and the asset contract** — every file in `SYNCED_FILES` (`packages/scene/scripts/sync-assets.ts`) exists under `packages/scene/assets/`, and nothing else sits in `assets/models/` (the web app copies that folder whole); `asset-contract.json`'s `contractVersion` major equals `SUPPORTED_CONTRACT_MAJOR` (`packages/office-sim/src/asset-contract.ts`); every model the scene loads (`OFFICE_MODEL_PATH`, `ROBOT_MODEL_PATH` in `scene-manager.ts`) is listed in the contract's `files`; `packages/scene/test/assets/asset-contract.test.ts` covers each of those files; and every slot in `apps/web/src/data/office-cast.ts` is within 1 to the contract's `agents.max`, and every state in `apps/web/src/data/agent-states.ts` is one of the contract's agent states. Nothing in the models is hand-edited: they come from agent-office via `bun run assets`.
 
 Output a short table per area; if everything's wired, say so in one line.

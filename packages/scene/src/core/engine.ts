@@ -28,7 +28,8 @@ export class Engine {
 
   /**
    * The canvas is sized by CSS so it stretches immediately while the drawing buffer catches up on
-   * resize. Shadows use the default PCF map: VSM is unreliable with WebGPU node materials.
+   * resize. Shadows use PCF: VSM is unreliable with WebGPU node materials. Neutral tone mapping
+   * matches the agent-office viewer the models are authored against.
    * A lost GPU device (driver reset, GPU switch, sleep) or WebGL context stops the render loop,
    * since nothing can draw on it any more, and is reported so the owner can rebuild the scene.
    * Frame stats, and the GPU timestamp queries behind them, are measured only when the owner
@@ -62,6 +63,9 @@ export class Engine {
     this.renderer.domElement.style.display = "block"
 
     this.renderer.shadowMap.enabled = true
+    this.renderer.shadowMap.type = THREE.PCFShadowMap
+    this.renderer.toneMapping = THREE.NeutralToneMapping
+    this.renderer.toneMappingExposure = 1
 
     container.appendChild(this.renderer.domElement)
     this.timer = new THREE.Timer()
@@ -103,6 +107,11 @@ export class Engine {
     if (nextPixelRatio === this.pixelRatio) return
     this.pixelRatio = nextPixelRatio
     this.renderer.setPixelRatio(this.pixelRatio)
+  }
+
+  /** Tone-mapping exposure: the office reads slightly brighter at night. */
+  public setExposure(exposure: number) {
+    this.renderer.toneMappingExposure = exposure
   }
 
   public onResize(width: number, height: number) {

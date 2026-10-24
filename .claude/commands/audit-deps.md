@@ -6,7 +6,7 @@ allowed-tools: Bash, Read, Grep
 Run a dependency audit across the monorepo and summarise. Don't change anything without my go-ahead.
 
 1. **Banned deps (hard rule)** — ESLint, Prettier, any date library, lodash/underscore, axios. Biome replaces ESLint/Prettier; `Intl` replaces a date library; `fetch` or the typed `hc` client replaces axios.
-2. **Avoidable deps** — scan every `package.json` for packages that duplicate something already in the repo or the platform: a second UI primitive library (shadcn primitives are the house choice), a second 3D or navigation library (we use `three` and recast-navigation). Flag and propose the in-repo replacement.
+2. **Avoidable deps** — scan every `package.json` for packages that duplicate something already in the repo or the platform: a second UI primitive library (shadcn primitives are the house choice), a second 3D library, or a navigation or animation library (we use `three` and its `AnimationMixer`; movement is our own `packages/office-sim`). Flag and propose the in-repo replacement.
 3. **Security** — run `bun audit` and summarise advisories by severity with the upgrade path. Note any `--ignore` added to the audit step in `.github/workflows/ci.yml` and whether its reason still holds.
 4. **Unused / outdated** — list likely-unused deps per package (reason from imports) and `bun outdated` highlights. Be conservative: flag, don't auto-remove.
 5. **Weight** — anything that lands in the web client bundle matters (the main chunk budget is open as AUDIT PERF-03; `three/webgpu` dominates it). Note heavy or eagerly imported packages.
