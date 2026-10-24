@@ -90,7 +90,8 @@ These three govern everything below. When a specific rule is missing, decide by 
     `setTimeOfDay`, `setViewMode`). Never import a store, React or app code into `packages/scene`,
     and never make it decide what an agent state means or when it is night. Rendering lives in the
     scene (`office/`, `robots/`, `camera/`, `core/`); movement lives in `packages/office-sim`,
-    reached through its `Actor` port, and follows agent-office's `viewer/agent-sim.js`.
+    reached through its `Actor` port, and follows agent-office's `viewer/agent-sim.js` (plus the
+    local avoidance the contract leaves to the product).
 17. **Per-frame data never goes through React state or a store.** Write it to a sink the render
     loop owns (`publishFrameStats`, throttled) and let consumers read it without re-rendering.
     Status changes reach the UI as events (`onAgentStatus`), not per frame.

@@ -1,4 +1,6 @@
+import type { AgentId } from "./agent"
 import type { AssetContract } from "./asset-contract"
+import type { RobotBody } from "./avoidance"
 import type { FloorPoint } from "./floor-point"
 import type { AgentStates, OfficeExtras, OfficePoi } from "./office-extras"
 import { ownEntry } from "./own-entry"
@@ -22,6 +24,8 @@ export interface OfficeWorld {
   readonly poiNames: readonly string[]
   /** POIs held by an agent, or reserved by anything else (for example a hand-placed robot). */
   readonly taken: Set<string>
+  /** Where every robot in the office is and which way it walks, published by each agent every frame. */
+  readonly bodies: Map<AgentId, RobotBody>
   /** The clips for entering and leaving a POI, from the contract's transitions. */
   transitionFor(poi: string): PoiTransition
   /** Where a robot walks to before entering a POI: its approach point, or the POI itself. */
@@ -72,6 +76,7 @@ export function createOfficeWorld({
     pois: poisByName,
     poiNames: pois.map((poi) => poi.name),
     taken: new Set(),
+    bodies: new Map(),
     transitionFor(poi) {
       const kind = poiKind(poi)
       return ownEntry(byPoiKind, kind) ?? ownEntry(byPoiPose, poseOf(kind)) ?? {}

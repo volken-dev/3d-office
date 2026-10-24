@@ -81,7 +81,9 @@ packages/
 - **`packages/office-sim` is framework-free too**: zod only, no three.js, no DOM. It decides where
   robots go and which clips they play, and talks to rendering through its `Actor` port
   (`setPose`, `play`, `duration`), so it can run in a worker or behind Hono later. Movement
-  changes go there, mirroring `viewer/agent-sim.js`, not into the scene.
+  changes go there, mirroring `viewer/agent-sim.js`, not into the scene. The one addition to
+  the reference is local avoidance (`avoidance.ts`), which the agent-office contract leaves to
+  the product.
 - **The intents are contract-shaped**: `setCast`, `setAgentState` (a contract state name, checked
   against the office's `agentStates`), `setTimeOfDay` and `setViewMode`. They replaced the old
   agent-facing intents (desk, boardroom, chat, team) on purpose, with Isaac's agreement; a future

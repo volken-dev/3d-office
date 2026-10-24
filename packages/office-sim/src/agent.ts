@@ -1,3 +1,4 @@
+import { type RobotBody, steeringFor } from "./avoidance"
 import type { FloorPoint } from "./floor-point"
 import type { OfficeWorld } from "./office-world"
 import { findPath } from "./path-finding"
@@ -20,6 +21,21 @@ export const RETRY_INTERVAL = 0.5
 
 /** Seconds assumed for a one-shot clip the actor reports no length for. */
 export const FALLBACK_CLIP_DURATION = 0.5
+
+/** Metres from the end of its walk within which a robot stops steering, so it always reaches its approach point. */
+export const ARRIVAL_STEERING_RADIUS = 0.7
+
+/** Seconds over which a steering robot must make `STUCK_DISTANCE` of headway, or it stops steering for a while. */
+export const STUCK_SECONDS = 1.5
+
+/** Metres a steering robot must cover in `STUCK_SECONDS` to count as making headway. */
+export const STUCK_DISTANCE = 0.25
+
+/** Metres from an intermediate corner of its path at which a robot that can see the next corner moves on. */
+export const CORNER_REACH = 0.2
+
+/** Seconds a stuck robot walks without steering, so two robots can never block each other for good. */
+export const UNSTUCK_SECONDS = 2
 
 /** How a clip is started: `once` holds the last frame instead of looping; `fade` is the crossfade in seconds. */
 export interface PlayOptions {
@@ -101,6 +117,11 @@ export class OfficeAgent {
   private atPoi = false
   private steps: PlannedStep[] = []
   private activeStep: ActiveStep | null = null
+  private readonly body: RobotBody = { x: 0, z: 0, headingX: 0, headingZ: 0, isWalking: false }
+  private headwaySeconds = 0
+  private headwayFromX = 0
+  private headwayFromZ = 0
+  private unstuckSeconds = 0
 
   /**
    * @param desk the agent's slot (pod N, bay N) or, while queued, its queue position: what `own`
@@ -238,6 +259,12 @@ export class OfficeAgent {
     this.leave()
   }
 
+  /** Takes the robot out of the office: frees its POIs and stops others steering round it. */
+  remove(): void {
+    this.release()
+    this.world.bodies.delete(this.id)
+  }
+
   /** Advances the agent by a frame and poses its actor. */
   update(deltaSeconds: number): void {
     if (this.retryIn !== null) {
@@ -272,7 +299,20 @@ export class OfficeAgent {
         }
       }
     }
+    this.publishBody()
     this.actor.setPose(this.currentX, this.currentZ, this.currentYaw)
+  }
+
+  private publishBody(): void {
+    const body = this.body
+    body.x = this.currentX
+    body.z = this.currentZ
+    body.isWalking = this.activeStep?.plan.kind === "walk"
+    if (!body.isWalking) {
+      body.headingX = 0
+      body.headingZ = 0
+    }
+    this.world.bodies.set(this.id, body)
   }
 
   private isInterruptible(): boolean {
@@ -380,6 +420,9 @@ export class OfficeAgent {
           plan.to,
         ]
         this.currentPath = step.path
+        this.headwaySeconds = 0
+        this.headwayFromX = this.currentX
+        this.headwayFromZ = this.currentZ
         this.play("Walk", { fade })
         return
       case "turn":
@@ -409,7 +452,8 @@ export class OfficeAgent {
   }
 
   private walk(step: ActiveStep, deltaSeconds: number): void {
-    let remaining = WALK_SPEED * deltaSeconds
+    const speedScale = this.steer(step, deltaSeconds)
+    let remaining = WALK_SPEED * deltaSeconds * speedScale
     while (remaining > 0 && step.segment < step.path.length) {
       const waypoint = step.path[step.segment]
       if (!waypoint) break
@@ -417,6 +461,15 @@ export class OfficeAgent {
       const towardX = waypointX - this.currentX
       const towardZ = waypointZ - this.currentZ
       const distance = Math.hypot(towardX, towardZ)
+      const nextWaypoint = step.path[step.segment + 1]
+      if (
+        nextWaypoint &&
+        distance < CORNER_REACH &&
+        this.world.grid.hasClearLine([this.currentX, this.currentZ], nextWaypoint)
+      ) {
+        step.segment++
+        continue
+      }
       if (distance > SAME_POINT_DISTANCE) {
         const heading = Math.atan2(towardX, towardZ)
         this.currentYaw +=
@@ -437,5 +490,63 @@ export class OfficeAgent {
       if (this.pending !== null) this.replan()
       else this.next()
     }
+  }
+
+  /**
+   * Publishes the walker's heading toward its next waypoint and applies the local avoidance:
+   * returns the fraction of walking speed to use and steps the robot sideways where the walk grid
+   * allows it and it can still see its waypoint. No steering near the end of the walk, or for a
+   * while after `STUCK_SECONDS` without `STUCK_DISTANCE` of headway (held up, or circling a corner
+   * beside a standing robot), so every walk finishes.
+   */
+  private steer(step: ActiveStep, deltaSeconds: number): number {
+    const waypoint = step.path[step.segment]
+    const destination = step.path[step.path.length - 1]
+    if (!waypoint || !destination) return 1
+    const towardX = waypoint[0] - this.currentX
+    const towardZ = waypoint[1] - this.currentZ
+    const towardLength = Math.hypot(towardX, towardZ)
+    if (towardLength <= SAME_POINT_DISTANCE) return 1
+    this.body.headingX = towardX / towardLength
+    this.body.headingZ = towardZ / towardLength
+    this.body.x = this.currentX
+    this.body.z = this.currentZ
+
+    if (this.unstuckSeconds > 0) {
+      this.unstuckSeconds -= deltaSeconds
+      return 1
+    }
+    const destinationDistance = Math.hypot(
+      destination[0] - this.currentX,
+      destination[1] - this.currentZ,
+    )
+    if (destinationDistance < ARRIVAL_STEERING_RADIUS) return 1
+
+    const grid = this.world.grid
+    const steering = steeringFor(this.body, this.world.bodies.values(), grid)
+    const sideX = this.currentX + steering.sideX * deltaSeconds
+    const sideZ = this.currentZ + steering.sideZ * deltaSeconds
+    const hasSidestep = steering.sideX !== 0 || steering.sideZ !== 0
+    if (
+      hasSidestep &&
+      grid.isWalkable(sideX, sideZ) &&
+      grid.hasClearLine([sideX, sideZ], waypoint)
+    ) {
+      this.currentX = sideX
+      this.currentZ = sideZ
+    }
+
+    this.headwaySeconds += deltaSeconds
+    if (this.headwaySeconds >= STUCK_SECONDS) {
+      const headway = Math.hypot(
+        this.currentX - this.headwayFromX,
+        this.currentZ - this.headwayFromZ,
+      )
+      if (headway < STUCK_DISTANCE) this.unstuckSeconds = UNSTUCK_SECONDS
+      this.headwaySeconds = 0
+      this.headwayFromX = this.currentX
+      this.headwayFromZ = this.currentZ
+    }
+    return steering.speedScale
   }
 }
