@@ -10,8 +10,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p test",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "test": "bun test",
-    "assets": "bun scripts/sync-assets.ts"
+    "test": "bun test"
   },
   "dependencies": {
     "@the-delegation/office-sim": "workspace:*",

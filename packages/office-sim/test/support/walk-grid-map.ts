@@ -2,7 +2,7 @@ import type { NavGrid } from "../../src/office-extras"
 
 /**
  * Builds a nav grid from a text map, one string per row (row 0 first), `.` walkable and `#`
- * blocked, packed and encoded the way agent-office ships it.
+ * blocked, packed and encoded the way the office generator ships it.
  */
 export function navFromMap(
   map: readonly string[],
