@@ -19,6 +19,15 @@ export const LIVE_DEMO_STATE_WEIGHTS = {
 export const LIVE_DEMO_MIN_HOLD_SECONDS = 8
 export const LIVE_DEMO_MAX_HOLD_SECONDS = 20
 
+/**
+ * Seconds between robots walking in. The office's spawn points are closer together than a robot
+ * is wide, so robots come in one at a time and each has left the door before the next arrives.
+ */
+export const LIVE_DEMO_ARRIVAL_INTERVAL_SECONDS = 4
+
+/** Seconds a robot waves at the door after arriving before it heads for its first state. */
+export const LIVE_DEMO_ARRIVE_HOLD_SECONDS = 3
+
 const DEFAULT_TICK_INTERVAL_MS = 1000
 
 type DemoState = keyof typeof LIVE_DEMO_STATE_WEIGHTS
@@ -52,7 +61,8 @@ interface LiveDemoOptions {
 
 interface AgentSchedule {
   agentIndex: number
-  state: AgentState
+  /** Null until the robot has arrived. */
+  state: AgentState | null
   nextChangeAtSeconds: number
 }
 
@@ -63,7 +73,7 @@ function randomHoldSeconds(random: () => number): number {
   )
 }
 
-function pickNextState(currentState: AgentState, random: () => number): DemoState {
+function pickNextState(currentState: AgentState | null, random: () => number): DemoState {
   const candidates = DEMO_STATES.filter((state) => state !== currentState)
   const totalWeight = candidates.reduce((sum, state) => sum + LIVE_DEMO_STATE_WEIGHTS[state], 0)
   let remaining = random() * totalWeight
@@ -75,12 +85,14 @@ function pickNextState(currentState: AgentState, random: () => number): DemoStat
 }
 
 /**
- * A pure scheduler for the office's demo: every robot arrives on the first update, then each one,
- * on its own random clock, moves to a weighted pick of the other demo states every 8 to 20 s. It
- * keeps no timers, so tests drive it with any clock; a real agent product replaces it without
- * touching the scene. A late update (a throttled background tab) changes each robot at most once
- * and schedules from the missed time, or from now when a whole hold was missed, so a returning tab
- * gets no burst of changes.
+ * A pure scheduler for the office's demo. Robots arrive one at a time, in cast order, every
+ * `LIVE_DEMO_ARRIVAL_INTERVAL_SECONDS` from the first update; each waves for
+ * `LIVE_DEMO_ARRIVE_HOLD_SECONDS`, then on its own random clock moves to a weighted pick of the
+ * other demo states every 8 to 20 s. An `arrive` change is the host's cue to add the robot to the
+ * scene. It keeps no timers, so tests drive it with any clock; a real agent product replaces it
+ * without touching the scene. A late update (a throttled background tab) brings in at most one
+ * robot and changes each robot at most once, scheduling from the missed time, or from now when a
+ * whole hold was missed, so a returning tab gets no burst of changes or a crowd at the door.
  */
 export function createLiveDemo({ agentIndices, random }: LiveDemoOptions): LiveDemo {
   let schedules: AgentSchedule[] | null = null
@@ -88,16 +100,27 @@ export function createLiveDemo({ agentIndices, random }: LiveDemoOptions): LiveD
   return {
     update(elapsedSeconds) {
       if (!schedules) {
-        schedules = agentIndices.map((agentIndex) => ({
+        schedules = agentIndices.map((agentIndex, castOrder) => ({
           agentIndex,
-          state: "arrive",
-          nextChangeAtSeconds: elapsedSeconds + randomHoldSeconds(random),
+          state: null,
+          nextChangeAtSeconds: elapsedSeconds + castOrder * LIVE_DEMO_ARRIVAL_INTERVAL_SECONDS,
         }))
-        return schedules.map(({ agentIndex, state }) => ({ agentIndex, state }))
       }
       const changes: AgentStateChange[] = []
+      let hasArrivedThisUpdate = false
       for (const schedule of schedules) {
         if (elapsedSeconds < schedule.nextChangeAtSeconds) continue
+        if (schedule.state === null) {
+          if (hasArrivedThisUpdate) {
+            schedule.nextChangeAtSeconds = elapsedSeconds + LIVE_DEMO_ARRIVAL_INTERVAL_SECONDS
+            continue
+          }
+          hasArrivedThisUpdate = true
+          schedule.state = "arrive"
+          schedule.nextChangeAtSeconds = elapsedSeconds + LIVE_DEMO_ARRIVE_HOLD_SECONDS
+          changes.push({ agentIndex: schedule.agentIndex, state: schedule.state })
+          continue
+        }
         schedule.state = pickNextState(schedule.state, random)
         const nextFromDue = schedule.nextChangeAtSeconds + randomHoldSeconds(random)
         schedule.nextChangeAtSeconds =
@@ -117,7 +140,7 @@ interface StartLiveDemoOptions {
 }
 
 /**
- * Runs the live demo on a timer: the arrivals are reported straight away, then the scheduler is
+ * Runs the live demo on a timer: the first robot arrives straight away, then the scheduler is
  * ticked every `intervalMs` (1 s by default). Returns the function that stops it.
  */
 export function startLiveDemo({

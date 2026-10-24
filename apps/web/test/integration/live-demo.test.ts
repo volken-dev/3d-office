@@ -3,6 +3,8 @@ import type { AgentState } from "../../src/data/agent-states"
 import {
   type AgentStateChange,
   createLiveDemo,
+  LIVE_DEMO_ARRIVAL_INTERVAL_SECONDS,
+  LIVE_DEMO_ARRIVE_HOLD_SECONDS,
   LIVE_DEMO_MAX_HOLD_SECONDS,
   LIVE_DEMO_MIN_HOLD_SECONDS,
 } from "../../src/integration/live-demo"
@@ -40,12 +42,24 @@ function changesFor(changes: TimedChange[], agentIndex: number): TimedChange[] {
 }
 
 describe("createLiveDemo", () => {
-  test("every agent arrives on the first update", () => {
+  test("agents arrive one at a time, in cast order, an arrival interval apart", () => {
     const demo = createLiveDemo({ agentIndices: AGENT_INDICES, random: seededRandom(1) })
-    expect(demo.update(0)).toEqual(
-      AGENT_INDICES.map((agentIndex) => ({ agentIndex, state: "arrive" })),
-    )
+    expect(demo.update(0)).toEqual([{ agentIndex: 1, state: "arrive" }])
     expect(demo.update(1)).toEqual([])
+    const arrivals = runDemo(1, 30).filter((change) => change.state === "arrive")
+    expect(arrivals.map((change) => change.agentIndex)).toEqual(AGENT_INDICES)
+    expect(arrivals.map((change) => change.atSeconds)).toEqual(
+      AGENT_INDICES.map((_, castOrder) => castOrder * LIVE_DEMO_ARRIVAL_INTERVAL_SECONDS),
+    )
+  })
+
+  test("each agent waves at the door before its first demo state", () => {
+    const changes = runDemo(2, 60)
+    for (const agentIndex of AGENT_INDICES) {
+      const [arrival, firstState] = changesFor(changes, agentIndex)
+      if (!arrival || !firstState) throw new Error("missing change")
+      expect(firstState.atSeconds - arrival.atSeconds).toBe(LIVE_DEMO_ARRIVE_HOLD_SECONDS)
+    }
   })
 
   test("each agent holds a state for 8 to 20 s", () => {
@@ -53,7 +67,7 @@ describe("createLiveDemo", () => {
     for (const agentIndex of AGENT_INDICES) {
       const agentChanges = changesFor(changes, agentIndex)
       expect(agentChanges.length).toBeGreaterThan(20)
-      for (let changeIndex = 1; changeIndex < agentChanges.length; changeIndex++) {
+      for (let changeIndex = 2; changeIndex < agentChanges.length; changeIndex++) {
         const previous = agentChanges[changeIndex - 1]
         const current = agentChanges[changeIndex]
         if (!previous || !current) throw new Error("missing change")
@@ -102,11 +116,18 @@ describe("createLiveDemo", () => {
     expect(runDemo(42, 300)).not.toEqual(runDemo(43, 300))
   })
 
-  test("a late update changes each agent once, without a burst", () => {
+  test("a late update changes each arrived agent once and brings in one more, without a burst", () => {
     const demo = createLiveDemo({ agentIndices: AGENT_INDICES, random: seededRandom(9) })
     demo.update(0)
     const lateChanges = demo.update(600)
-    expect(lateChanges).toHaveLength(AGENT_INDICES.length)
-    expect(demo.update(600 + LIVE_DEMO_MIN_HOLD_SECONDS - 0.01)).toEqual([])
+    expect(lateChanges).toEqual([
+      { agentIndex: 1, state: expect.any(String) },
+      { agentIndex: 2, state: "arrive" },
+    ])
+    expect(demo.update(600 + 1)).toEqual([])
+    expect(demo.update(600 + LIVE_DEMO_ARRIVAL_INTERVAL_SECONDS)).toContainEqual({
+      agentIndex: 3,
+      state: "arrive",
+    })
   })
 })

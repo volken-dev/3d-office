@@ -6,7 +6,7 @@
 
 # A 3D office in the browser
 
-The agent office rendered with Three.js WebGPU (falling back to WebGL2): a room of pods, docking bays, a conveyor and racks, and five robots working in it. Each robot is an agent slot. The robots walk in from the door, then a live demo gives every robot a new agent state every 8 to 20 seconds (working, shipping, waiting for input, idle, paused or rate limited, error, done); the robot walks to a place for that state, sits down or plugs in, and its body and its pod or bay light take the state's status colour. The office follows your local time: day from 07:00, night with lamps and a night sky from 19:00.
+The agent office rendered with Three.js WebGPU (falling back to WebGL2): a room of pods, docking bays, a conveyor and racks, and five robots working in it. Each robot is an agent slot. The robots walk in from the door one at a time, then a live demo gives every robot a new agent state every 8 to 20 seconds (working, shipping, waiting for input, idle, paused or rate limited, error, done); the robot walks to a place for that state, sits down or plugs in, and its body and its pod or bay light take the state's status colour. The office follows your local time: day from 07:00, night with lamps and a night sky from 19:00.
 
 Drag to pan, right-drag or shift-drag to rotate, pinch or scroll to zoom. A row of agent pills sits at the top of the screen, one per robot with a dot in its status colour: Tab moves between them, and focusing or clicking a pill (or clicking a robot) makes the camera follow that robot. Esc, or a click on empty floor, returns to the overview. There is no player character.
 
@@ -52,7 +52,7 @@ What the code reads from the office:
 - **Scene extras** carry the walk grid (`nav`, a base64 bit grid with obstacles already inflated), approach points (`approach`), the agent states and their POIs (`agentStates`), the status colours (`statusColors`) and the number of agent slots (`agents`). They are parsed with zod at load, and a mismatch fails the load naming the field.
 - **Day and night** nodes are named `day-only-*`, `night-only-*` and `night-light-*`; the office's `Ambient` clip loops.
 
-`packages/office-sim` is a TypeScript port of agent-office's reference movement, `viewer/agent-sim.js`: A* over the walk grid with string pulling, POI reservation so no two robots hold one place, enter and exit clips, and the lobby `Roster`. It talks to the renderer through a small `Actor` port (`setPose`, `play`, `duration`), so it could run in a worker or behind the API later.
+`packages/office-sim` is a TypeScript port of agent-office's reference movement, `viewer/agent-sim.js`: A* over the walk grid with string pulling, POI reservation so no two robots hold one place, enter and exit clips, and the lobby `Roster`. On top of the reference it adds light local avoidance (`avoidance.ts`): walkers follow at a gap, pass oncoming robots on their right, give way to robots crossing from the right and step round robots standing in the way. It talks to the renderer through a small `Actor` port (`setPose`, `play`, `duration`), so it could run in a worker or behind the API later.
 
 ## Backend
 

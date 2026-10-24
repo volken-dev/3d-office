@@ -16,10 +16,10 @@ export interface OfficeSession {
 }
 
 /**
- * Builds the office scene in `container` with the fixed cast and connects it to the app: the
- * local clock sets day or night from the start, the live demo gives the robots their states once
- * the scene is ready (so they visibly walk in), and every accepted state reaches the agent store
- * the pills read. Clicking a robot selects and follows it; clicking empty floor returns to the
+ * Builds the office scene in `container` and connects it to the app: the local clock sets day or
+ * night from the start, and once the scene is ready the live demo brings the robots in one at a
+ * time (each joins the cast as it arrives, so they never crowd the door) and gives them their
+ * states. Every accepted state reaches the agent store the pills read. Clicking a robot selects and follows it; clicking empty floor returns to the
  * overview. `onDeviceLost` fires once the GPU device is gone and the owner must rebuild the scene.
  */
 export function createOfficeSession(
@@ -29,6 +29,7 @@ export function createOfficeSession(
   resetOfficeAgents(OFFICE_CAST.agentIndices)
   const stops: (() => void)[] = []
   let isDisposed = false
+  const arrivedAgentIndices = new Set<number>()
 
   const focusAgent = (agentIndex: number | null) => {
     selectAgent(agentIndex)
@@ -37,7 +38,7 @@ export function createOfficeSession(
 
   const scene: SceneManager = new SceneManager(
     container,
-    OFFICE_CAST,
+    { agentIndices: [] },
     {
       onAgentClick: focusAgent,
       onAgentStatus: (agentIndex, state, statusColor) => {
@@ -56,8 +57,16 @@ export function createOfficeSession(
       stops.push(
         startLiveDemo({
           agentIndices: OFFICE_CAST.agentIndices,
-          onStateChange: ({ agentIndex, state }) =>
-            scene.apply({ type: "setAgentState", agentIndex, state }),
+          onStateChange: ({ agentIndex, state }) => {
+            if (!arrivedAgentIndices.has(agentIndex)) {
+              arrivedAgentIndices.add(agentIndex)
+              const agentIndices = OFFICE_CAST.agentIndices.filter((slot) =>
+                arrivedAgentIndices.has(slot),
+              )
+              scene.apply({ type: "setCast", cast: { agentIndices } })
+            }
+            scene.apply({ type: "setAgentState", agentIndex, state })
+          },
         }),
       )
     },

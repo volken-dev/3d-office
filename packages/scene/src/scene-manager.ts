@@ -231,7 +231,7 @@ export class SceneManager {
     const slots = new Set(this.cast.agentIndices.filter((slot) => this.isValidSlot(office, slot)))
     for (const [agentIndex, robot] of this.robots) {
       if (slots.has(agentIndex)) continue
-      robot.agent.release()
+      robot.agent.remove()
       robot.rig.dispose()
       office.statusLights.setSlotColor(agentIndex, null)
       this.robots.delete(agentIndex)
@@ -278,15 +278,28 @@ export class SceneManager {
   /**
    * Compiles every shader for the other time of day, then for the current one, before the first
    * frame. The night lights change the set of lights every material is built for, so switching
-   * later would otherwise stall on a recompile.
+   * later would otherwise stall on a recompile. A stand-in robot is compiled too, so robots that
+   * join the cast later (arriving one by one) appear without a stall.
    */
   private async compileForEveryTimeOfDay(): Promise<void> {
-    const otherTimeOfDay: TimeOfDay = this.timeOfDay === "day" ? "night" : "day"
-    this.applyTimeOfDay(otherTimeOfDay)
-    await this.engine.compile(this.scene, this.officeCamera.camera)
-    if (this.isDisposed) return
-    this.applyTimeOfDay()
-    await this.engine.compile(this.scene, this.officeCamera.camera)
+    const office = this.office
+    const standInRobot = office
+      ? new RobotRig({
+          scene: office.robotTemplate.scene,
+          animations: office.robotTemplate.animations,
+        })
+      : null
+    if (standInRobot) this.scene.add(standInRobot.root)
+    try {
+      const otherTimeOfDay: TimeOfDay = this.timeOfDay === "day" ? "night" : "day"
+      this.applyTimeOfDay(otherTimeOfDay)
+      await this.engine.compile(this.scene, this.officeCamera.camera)
+      if (this.isDisposed) return
+      this.applyTimeOfDay()
+      await this.engine.compile(this.scene, this.officeCamera.camera)
+    } finally {
+      standInRobot?.dispose()
+    }
   }
 
   /** Applies a time of day (the current one by default) to the lights, background, exposure and office. */
@@ -343,7 +356,7 @@ export class SceneManager {
     this.picking = null
     this.officeCamera.dispose()
     for (const robot of this.robots.values()) {
-      robot.agent.release()
+      robot.agent.remove()
       robot.rig.dispose()
     }
     this.robots.clear()
