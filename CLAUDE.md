@@ -5,6 +5,11 @@
 > (`gh issue list`); `AUDIT.md` is the record of the baseline audit and what the refactors fixed —
 > read both before proposing work, because the plan is the thing that drifts.
 >
+> **The product this becomes** is described in `.claude/PROJECT.md` (the Agentic Command Center
+> product doc). This repo is its "Agent office" slice, a post-MVP vertical there; read that
+> section before shaping the scene's direction, and note where the repo already differs on purpose
+> (the framework-free scene below, not React Three Fiber).
+>
 > Imported from Volken's `.claude/` on 2026-10-22 and adapted; what was left behind is in
 > `.claude/notes/volken-import.md`. These docs are meant to be curated over time: when a rule
 > turns out wrong or missing, say so and propose the edit.
