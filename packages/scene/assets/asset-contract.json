@@ -1,7 +1,8 @@
 {
- "contractVersion": "5.0.0",
- "about": "What the product may rely on in dist/*.glb. tools/check-contract.mjs verifies every built file against this; `npm run build` fails if one doesn't match. Changing anything here is a breaking or additive change for the product: bump contractVersion (major = removed/renamed, minor = added).",
+ "contractVersion": "5.0.1",
+ "about": "What the scene and the movement code may rely on in the shipped models. packages/office-assets builds them and its check (bun run models:check, and its contract test in CI) verifies every built file against this; the build fails if one doesn't match. Changing anything here is a breaking or additive change for the product: bump contractVersion (major = removed/renamed, minor = added, patch = notes only).",
  "changelog": {
+  "5.0.1": "Notes only: the models are now generated in 3d-office's packages/office-assets (agent-office is retired), so the notes point there and at office-sim instead of agent-office's viewer and tools.",
   "5.0.0": "Breaking: the framed print in the pod area is gone, and with it node static-art, material art and scene extras artAtlas. Night lights renamed to the areas they light now: reading -> meeting-room, kitchen -> maintenance-bar, lounge -> concourse. Added: the agent board is live: its own node agent-board + material agent_board (draw rows into its emissive map; scene extras agentBoard gives size and pixels). robot.glb / robot-lite.glb: tool-icon joints icon_terminal, icon_search, icon_edit, icon_web on the head, resting at scale 0; the product scales the current tool's joint to 1 (no clip drives them). New file minibot.glb: a sub-agent that trails its parent agent (clips Hover, Fly, Work, Pop_In, Pop_Out; reference logic Minibot in viewer/agent-sim.js). The lobby queue spots are gone: POI kind queue removed; queued agents wait on poi-stand-entry-<queue position> (assign \"position\"), the lobby's standing spots, 1 = nearest the door.",
   "4.6.0": "Queueing. The office seats agents.max agents (pod N, docking bay N, status light N = slot N). Sessions beyond that are queued: new agent state queued (yellow) waits at new POI kind queue 1..6 in the lobby (poi-queue-1 is the front, spots face into the office), then stand-entry overflow spots. Slot assign \"position\" = poi-<kind>-<queue position>. Reference logic: Roster in viewer/agent-sim.js (sessions -> slots 1..max, FIFO queue, the queue head takes a freed slot) and Agent.setDesk (re-target as the queue moves up).",
   "4.5.0": "Desks are work pods: one continuous console per row, curved screen, cockpit seat with a data umbilical, frosted wings, station plate 01-10, and a status_glow ring on the floor round each seat (desk N's ring samples texel N-1 like its strip, so the product needs no change). New material frosted (transparent, in static-glass). The lobby by the door: hang-out seat rows (sit_idle 7-8 moved there), wayfinding totem, showcase, agent board (screens atlas entry departures); a painted concourse from the door to the dock. POI names, kinds and ids unchanged.",
@@ -34,7 +35,7 @@
  },
  "agents": {
   "max": 10,
-  "note": "Office capacity. Desks 1..max and charging bays 1..max exist, status_colors has a texel per desk, and every agent state can hold max agents at once (overflow standing spots included). To change it: set agents.max in office/layout.json (desk_grid emits the desks), update this value, rebuild. If the desk grid doesn't fit, the build says so."
+  "note": "Office capacity. Desks 1..max and charging bays 1..max exist, status_colors has a texel per desk, and every agent state can hold max agents at once (overflow standing spots included). To change it: set agents.max in packages/office-assets/src/office/office-layout.json (desk_grid emits the desks), update this value, rebuild. If the desk grid doesn't fit, the build says so."
  },
  "poses": {
   "note": "Every clip and POI kind is seated or standing. An agent state may only pair a POI with a clip of the same pose.",
@@ -270,7 +271,7 @@
     "Pop_Out"
    ],
    "clipsNote": "loops: Hover (idle beside its parent), Fly (moving), Work (parent working: leans in and nods). One-shots: Pop_In (spawn: scale 0 -> 1 with a little overshoot), Pop_Out (dismiss: ends at scale 0, then remove it). Every clip keys body translation, rotation and scale, so crossfades never leave it half-scaled.",
-   "subAgentsNote": "one minibot per running sub-agent of an agent (Claude Code Task / sub-agents), shown while it runs. Reference logic: Minibot in viewer/agent-sim.js: it follows its parent's own path (a breadcrumb trail, so it goes round walls the parent went round) and hovers at a spot beside the parent once the parent has settled (MINIBOT_SPOTS, up to 3; show any beyond that as a count). It flies, so it doesn't use the walk grid or hold POIs.",
+   "subAgentsNote": "one minibot per running sub-agent of an agent (Claude Code Task / sub-agents), shown while it runs. Intended behaviour (office-sim has no minibot yet): it follows its parent's own path (a breadcrumb trail, so it goes round walls the parent went round) and hovers at a spot beside the parent once the parent has settled (MINIBOT_SPOTS, up to 3; show any beyond that as a count). It flies, so it doesn't use the walk grid or hold POIs.",
    "budget": {
     "maxTriangles": 3000,
     "maxDrawCalls": 6,
@@ -376,7 +377,7 @@
     "frosted",
     "agent_board"
    ],
-   "materialsNote": "status_glow (work pod N's front strip + floor ring, charging bay N's rack strip + header + floor ring; emissive) takes its colour from texture status_colors (scene extras statusColors): show agent N's status by writing texel N-1, e.g. swap in a W x 1 DataTexture (nearest filtering, sRGB) as status_glow's map and emissiveMap; texels with no agent use statusColors.off. lamp_glow: emissive ~off by day. palette / screens: merged flat-colour and monitor (emissive) materials, see scene extras palette / screenAtlas. agent_board: the agent board on the lobby's north wall (node agent-board, one quad); its emissive map is a baked sample: draw the live board (agents, what they're doing, where) into a canvas of agentBoard.pixels and swap it in, see agentBoard and the viewer's drawAgentBoard().",
+   "materialsNote": "status_glow (work pod N's front strip + floor ring, charging bay N's rack strip + header + floor ring; emissive) takes its colour from texture status_colors (scene extras statusColors): show agent N's status by writing texel N-1, e.g. swap in a W x 1 DataTexture (nearest filtering, sRGB) as status_glow's map and emissiveMap; texels with no agent use statusColors.off. lamp_glow: emissive ~off by day. palette / screens: merged flat-colour and monitor (emissive) materials, see scene extras palette / screenAtlas. agent_board: the agent board on the lobby's north wall (node agent-board, one quad); its emissive map is a baked sample: draw the live board (agents, what they're doing, where) into a canvas of agentBoard.pixels and swap it in, see agentBoard.",
    "sceneExtras": [
     "conventions",
     "agents",
@@ -407,7 +408,7 @@
     "arrive",
     "queued"
    ],
-   "agentStatesNote": "Every POI pattern matches at least one POI, every clip exists in robot.glb with the POI's pose, every state holds agents.max agents at once, and every state's color is a statusColors key. queued is for sessions beyond agents.max: agent slot N (pod N, bay N, status light N) belongs to one session at a time; the rest wait in the lobby queue in arrival order and the head takes the next freed slot (see Roster in viewer/agent-sim.js). The queued slot uses assign \"position\": a queued agent's spot is poi-stand-entry-<its queue position> (1 = nearest the door); show any beyond the last spot as a count.",
+   "agentStatesNote": "Every POI pattern matches at least one POI, every clip exists in robot.glb with the POI's pose, every state holds agents.max agents at once, and every state's color is a statusColors key. queued is for sessions beyond agents.max: agent slot N (pod N, bay N, status light N) belongs to one session at a time; the rest wait in the lobby queue in arrival order and the head takes the next freed slot (see Roster in packages/office-sim). The queued slot uses assign \"position\": a queued agent's spot is poi-stand-entry-<its queue position> (1 = nearest the door); show any beyond the last spot as a count.",
    "budget": {
     "maxTriangles": 80000,
     "maxDrawCalls": 40,

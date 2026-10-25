@@ -31,7 +31,8 @@ This is a [Turborepo](https://turborepo.com) monorepo using Bun workspaces:
 |---|---|
 | `apps/web` | Next.js app (static export): the office in a full-window canvas |
 | `apps/api` | Minimal Hono API: a health route |
-| `packages/scene` | The 3D office: renderer, office and robots, camera, plus the synced models and asset contract |
+| `packages/scene` | The 3D office: renderer, office and robots, camera, plus the shipped models and asset contract |
+| `packages/office-assets` | Where the models come from: the robot and office generators, the office layout, compression and the contract checker. Build-time only |
 | `packages/office-sim` | How robots move: walk grid, A* paths, POI reservation, agent states. No three.js, no DOM (zod only) |
 | `packages/shared` | API contract schemas (health response, error envelope) |
 
@@ -39,12 +40,12 @@ Common tasks run from the repo root through Turborepo: `bun dev`, `bun run build
 
 ### Assets
 
-The office and the robot are not edited here. They are generated from code in the separate agent-office project (`~/Projects/agent-office`), against a versioned asset contract, and this repo ships its build output byte for byte:
+The office and the robot are never edited by hand. They are generated from code in `packages/office-assets` (see its README for the world conventions and robot details), against a versioned asset contract:
 
 - `packages/scene/assets/models/office.glb` and `robot.glb`, already Meshopt-compressed (`EXT_meshopt_compression`, decoded in the browser by three's `MeshoptDecoder`) with WebP textures.
 - `packages/scene/assets/asset-contract.json`: the contract (agent states, POI kinds, enter and exit clips per POI, status colours, the files and what each must contain).
 
-To update them, build agent-office, then run `bun run assets` in `packages/scene`. It copies those three files from agent-office's `dist/` (path from the first argument or `AGENT_OFFICE_DIST`, default `../../../agent-office/dist`), prints which changed, and refuses a contract whose major version differs from the one the code supports, since a major bump renames or removes something the scene relies on. The web app copies the models into `apps/web/public/models/` (gitignored) before every dev and build. `packages/scene/test/assets/asset-contract.test.ts` checks the shipped models against the contract (nodes, clips, materials, morph targets, POIs, scene extras).
+To change them, edit a generator or the office layout and run `bun run models` in `packages/office-assets`: it builds the procedural textures, the robot (plus robot-lite and the minibot, built but not loaded yet), the office, compresses them into `packages/scene/assets/models`, checks them against the contract and runs the movement test. The robot build needs the source rig at `packages/office-assets/rig/character-rig.glb`, a personal-use asset kept out of git; nothing else does. The scene refuses a contract whose major version differs from the one the code supports, since a major bump renames or removes something it relies on. The web app copies the models into `apps/web/public/models/` (gitignored) before every dev and build. `packages/scene/test/assets/asset-contract.test.ts` checks the shipped models against the contract (nodes, clips, materials, morph targets, POIs, scene extras).
 
 What the code reads from the office:
 
@@ -52,7 +53,7 @@ What the code reads from the office:
 - **Scene extras** carry the walk grid (`nav`, a base64 bit grid with obstacles already inflated), approach points (`approach`), the agent states and their POIs (`agentStates`), the status colours (`statusColors`) and the number of agent slots (`agents`). They are parsed with zod at load, and a mismatch fails the load naming the field.
 - **Day and night** nodes are named `day-only-*`, `night-only-*` and `night-light-*`; the office's `Ambient` clip loops.
 
-`packages/office-sim` is a TypeScript port of agent-office's reference movement, `viewer/agent-sim.js`: A* over the walk grid with string pulling, POI reservation so no two robots hold one place, enter and exit clips, and the lobby `Roster`. It talks to the renderer through a small `Actor` port (`setPose`, `play`, `duration`), so it could run in a worker or behind the API later.
+`packages/office-sim` is the movement reference (first ported from agent-office's `agent-sim.js`): A* over the walk grid with string pulling, POI reservation so no two robots hold one place, enter and exit clips, and the lobby `Roster`. It talks to the renderer through a small `Actor` port (`setPose`, `play`, `duration`), so it could run in a worker or behind the API later.
 
 ## Backend
 
@@ -87,7 +88,7 @@ curl http://127.0.0.1:8787/api/health
 - **App:** [Next.js](https://nextjs.org/) (static export), [shadcn/ui](https://ui.shadcn.com/) and [Tailwind CSS](https://tailwindcss.com/).
 - **API:** [Hono](https://hono.dev) with zod contracts.
 - **Tooling:** [Bun](https://bun.com) workspaces, [Turborepo](https://turborepo.com) and [Biome](https://biomejs.dev).
-- **3D Assets:** generated in agent-office, Meshopt-compressed with WebP textures.
+- **3D Assets:** generated from code in `packages/office-assets` with [glTF-Transform](https://gltf-transform.dev), Meshopt-compressed with WebP textures.
 
 ## Developer Note
 

@@ -4,17 +4,5 @@
   "extends": "//",
   "files": {
     "includes": ["**", "!assets"]
-  },
-  "overrides": [
-    {
-      "includes": ["scripts/**"],
-      "linter": {
-        "rules": {
-          "suspicious": {
-            "noConsole": "off"
-          }
-        }
-      }
-    }
-  ]
+  }
 }

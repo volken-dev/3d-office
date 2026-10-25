@@ -1,0 +1,714 @@
+{
+  "about": "Agent office layout (contract 4.6). Units are metres; +y is up; the overhead camera looks from +x/+z, so the north (z min) and west (x min) walls are full height and the south/east walls are low cutaway walls. 'rot' is degrees about +y; a POI with rot 0 faces +z. Plan: data core / charging dock with one docking bay per agent (west, behind glass; 4.5 m deep) | a glass meeting room (north-west: video wall + curved console) | work pods in 2 rows of 5 facing west toward the dock (robots sit and plug in) | training pods + a maintenance bar (north-east) | lobby by the door (east wall): scanner gate, wayfinding totem, hang-out seating, showcase, agent board; a painted concourse runs from the door to the dock | the launch pad on the open floor above the factory | deploy line (south), the agent factory: robots hammer and tinker at steel workbenches, new robots roll out of the fabricator and ride the belt to dispatch. One pale lab floor (raised-access panels) throughout; the factory is marked out in floor paint. Colour means status: robots and their desk / bay lights are green (working, deploying, done), yellow (idle, paused, arriving), orange (waiting for you) or red (error); everything else is a muted palette.",
+  "agents": {
+    "max": 10,
+    "_note": "slots the office seats at once: one work pod (desk_grid) and one docking bay (charge_row) per agent, and every agent state must hold this many (overflow stand-<zone> spots are generated). Sessions beyond this queue in the lobby (state queued: they wait on the lobby's stand-entry spots in queue order)."
+  },
+  "statusColors": {
+    "green": "#2fbf71",
+    "yellow": "#f2c230",
+    "orange": "#f2832e",
+    "red": "#e5484d"
+  },
+  "room": {
+    "x": [-11, 10],
+    "z": [-7, 7],
+    "wallHeight": 2.2,
+    "lowWallHeight": 0.32,
+    "wallThickness": 0.14,
+    "floor": "floor_lab"
+  },
+  "doors": [
+    {
+      "wall": "east",
+      "from": -0.6,
+      "to": 0.6
+    }
+  ],
+  "windows": [
+    {
+      "wall": "north",
+      "from": -1.2,
+      "to": 0.4,
+      "sill": 0.55,
+      "top": 1.85
+    },
+    {
+      "wall": "north",
+      "from": 1.8,
+      "to": 3.4,
+      "sill": 0.55,
+      "top": 1.85
+    },
+    {
+      "wall": "north",
+      "from": 4.8,
+      "to": 6.4,
+      "sill": 0.55,
+      "top": 1.85
+    }
+  ],
+  "zones": [
+    {
+      "id": "server_room",
+      "rect": [-11, -7, -6.5, 7],
+      "floor": "floor_lab_perf"
+    },
+    {
+      "id": "workspace",
+      "rect": [-6.5, -7, 3.0, 0.6]
+    },
+    {
+      "id": "lounge",
+      "rect": [-6.5, 0.6, 3.0, 2.5]
+    },
+    {
+      "id": "entry",
+      "rect": [3.0, -7, 10, 2.5]
+    },
+    {
+      "id": "deploy",
+      "rect": [-6.5, 2.5, 10, 7]
+    }
+  ],
+  "glass": [
+    {
+      "from": [-6.5, -7],
+      "to": [-6.5, -3],
+      "pitch": 1.75,
+      "_note": "docking-bay glass, north part (the meeting room is on its east side); the middle is open"
+    },
+    {
+      "from": [-6.5, 2.5],
+      "to": [-6.5, 7],
+      "pitch": 1.75,
+      "_note": "docking-bay glass, south part (behind the fabricator)"
+    },
+    {
+      "from": [-6.45, -3.6],
+      "to": [-4.1, -3.6],
+      "pitch": 1.2,
+      "_note": "meeting room, south side (door gap to x -3.0)"
+    },
+    {
+      "from": [-3.0, -7],
+      "to": [-3.0, -3.6],
+      "pitch": 1.15,
+      "_note": "meeting room, east side"
+    }
+  ],
+  "items": [
+    {
+      "type": "charge_row",
+      "zone": "server_room",
+      "pos": [-9.8, -5.4],
+      "rot": 90,
+      "dz": 1.2,
+      "plug": [-0.015, 0.565, -0.593],
+      "_note": "bays 1..agents.max along the west wall (docking cradle + glass-door rack + bay plate each), bay N's lights in agent N's status colour; cable tray + coolant pipes on the rack tops run into the cooling unit; shuttles ride the tray (anim-shuttle-N); plug must match the robot's CHARGE_PLUG",
+      "shuttles": [3, 8],
+      "trayExtend": 1.2
+    },
+    {
+      "type": "cooling_unit",
+      "zone": "server_room",
+      "pos": [-10.2, -7],
+      "rot": 0
+    },
+    {
+      "type": "plant",
+      "zone": "server_room",
+      "pos": [-10.55, 6.5],
+      "size": 1.0
+    },
+    {
+      "type": "desk_grid",
+      "zone": "workspace",
+      "pos": [-0.9, -5.8],
+      "rot": 90,
+      "cols": 5,
+      "screens": [["code_a", "term"], ["code_b", "code_a"], ["term", "code_b"]],
+      "colStep": [0, 1.4],
+      "rowStep": [2.6, 0],
+      "_note": "work pods 1..agents.max in 2 rows of 5 facing west toward the dock (row 1 = pods 1-5, the west row); each row is one continuous console",
+      "style": "console"
+    },
+    {
+      "type": "planter_trough",
+      "zone": "workspace",
+      "pos": [2.6, -7],
+      "length": 8.2
+    },
+    {
+      "type": "wall_screen",
+      "zone": "entry",
+      "pos": [4.1, -7],
+      "size": [1.2, 0.675],
+      "y": 1.3,
+      "screen": "departures",
+      "_note": "agent board: own node agent-board + material agent_board (the product draws live agent rows on it; the build bakes a sample)",
+      "board": true
+    },
+    {
+      "type": "training_pod",
+      "zone": "entry",
+      "id": 3,
+      "pos": [4.9, -5.3],
+      "rot": 0,
+      "color": "felt_plum",
+      "_note": "training pod (sit_idle 3), north-east corner, facing the camera"
+    },
+    {
+      "type": "training_pod",
+      "zone": "entry",
+      "id": 4,
+      "pos": [6.3, -5.3],
+      "rot": 0,
+      "color": "fabric_sofa",
+      "_note": "training pod (sit_idle 4), north-east corner, facing the camera"
+    },
+    {
+      "type": "big_plant",
+      "zone": "workspace",
+      "kind": "fiddle",
+      "pos": [-6.1, -3.2],
+      "pot": "pot_white",
+      "size": 1.1
+    },
+    {
+      "type": "service_bar",
+      "zone": "entry",
+      "pos": [8.6, -7],
+      "rot": 0,
+      "_note": "maintenance bar: coolant + oil dispensers (use_coffee), coolant vapour = anim-steam-N, parts locker"
+    },
+    {
+      "type": "wall_clock",
+      "zone": "entry",
+      "pos": [6.95, -7],
+      "y": 1.55
+    },
+    {
+      "type": "bar_table",
+      "zone": "entry",
+      "pos": [8.5, -4.5]
+    },
+    {
+      "type": "big_plant",
+      "zone": "workspace",
+      "kind": "snake",
+      "pos": [9.55, -2.3],
+      "pot": "pot_stone"
+    },
+    {
+      "type": "launch_pad",
+      "zone": "lounge",
+      "pos": [1.4, 1.6],
+      "radius": 0.7,
+      "_note": "launch pad on the open floor above the agent factory"
+    },
+    {
+      "type": "big_plant",
+      "zone": "entry",
+      "kind": "leafy",
+      "pos": [9.7, -3.4],
+      "pot": "pot_charcoal",
+      "size": 1.3
+    },
+    {
+      "type": "big_plant",
+      "zone": "entry",
+      "kind": "grass",
+      "pos": [9.55, 1.4],
+      "pot": "pot_stone",
+      "size": 1.2
+    },
+    {
+      "type": "guard_rail",
+      "zone": "deploy",
+      "pos": [-2.8, 2.75],
+      "length": 3.6,
+      "_note": "steel safety rail between the open floor and the factory"
+    },
+    {
+      "type": "guard_rail",
+      "zone": "deploy",
+      "pos": [2.4, 2.75],
+      "length": 3.6,
+      "_note": "steel safety rail between the open floor and the factory"
+    },
+    {
+      "type": "guard_rail",
+      "zone": "deploy",
+      "pos": [7.0, 2.75],
+      "length": 2.4,
+      "_note": "steel safety rail between the open floor and the factory"
+    },
+    {
+      "type": "conveyor",
+      "zone": "deploy",
+      "pos": [1.4, 6.35],
+      "rot": 180,
+      "length": 12.4,
+      "cargo": "gadgets",
+      "_note": "rot 180: the fabricator at the west end, new (unpainted) robots ride east into dispatch"
+    },
+    {
+      "type": "workbench",
+      "zone": "deploy",
+      "id": 1,
+      "pos": [-4.2, 5.3],
+      "rot": 0
+    },
+    {
+      "type": "workbench",
+      "zone": "deploy",
+      "id": 2,
+      "pos": [-2.6, 5.3],
+      "rot": 0
+    },
+    {
+      "type": "workbench",
+      "zone": "deploy",
+      "id": 3,
+      "pos": [-1.0, 5.3],
+      "rot": 0
+    },
+    {
+      "type": "workbench",
+      "zone": "deploy",
+      "id": 4,
+      "pos": [0.6, 5.3],
+      "rot": 0
+    },
+    {
+      "type": "workbench",
+      "zone": "deploy",
+      "id": 5,
+      "pos": [2.2, 5.3],
+      "rot": 0
+    },
+    {
+      "type": "workbench",
+      "zone": "deploy",
+      "id": 6,
+      "pos": [3.8, 5.3],
+      "rot": 0
+    },
+    {
+      "type": "workbench",
+      "zone": "deploy",
+      "id": 7,
+      "pos": [5.4, 5.3],
+      "rot": 0
+    },
+    {
+      "type": "workbench",
+      "zone": "deploy",
+      "id": 8,
+      "pos": [7.0, 5.3],
+      "rot": 0
+    },
+    {
+      "type": "shelving_rack",
+      "zone": "deploy",
+      "pos": [-5.85, 3.25],
+      "rot": 90,
+      "length": 1.6
+    },
+    {
+      "type": "pallet_stack",
+      "zone": "deploy",
+      "pos": [9.3, 6.35],
+      "rot": 0,
+      "_note": "wrapped crates by dispatch"
+    },
+    {
+      "type": "big_plant",
+      "zone": "deploy",
+      "kind": "snake",
+      "pos": [9.5, 3.0],
+      "pot": "pot_charcoal"
+    },
+    {
+      "type": "robot_arm",
+      "zone": "deploy",
+      "pos": [-5.7, 5.05],
+      "rot": 0,
+      "swing": 35,
+      "_note": "factory arm by the fabricator; turret swings in clip Ambient (anim-arm-1)",
+      "scale": 1.3
+    },
+    {
+      "type": "robot_arm",
+      "zone": "deploy",
+      "pos": [8.75, 5.15],
+      "rot": 0,
+      "swing": 35,
+      "phase": 0.5,
+      "_note": "palletising arm by dispatch (anim-arm-2)",
+      "scale": 1.3
+    },
+    {
+      "type": "floor_hatch",
+      "zone": "deploy",
+      "pos": [0, 0],
+      "rect": [-6.3, 4.5, -5.15, 5.7],
+      "_note": "keep-out paint round the fabricator arm"
+    },
+    {
+      "type": "floor_hatch",
+      "zone": "deploy",
+      "pos": [0, 0],
+      "rect": [7.95, 4.5, 9.8, 5.75],
+      "_note": "keep-out paint round the dispatch arm"
+    },
+    {
+      "type": "floor_lines",
+      "zone": "deploy",
+      "pos": [0, 0],
+      "color": "floor_paint",
+      "rects": [[-6.3, 3.0, 9.8, 3.05], [-4.9, 4.395, 7.75, 4.445]],
+      "_note": "factory aisle lines"
+    },
+    {
+      "type": "floor_text",
+      "zone": "deploy",
+      "pos": [1.4, 3.72],
+      "rot": 0,
+      "text": "AGENT FACTORY",
+      "px": 0.055,
+      "_note": "stencilled on the aisle, reads from the camera side"
+    },
+    {
+      "type": "floor_arrows",
+      "zone": "deploy",
+      "pos": [0, 3.72],
+      "rot": 0,
+      "xs": [-4.1, -3.0, -1.9, 4.7, 5.8, 6.9, 8.0],
+      "_note": "flow: fabricator (west) to dispatch (east)"
+    },
+    {
+      "type": "line_gantry",
+      "zone": "deploy",
+      "pos": [0, 4.95],
+      "rot": 0,
+      "height": 1.85,
+      "posts": [-5.0, -1.8, 1.4, 4.6, 7.8],
+      "plates": [-4.2, -2.6, -1.0, 0.6, 2.2, 3.8, 5.4, 7.0],
+      "_note": "assembly-line gantry behind the workbenches: LED task bar (lamp_glow) + station plates 01-08"
+    },
+    {
+      "type": "flash_station",
+      "zone": "server_room",
+      "pos": [-7.55, 6.5],
+      "rot": 0,
+      "_note": "brains are flashed here and sent to the fabricator through the data link"
+    },
+    {
+      "type": "data_link",
+      "zone": "server_room",
+      "pos": [0, 0],
+      "from": [-7.6, 6.64],
+      "fromFace": -7.25,
+      "to": [-5.42, 6.64],
+      "y": 1.45,
+      "glassAt": -6.5,
+      "post": -6.05,
+      "_note": "glass tube from the flash station through the glass wall into the fabricator's roof intake; capsules slide along (anim-link)"
+    },
+    {
+      "type": "floor_lines",
+      "zone": "server_room",
+      "pos": [0, 0],
+      "color": "floor_paint",
+      "rects": [[-8.93, -4.6, -8.88, 6.1]],
+      "_note": "service lane edge in front of the bays"
+    },
+    {
+      "type": "floor_text",
+      "zone": "server_room",
+      "pos": [-7.7, -1.2],
+      "rot": 90,
+      "text": "DOCKING BAY",
+      "px": 0.07,
+      "_note": "stencilled along the middle of the dock, reads left to right from the camera"
+    },
+    {
+      "type": "control_room",
+      "zone": "workspace",
+      "pos": [-4.75, -6.7],
+      "rot": 0,
+      "radius": 1.7,
+      "angles": [146, 168, 192, 214],
+      "ids": [1, 2, 5, 6],
+      "_note": "meeting room behind glass (north-west): video wall + curved console, operators (sit_idle 1, 2, 5, 6) face the wall"
+    },
+    {
+      "type": "scan_gate",
+      "zone": "entry",
+      "pos": [8.95, 0.0],
+      "rot": 90,
+      "width": 2.3,
+      "text": "ARRIVALS",
+      "_note": "scanner frame inside the door"
+    },
+    {
+      "type": "round_rug",
+      "zone": "entry",
+      "pos": [5.6, -5.25],
+      "radius": 1.15,
+      "color": "rug_mat",
+      "_note": "anti-static mat under the training pods"
+    },
+    {
+      "type": "seat_row",
+      "zone": "entry",
+      "pos": [5.5, -3.2],
+      "rot": 0,
+      "count": 4,
+      "spacing": 0.8,
+      "pois": {
+        "1": 7,
+        "3": 8
+      },
+      "_note": "hang-out: this row faces the camera (sit_idle 7, 8)"
+    },
+    {
+      "type": "seat_row",
+      "zone": "entry",
+      "pos": [5.5, -1.55],
+      "rot": 180,
+      "count": 4,
+      "spacing": 0.8,
+      "_note": "hang-out: the facing row"
+    },
+    {
+      "type": "low_table",
+      "zone": "entry",
+      "pos": [5.5, -2.375],
+      "size": [1.4, 0.4]
+    },
+    {
+      "type": "wayfinding",
+      "zone": "entry",
+      "pos": [7.9, 1.95],
+      "rot": 90,
+      "lines": ["^ DOCK", "> PODS", "> MEETING", "> SERVICE", "< FACTORY"],
+      "_note": "totem facing the door"
+    },
+    {
+      "type": "showcase",
+      "zone": "entry",
+      "pos": [6.6, 2.05],
+      "rot": 0,
+      "label": "MODEL R1"
+    },
+    {
+      "type": "floor_lines",
+      "zone": "lounge",
+      "pos": [0, 0],
+      "color": "floor_paint",
+      "rects": [
+        [-6.3, 0.68, 3.0, 0.73],
+        [2.975, -1.2, 3.025, 0.68],
+        [3.025, -1.25, 9.85, -1.2],
+        [8.3, 1.2, 9.85, 1.25]
+      ],
+      "_note": "main concourse from the door to the dock: north edge (the factory rails are the south edge)"
+    }
+  ],
+  "spawns": [[9.3, -0.05], [8.0, -0.5], [8.0, 0.45], [7.05, -0.5], [7.05, 0.45]],
+  "spawnRot": -90,
+  "areas": {
+    "server_room": [-7.6, 1.4],
+    "workspace": [2.6, -3.7],
+    "lounge": [-3.4, 1.7],
+    "entry": [7.0, 1.3],
+    "deploy": [1.4, 3.7]
+  },
+  "nightLights": [
+    {
+      "name": "server-room",
+      "pos": [-8.6, 1.9, 0.0],
+      "color": [0.45, 0.75, 1.0],
+      "intensity": 4.0,
+      "range": 9.0
+    },
+    {
+      "name": "desks",
+      "pos": [0.1, 1.8, -3.0],
+      "color": [1.0, 0.88, 0.72],
+      "intensity": 4.5,
+      "range": 7.5
+    },
+    {
+      "name": "meeting-room",
+      "pos": [-4.75, 1.6, -5.3],
+      "color": [1.0, 0.8, 0.55],
+      "intensity": 3.0,
+      "range": 4.5
+    },
+    {
+      "name": "maintenance-bar",
+      "pos": [8.5, 1.7, -5.0],
+      "color": [1.0, 0.85, 0.65],
+      "intensity": 3.0,
+      "range": 4.5
+    },
+    {
+      "name": "concourse",
+      "pos": [-3.4, 1.6, 0.2],
+      "color": [1.0, 0.78, 0.55],
+      "intensity": 3.5,
+      "range": 5.0
+    },
+    {
+      "name": "entry",
+      "pos": [5.5, 1.7, 0.4],
+      "color": [0.85, 0.9, 1.0],
+      "intensity": 3.0,
+      "range": 5.5
+    },
+    {
+      "name": "deploy-west",
+      "pos": [-2.2, 1.6, 4.8],
+      "color": [0.9, 0.92, 1.0],
+      "intensity": 3.5,
+      "range": 6.0
+    },
+    {
+      "name": "deploy-east",
+      "pos": [4.6, 1.6, 4.8],
+      "color": [0.9, 0.92, 1.0],
+      "intensity": 3.5,
+      "range": 6.0
+    }
+  ],
+  "agentStates": {
+    "_format": "state -> { note, color, slots: [{ pois, clip, assign? }] }. color = statusColors key: the robot's body (material primary) and its desk / bay light (status_glow). Slots fill IN ORDER: an agent takes the first free POI of the first slot that still has one, so overflow slots (poi-stand-<zone>-*, generated standing spots) come last. pois are POI node names; 'poi-x-*' = every POI of that kind. assign 'own' = the agent's own POI of that kind (poi-<kind>-<desk id>: its desk, its charging bay). Every state holds at least agents.max agents.",
+    "working": {
+      "note": "at its own desk, typing",
+      "color": "green",
+      "slots": [
+        {
+          "pois": ["poi-sit_work-*"],
+          "clip": "Sit_Work",
+          "assign": "own"
+        }
+      ]
+    },
+    "shipping": {
+      "note": "deploying: hammering and tinkering at the workbenches on the deploy line",
+      "color": "green",
+      "slots": [
+        {
+          "pois": ["poi-ship-1", "poi-ship-3", "poi-ship-5", "poi-ship-7"],
+          "clip": "Hammer"
+        },
+        {
+          "pois": ["poi-ship-2", "poi-ship-4", "poi-ship-6", "poi-ship-8"],
+          "clip": "Tinker"
+        },
+        {
+          "pois": ["poi-stand-deploy-*"],
+          "clip": "LookAround"
+        }
+      ]
+    },
+    "waiting_for_input": {
+      "note": "at its own desk with a '?' until the user replies",
+      "color": "orange",
+      "slots": [
+        {
+          "pois": ["poi-sit_work-*"],
+          "clip": "Sit_Wait",
+          "assign": "own"
+        }
+      ]
+    },
+    "idle": {
+      "note": "in the lounge, the reading nook or at the coffee bar",
+      "color": "yellow",
+      "slots": [
+        {
+          "pois": ["poi-sit_idle-*"],
+          "clip": "Sit_Idle"
+        },
+        {
+          "pois": ["poi-coffee_chat-*"],
+          "clip": "Talk"
+        },
+        {
+          "pois": ["poi-use_coffee-1"],
+          "clip": "Idle"
+        },
+        {
+          "pois": ["poi-stand-lounge-*"],
+          "clip": "Idle"
+        }
+      ]
+    },
+    "paused_or_rate_limited": {
+      "note": "sits at its own charging bay in the server room, plugs in, snoozes",
+      "color": "yellow",
+      "slots": [
+        {
+          "pois": ["poi-charge-*"],
+          "clip": "Charge",
+          "assign": "own"
+        }
+      ]
+    },
+    "error": {
+      "note": "slumped at its own desk with a '!'",
+      "color": "red",
+      "slots": [
+        {
+          "pois": ["poi-sit_work-*"],
+          "clip": "Sit_Sad",
+          "assign": "own"
+        }
+      ]
+    },
+    "done": {
+      "note": "dances in place on the production line (its workbench, or a spot on the factory floor), then is retired",
+      "color": "green",
+      "slots": [
+        {
+          "pois": ["poi-ship-*"],
+          "clip": "Dance"
+        },
+        {
+          "pois": ["poi-stand-deploy-*"],
+          "clip": "Dance"
+        }
+      ]
+    },
+    "arrive": {
+      "note": "walks in at the door and waves",
+      "color": "yellow",
+      "slots": [
+        {
+          "pois": ["poi-idle-spawn-*"],
+          "clip": "Wave"
+        },
+        {
+          "pois": ["poi-stand-entry-*"],
+          "clip": "Wave"
+        }
+      ]
+    },
+    "queued": {
+      "note": "a session beyond agents.max: waits by the door for a free pod (FIFO; its queue position N picks poi-stand-entry-N, 1 = nearest the door), then takes the freed slot",
+      "color": "yellow",
+      "slots": [
+        {
+          "pois": ["poi-stand-entry-*"],
+          "clip": "LookAround",
+          "assign": "position"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "name": "@the-delegation/office-assets",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "test": "bun test",
+    "models": "bun run models:textures && bun run models:robot && bun run models:robot-lite && bun run models:minibot && bun run models:office && bun run models:compress && bun run models:check && bun run models:movement",
+    "models:textures": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/build-office-textures.ts",
+    "models:robot": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/build-robot.ts out/raw/robot.glb",
+    "models:robot-lite": "LITE=1 node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/build-robot.ts out/raw/robot-lite.glb",
+    "models:minibot": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/build-minibot.ts out/raw/minibot.glb",
+    "models:office": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/build-office.ts out/raw/office.glb",
+    "models:compress": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/compress-models.ts",
+    "models:check": "bun scripts/check-contract.ts",
+    "models:movement": "cd ../office-sim && bun test test/office-movement.test.ts",
+    "models:validate": "bun scripts/validate-models.ts"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "4.5.1",
+    "@gltf-transform/extensions": "4.5.1",
+    "@gltf-transform/functions": "4.5.1",
+    "@the-delegation/office-sim": "workspace:*",
+    "@types/bun": "^1.4.3",
+    "@types/node": "^22.14.0",
+    "draco3dgltf": "1.5.9",
+    "gl-matrix": "3.4.4",
+    "gltf-validator": "2.0.0-dev.3.10",
+    "meshoptimizer": "0.22.0",
+    "sharp": "0.35.5",
+    "typescript": "~5.9.3",
+    "zod": "^4.6.7"
+  }
+}

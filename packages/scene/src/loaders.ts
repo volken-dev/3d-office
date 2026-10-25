@@ -7,7 +7,7 @@ export interface SceneLoader {
 }
 
 /**
- * The scene's GLTF loader. Models are Meshopt-compressed by `bun run assets`; the decoder compiles its
+ * The scene's GLTF loader. Models are Meshopt-compressed by office-assets' `bun run models`; the decoder compiles its
  * small wasm module once, on the main thread, so there is no worker pool to dispose.
  */
 export function createSceneLoader(assetBaseUrl: string): SceneLoader {

@@ -11,7 +11,7 @@ const ClipSequenceSchema = z.looseObject({
 })
 
 /**
- * The parts of agent-office's `asset-contract.json` the movement code relies on: the contract
+ * The parts of the asset contract (`asset-contract.json`) the movement code relies on: the contract
  * version, how a robot gets into and out of each POI, and which POI kinds are seats. Other keys
  * are allowed through untouched, because the contract grows additively between minor versions.
  */

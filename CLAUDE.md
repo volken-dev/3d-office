@@ -19,7 +19,7 @@
 ## What this product is
 
 The agent office in the browser (Three.js WebGPU, with a WebGL2 fallback): Isaac's office and
-robot models from `~/Projects/agent-office`, with five robots, one per agent slot. The robots walk
+robot models, generated from code in `packages/office-assets`, with five robots, one per agent slot. The robots walk
 in from the door; a live demo then gives each one a new agent state every 8 to 20 s, and it walks
 to a POI for that state, plays the contract's enter clips and shows the state's status colour on
 its body and its pod or bay light. Day and night follow the local clock (night 19:00 to 07:00).
@@ -63,8 +63,13 @@ apps/
 │   └── scripts/  copy-scene-assets (models into public/models before dev and build), csp
 ├── api/        Hono app, runtime-agnostic: app.ts (createApp), env.ts, errors.ts, routes/health
 packages/
+├── office-assets/ @the-delegation/office-assets: the models' source of truth, generated from
+│               code (not shipped to the browser). src/robot (robot, robot-lite, minibot),
+│               src/office (layout JSON, generator, procedural textures), src/compress (meshopt +
+│               WebP), src/contract (the asset contract checker), scripts/ (`bun run models`).
+│               README.md holds the world conventions and robot facts
 ├── office-sim/ @the-delegation/office-sim: how robots move, zod only (no three.js, no DOM).
-│               Port of agent-office's viewer/agent-sim.js: asset-contract and office-extras
+│               Ported from agent-office's agent-sim.js, now the reference: asset-contract and office-extras
 │               schemas, walk-grid, path-finding (A* + string pulling), office-world (POIs and
 │               reservations), agent (OfficeAgent and its Actor port), agent-states, roster
 ├── scene/      @the-delegation/scene: the 3D scene, framework-free. scene-manager (driven by
@@ -72,8 +77,7 @@ packages/
 │               profiler), office/ (model, world loader, lighting, ambient clip, status lights,
 │               time of day), robots/ (robot-rig, three-actor, robot-picking), camera/
 │               (office-camera: controls and follow), loaders. assets/ (models/office.glb,
-│               models/robot.glb, asset-contract.json, synced from agent-office), scripts/
-│               sync-assets (`bun run assets`)
+│               models/robot.glb, asset-contract.json: built by office-assets)
 └── shared/     @the-delegation/shared: zod contracts (api.ts: health response, error envelope)
 ```
 
@@ -99,9 +103,14 @@ packages/
 - **Cast slots are pod, bay and status-texel numbers.** `SceneCast` is `{ agentIndices }`; slot N
   is pod N, docking bay N and status texel N, from 1 to the office's `agents.max`.
   `OFFICE_CAST` is `[1, 2, 3, 4, 5]`.
-- **Assets are synced from agent-office, never hand-edited.** `office.glb`, `robot.glb` and
-  `asset-contract.json` are agent-office's `dist/` output, byte for byte; change them there and
-  run `bun run assets`. POIs are `poi-<kind>-<id>` nodes; the walk grid, approach points, agent
+- **Models are generated, never hand-edited.** `office.glb` and `robot.glb` are the output of
+  `packages/office-assets` (`bun run models` there); change a generator or the office layout and
+  rebuild. `asset-contract.json` is edited by hand alongside a generator change (bump
+  `contractVersion`: major = rename or removal, minor = addition) and the build checks the models
+  against it. The robot build reads the source rig `packages/office-assets/rig/character-rig.glb`,
+  a personal-use asset that stays local and gitignored; the shipped GLBs are committed, so dev, CI
+  and builds never need it. Generators run under node (type stripping), not bun: bun's maths
+  differs in the last bit and a rebuild should reproduce the committed files byte for byte. POIs are `poi-<kind>-<id>` nodes; the walk grid, approach points, agent
   states, status colours and slot count are scene extras parsed with zod at load.
 - **The live demo is a stand-in.** `integration/live-demo.ts` picks the robots' states today; a
   future agent product replaces it with real states and the scene does not change.
@@ -109,7 +118,7 @@ packages/
   double-mount must leave exactly one canvas.
 - **The API is a local service.** No sign-in and none planned; it binds to `127.0.0.1` by default
   (`HOST` overrides it) and must not be exposed publicly. The web app does not call it today.
-- **The 3D scene's look does not change** as a side effect of refactors. It is the agent-office
+- **The 3D scene's look does not change** as a side effect of refactors. It is the original agent-office
   viewer's look (lighting, tone mapping, day and night), set on purpose in #87.
 
 ---
@@ -128,10 +137,11 @@ bun run build       # static export to apps/web/out (+ CSP postbuild), api bundl
 
 `bun run dev:lan` in `apps/web` opts in to binding on the network. Press the backquote key in a
 dev build for render stats. The models live in `packages/scene/assets/models` and are copied into
-`apps/web/public/models` (gitignored) before every dev and build. To take a new agent-office
-build, run `bun run assets` in `packages/scene` (it syncs `office.glb`, `robot.glb` and
-`asset-contract.json` from `../../../agent-office/dist`, or the path given as its argument or in
-`AGENT_OFFICE_DIST`, and refuses a contract of another major version), then restart dev. `.env*` files are gitignored except
+`apps/web/public/models` (gitignored) before every dev and build. To change a model, edit
+its generator or `src/office/office-layout.json` in `packages/office-assets` and run
+`bun run models` there (textures, robot, robot-lite, minibot, office, compression into
+`packages/scene/assets/models`, the contract check and the movement test), then restart dev.
+`.env*` files are gitignored except
 `.env.example`.
 
 CI (`.github/workflows/ci.yml`) runs on pull requests and pushes to `main`: installs with
@@ -242,8 +252,8 @@ Never report success with a red gate; if a gate fails, show the exact `file:line
 
 - New API route group → `.route('/<name>', <name>)` in `createApp` (`apps/api/src/app.ts`), with
   its request and response schemas in `@the-delegation/shared`
-- New or changed model → built in agent-office and listed in its asset contract, then
-  `bun run assets` in `packages/scene`; add the file to `SYNCED_FILES` in
-  `packages/scene/scripts/sync-assets.ts` only for a new file name
+- New or changed model → generated in `packages/office-assets` and listed in
+  `packages/scene/assets/asset-contract.json`, then `bun run models` there; a new file name also
+  goes in `SHIPPED_MODEL_PATHS` (`packages/office-assets/src/model-paths.ts`)
 
 Run `/registration-parity` if unsure.

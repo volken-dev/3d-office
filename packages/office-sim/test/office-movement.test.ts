@@ -16,7 +16,7 @@ import { poiKind } from "../src/poi-slots"
 import { FakeActor } from "./support/fake-actor"
 import { readClipDurations, readOfficeGlb } from "./support/office-glb"
 
-/** The shipped office, robot and contract, as committed in packages/scene (synced from agent-office). */
+/** The shipped office, robot and contract, as committed in packages/scene (built by packages/office-assets). */
 const SCENE_ASSETS = path.resolve(import.meta.dir, "../../scene/assets")
 
 const FRAME = 1 / 30

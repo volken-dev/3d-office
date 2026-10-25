@@ -1,0 +1,4 @@
+# The source rig is a personal-use asset: it stays on this machine and is never committed.
+rig/*.glb
+# Build intermediates: raw GLBs, generated textures, debug dumps, robot-lite and minibot.
+out/

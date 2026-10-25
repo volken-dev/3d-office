@@ -97,7 +97,7 @@ export const StatusColorsSchema = z.looseObject({
 })
 
 /**
- * The scene extras of agent-office's `office.glb` that the simulation and the renderer read. The
+ * The scene extras of the generated `office.glb` that the simulation and the renderer read. The
  * file carries more (palette, screen atlas, conventions); those pass through unparsed. Every agent
  * state's colour must name a status colour, so a bad file fails here rather than mid-frame.
  */
